@@ -1,0 +1,25 @@
+# Build directories
+build/
+build-*/
+bin/
+lib/
+out/
+cmake-build-*/
+
+# Visual Studio / MSVC artifacts
+.vs/
+*.sln
+*.vcxproj*
+*.user
+*.suo
+x64/
+x86/
+Debug/
+Release/
+
+# Temporary / OS files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
