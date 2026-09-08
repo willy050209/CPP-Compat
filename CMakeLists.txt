@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15)
 project(CPP_Compat VERSION 1.0.0 LANGUAGES CXX)
 
 # Support CMAKE_CXX_STANDARD (11, 14, 17, 20, 23). Default to 20 if not specified.
@@ -51,4 +51,25 @@ if(TEST_SOURCES)
     add_executable(compat_test ${TEST_SOURCES})
     target_link_libraries(compat_test PRIVATE compat)
     add_test(NAME compat_unit_tests COMMAND compat_test)
+endif()
+
+# Benchmark target: compat_benchmark (benchmark/*.cpp)
+option(COMPAT_BUILD_BENCHMARKS "Build benchmark suite" ON)
+
+if(COMPAT_BUILD_BENCHMARKS)
+    file(GLOB BENCHMARK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/*.cpp")
+    if(BENCHMARK_SOURCES)
+        add_executable(compat_benchmark ${BENCHMARK_SOURCES})
+        target_include_directories(compat_benchmark PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/benchmark")
+        target_link_libraries(compat_benchmark PRIVATE compat)
+        set_target_properties(compat_benchmark PROPERTIES
+            CXX_STANDARD 23
+            CXX_STANDARD_REQUIRED ON
+        )
+        if(MSVC)
+            target_compile_options(compat_benchmark PRIVATE /std:c++latest /O2)
+        else()
+            target_compile_options(compat_benchmark PRIVATE -std=c++23 -O3)
+        endif()
+    endif()
 endif()

@@ -150,7 +150,7 @@ module;
 // Module Section: include/compat/detail/SelfExpected.hpp
 // ============================================================================
 
-#if !COMPAT_HAS_STD_EXPECTED && COMPAT_HAS_STD_VARIANT
+#if (!COMPAT_HAS_STD_EXPECTED && COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_VARIANT_EXPECTED)
 
 #include <variant>
 #include <utility>
@@ -180,6 +180,7 @@ export module compat;
 
 export namespace compat {
 namespace detail {
+namespace variant_impl {
 
 /// <summary>
 /// Tag type indicating an unexpected error value construction.
@@ -682,10 +683,19 @@ private:
     std::variant<std::monostate, unexpected<E>> m_var;
 };
 
+} // namespace variant_impl
+
+#if !defined(COMPAT_BENCHMARK_ISOLATE_EXPECTED)
+using variant_impl::unexpect_t;
+using variant_impl::unexpect;
+using variant_impl::unexpected;
+using variant_impl::expected;
+#endif
+
 } // namespace detail
 } // namespace compat
 
-#endif // !COMPAT_HAS_STD_EXPECTED && COMPAT_HAS_STD_VARIANT
+#endif // (!COMPAT_HAS_STD_EXPECTED && COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_VARIANT_EXPECTED)
 
 // ============================================================================
 // Module Section: include/compat/detail/SelfStringView.hpp
@@ -1136,11 +1146,12 @@ namespace std {
 // Module Section: include/compat/detail/SelfUnionExpected.hpp
 // ============================================================================
 
-#if !COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT
+#if (!COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_UNION_EXPECTED)
 
 
 export namespace compat {
 namespace detail {
+namespace union_impl {
 
 /// <summary>
 /// Tag type indicating an unexpected error value construction.
@@ -1832,10 +1843,19 @@ private:
     }
 };
 
+} // namespace union_impl
+
+#if !defined(COMPAT_BENCHMARK_ISOLATE_EXPECTED)
+using union_impl::unexpect_t;
+using union_impl::unexpect;
+using union_impl::unexpected;
+using union_impl::expected;
+#endif
+
 } // namespace detail
 } // namespace compat
 
-#endif // !COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT
+#endif // (!COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_UNION_EXPECTED)
 
 // ============================================================================
 // Module Section: include/compat/Expected.hpp

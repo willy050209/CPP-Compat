@@ -2,7 +2,7 @@
 
 #include "../Config.hpp"
 
-#if !COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT
+#if (!COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_UNION_EXPECTED)
 
 #include <cstddef>
 #include <cstdint>
@@ -13,6 +13,7 @@
 
 namespace compat {
 namespace detail {
+namespace union_impl {
 
 /// <summary>
 /// Tag type indicating an unexpected error value construction.
@@ -704,7 +705,16 @@ private:
     }
 };
 
+} // namespace union_impl
+
+#if !defined(COMPAT_BENCHMARK_ISOLATE_EXPECTED)
+using union_impl::unexpect_t;
+using union_impl::unexpect;
+using union_impl::unexpected;
+using union_impl::expected;
+#endif
+
 } // namespace detail
 } // namespace compat
 
-#endif // !COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT
+#endif // (!COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_UNION_EXPECTED)
