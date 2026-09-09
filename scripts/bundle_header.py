@@ -30,6 +30,64 @@ RE_INCLUDE_INTERNAL = re.compile(r'^\s*#\s*include\s*"([^"]+)"')
 RE_INCLUDE_EXTERNAL = re.compile(r'^\s*#\s*include\s*<([^>]+)>')
 RE_PP_IF = re.compile(r'^\s*#\s*(if|ifdef|ifndef)\b')
 RE_PP_ENDIF = re.compile(r'^\s*#\s*endif\b')
+RE_DEFINE = re.compile(r'^\s*#\s*define\s+(COMPAT_[A-Za-z0-9_]+)')
+
+# Private helper macros that must be cleaned up at the end of the bundled single-header
+# to prevent polluting consumer code, while retaining public API macros (e.g. COMPAT_NODISCARD).
+DEFAULT_CLEANUP_MACROS = [
+    "COMPAT_CPLUSPLUS",
+    "COMPAT_CXX_11",
+    "COMPAT_CXX_14",
+    "COMPAT_CXX_17",
+    "COMPAT_CXX_20",
+    "COMPAT_CXX_23",
+    "COMPAT_HAS_EXCEPTIONS",
+    "COMPAT_THROW_OR_ABORT",
+    "COMPAT_CONSTEXPR_14",
+    "COMPAT_ABI_TAG",
+    "COMPAT_HAS_STD_EXPECTED",
+    "COMPAT_HAS_STD_PRINT",
+    "COMPAT_HAS_STD_FORMAT",
+    "COMPAT_HAS_STD_STRING_VIEW",
+    "COMPAT_HAS_STD_VARIANT",
+    "COMPAT_BAD_EXPECTED_ACCESS_DEFINED",
+]
+
+# Public API macros that must be retained and NEVER undef'ed
+PUBLIC_API_MACROS = {
+    "COMPAT_NODISCARD",
+    "COMPAT_FORCE_FALLBACK",
+    "COMPAT_FORCE_SELF_IMPLEMENTATION",
+    "COMPAT_FORCE_STD_IMPLEMENTATION",
+    "COMPAT_ENABLE_VARIANT_EXPECTED",
+    "COMPAT_ENABLE_UNION_EXPECTED",
+}
+
+
+def collect_cleanup_macros(parsed_data: dict[Path, dict]) -> list[str]:
+    """
+    Collects internal private helper macros from parsed headers to emit in the cleanup block.
+    Retains public API macros while ensuring all internal helper macros (COMPAT_CXX_*,
+    COMPAT_HAS_*, COMPAT_CPLUSPLUS, etc.) are undefined.
+    """
+    cleanup_set = set(DEFAULT_CLEANUP_MACROS)
+
+    for data in parsed_data.values():
+        for line in data["cleaned_lines"]:
+            m = RE_DEFINE.match(line)
+            if m:
+                macro_name = m.group(1)
+                if macro_name in PUBLIC_API_MACROS:
+                    continue
+                if (macro_name.startswith("COMPAT_CXX_") or
+                    macro_name.startswith("COMPAT_HAS_") or
+                    macro_name.startswith("COMPAT_INTERNAL_") or
+                    macro_name in cleanup_set):
+                    cleanup_set.add(macro_name)
+
+    ordered = [m for m in DEFAULT_CLEANUP_MACROS if m in cleanup_set]
+    extras = sorted([m for m in cleanup_set if m not in DEFAULT_CLEANUP_MACROS])
+    return ordered + extras
 
 
 def find_repo_root(start_path: Path) -> Path:
@@ -293,6 +351,18 @@ def bundle(compat_dir: Path, output_file: Path, verbose: bool = False) -> Path:
             parts.append("")
             parts.extend(cleaned_body)
             parts.append("")
+
+    # Internal preprocessor cleanup block
+    cleanup_macros = collect_cleanup_macros(parsed_data)
+    if cleanup_macros:
+        parts.append("// ============================================================================")
+        parts.append("// Internal Preprocessor Cleanup")
+        parts.append("// Undefine internal helper macros to prevent macro leakage into consumer code,")
+        parts.append("// while retaining public API macros (e.g. COMPAT_NODISCARD).")
+        parts.append("// ============================================================================")
+        for macro in cleanup_macros:
+            parts.append(f"#undef {macro}")
+        parts.append("")
 
     parts.append("// ============================================================================")
     parts.append("// End of Single-Header Distribution: dist/compat.hpp")

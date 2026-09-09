@@ -2,11 +2,13 @@
 
 #include "Config.hpp"
 #include "StringView.hpp"
+#include "detail/SelfPrint.hpp"
 
 #if COMPAT_HAS_STD_FORMAT
 #  include <format>
 namespace compat {
     using std::format;
+    using std::formatter;
 }
 #else
 #  include "detail/SelfFormat.hpp"

@@ -2,6 +2,8 @@
 
 // Feature detection and configuration header for compat library.
 
+#include <cstdlib>
+
 #if defined(_MSVC_LANG)
 #  define COMPAT_CPLUSPLUS _MSVC_LANG
 #else
@@ -15,6 +17,40 @@
 #define COMPAT_CXX_20 202002L
 #define COMPAT_CXX_23 202302L
 
+// Backwards-compatible alias handling for forcing self/fallback implementation
+#if defined(COMPAT_FORCE_FALLBACK) && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#  define COMPAT_FORCE_SELF_IMPLEMENTATION 1
+#endif
+#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION) && !defined(COMPAT_FORCE_FALLBACK)
+#  define COMPAT_FORCE_FALLBACK 1
+#endif
+
+// Mutual exclusion check
+#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION) && defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#  error "Cannot force both self and std implementations simultaneously"
+#endif
+
+// Exception handling and throw-or-abort abstraction
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (defined(_MSC_VER) && defined(_CPPUNWIND))
+#  define COMPAT_HAS_EXCEPTIONS 1
+#  define COMPAT_THROW_OR_ABORT(ex) throw (ex)
+#else
+#  define COMPAT_HAS_EXCEPTIONS 0
+#  define COMPAT_THROW_OR_ABORT(ex) std::abort()
+#endif
+
+// Constexpr support for C++14+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#  define COMPAT_CONSTEXPR_14 constexpr
+#else
+#  define COMPAT_CONSTEXPR_14 inline
+#endif
+
+// ABI tagging and inline namespace support for fallback implementations
+#ifndef COMPAT_ABI_TAG
+#  define COMPAT_ABI_TAG abi_v1
+#endif
+
 // Probe standard library version header if available
 #if defined(__has_include)
 #  if __has_include(<version>)
@@ -22,9 +58,9 @@
 #  endif
 #endif
 
-#if defined(COMPAT_FORCE_FALLBACK)
+#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
 
-// Forced fallback mode: disable all native C++ standard features
+// Forced self-implementation mode: disable all native C++ standard features
 #  define COMPAT_HAS_STD_EXPECTED    0
 #  define COMPAT_HAS_STD_PRINT       0
 #  define COMPAT_HAS_STD_FORMAT      0
@@ -90,7 +126,14 @@
 #    define COMPAT_HAS_STD_PRINT 0
 #  endif
 
-#endif // !defined(COMPAT_FORCE_FALLBACK)
+#endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+
+// Check if forced std implementation is supported by standard library
+#if defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#  if !COMPAT_HAS_STD_STRING_VIEW
+#    error "Standard C++ library does not support requested modern features"
+#  endif
+#endif
 
 // Attribute support
 #if defined(__has_cpp_attribute)

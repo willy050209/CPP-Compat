@@ -9,8 +9,9 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Option to force fallback shims instead of std
+# Options to force fallback / self-implementation shims instead of std
 option(COMPAT_FORCE_FALLBACK "Force use of self-contained fallback shims instead of std" OFF)
+option(COMPAT_FORCE_SELF_IMPLEMENTATION "Force use of self-contained fallback shims instead of std" OFF)
 
 # HEADER-ONLY interface target
 add_library(compat INTERFACE)
@@ -19,8 +20,8 @@ target_include_directories(compat INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-if(COMPAT_FORCE_FALLBACK)
-    target_compile_definitions(compat INTERFACE COMPAT_FORCE_FALLBACK=1)
+if(COMPAT_FORCE_FALLBACK OR COMPAT_FORCE_SELF_IMPLEMENTATION)
+    target_compile_definitions(compat INTERFACE COMPAT_FORCE_FALLBACK=1 COMPAT_FORCE_SELF_IMPLEMENTATION=1)
 endif()
 
 # Strict warning flags (MSVC /W4, GCC -Wall -Wextra)

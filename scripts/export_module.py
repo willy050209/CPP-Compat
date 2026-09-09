@@ -52,22 +52,60 @@ def find_repo_root(start_path: Path) -> Path:
     return start_path.resolve()
 
 
+DEFAULT_CLEANUP_MACROS = [
+    "COMPAT_CPLUSPLUS",
+    "COMPAT_CXX_11",
+    "COMPAT_CXX_14",
+    "COMPAT_CXX_17",
+    "COMPAT_CXX_20",
+    "COMPAT_CXX_23",
+    "COMPAT_HAS_EXCEPTIONS",
+    "COMPAT_THROW_OR_ABORT",
+    "COMPAT_CONSTEXPR_14",
+    "COMPAT_ABI_TAG",
+    "COMPAT_HAS_STD_EXPECTED",
+    "COMPAT_HAS_STD_PRINT",
+    "COMPAT_HAS_STD_FORMAT",
+    "COMPAT_HAS_STD_STRING_VIEW",
+    "COMPAT_HAS_STD_VARIANT",
+    "COMPAT_BAD_EXPECTED_ACCESS_DEFINED",
+]
+
+
 def convert_to_module(header_content: str, verbose: bool = False) -> str:
     """
     Transforms single-header content into a C++20 Module Interface Unit:
-    - Global Module Fragment (GMF) holds STL includes and macros
-    - export module compat;
-    - export namespace compat { ... }
+    - Global Module Fragment (GMF) holds STL includes and conditional standard headers:
+        module;
+        #include <...>
+        export module compat;
+    - All module sections (Config.hpp through Compat.hpp) live inside module purview.
+    - Transforms `namespace compat` blocks into:
+        export namespace compat { ... }
+    - Strips textual #include <...> from module purview to avoid C5244.
+    - Ensures internal preprocessor cleanup block at the end so no unwanted macros leak.
     """
     lines = header_content.splitlines()
 
-    gmf_lines: list[str] = []
-    purview_lines: list[str] = []
+    # Collect all external STL headers mentioned across the single-header
+    external_includes: set[str] = set()
+    for line in lines:
+        stripped = line.strip()
+        m_inc = RE_INCLUDE_EXTERNAL.match(stripped)
+        if m_inc:
+            external_includes.add(m_inc.group(1))
 
-    # State machine:
-    # Everything before the first namespace compat or class/struct/function definition
-    # that consists of includes and macros belongs in GMF.
-    in_gmf = True
+    # Core STL headers known to be needed across compat shim modules
+    core_stl_headers = {
+        "algorithm", "cstddef", "cstdint", "cstdlib", "cstring",
+        "exception", "functional", "iostream", "limits", "new",
+        "ostream", "sstream", "stdexcept", "string", "system_error",
+        "type_traits", "utility", "variant"
+    }
+    all_gmf_headers = sorted(list(external_includes.union(core_stl_headers)))
+
+    purview_lines: list[str] = []
+    in_header_preamble = True
 
     for line in lines:
         stripped = line.strip()
@@ -76,46 +114,50 @@ def convert_to_module(header_content: str, verbose: bool = False) -> str:
         if RE_PRAGMA_ONCE.match(stripped):
             continue
 
-        # Check if we encounter the first namespace definition or code
-        if in_gmf:
-            if stripped.startswith("namespace compat") or stripped.startswith("template") or stripped.startswith("class ") or stripped.startswith("struct "):
-                in_gmf = False
-
-        if in_gmf:
-            # We are in the Global Module Fragment
-            gmf_lines.append(line)
-        else:
-            # In C++20 module purview, textual #include of standard headers is prohibited
-            # All standard headers are included in the Global Module Fragment (GMF).
-            m_inc = RE_INCLUDE_EXTERNAL.match(stripped)
-            if m_inc:
-                # Omit textual inclusion in module purview to avoid C5244
+        # Skip the single-header distribution banner and top-level deduplicated STL includes
+        # until the first module section is encountered
+        if in_header_preamble:
+            if stripped.startswith("// Module Section:"):
+                in_header_preamble = False
+            else:
                 continue
 
-            # Transform "namespace compat" into "export namespace compat"
-            m_ns = RE_NAMESPACE_COMPAT.match(line)
-            m_ns_detail = RE_NAMESPACE_COMPAT_DETAIL.match(line)
-            if m_ns:
-                indent = m_ns.group("indent")
-                rest = m_ns.group("rest")
-                purview_lines.append(f"{indent}export namespace compat{rest}")
-            elif m_ns_detail:
-                indent = m_ns_detail.group("indent")
-                rest = m_ns_detail.group("rest")
-                purview_lines.append(f"{indent}export namespace compat::detail{rest}")
-            else:
-                purview_lines.append(line)
+        # In C++20 module purview, textual #include of standard headers is prohibited;
+        # they are already included in the Global Module Fragment (GMF).
+        if RE_INCLUDE_EXTERNAL.match(stripped):
+            continue
 
-    # Clean blank lines in GMF and purview
-    def strip_outer_blanks(lst: list[str]) -> list[str]:
-        while lst and lst[0].strip() == "":
-            lst.pop(0)
-        while lst and lst[-1].strip() == "":
-            lst.pop()
-        return lst
+        # Transform "namespace compat" into "export namespace compat"
+        m_ns = RE_NAMESPACE_COMPAT.match(line)
+        m_ns_detail = RE_NAMESPACE_COMPAT_DETAIL.match(line)
+        if m_ns:
+            indent = m_ns.group("indent")
+            rest = m_ns.group("rest")
+            purview_lines.append(f"{indent}export namespace compat{rest}")
+        elif m_ns_detail:
+            indent = m_ns_detail.group("indent")
+            rest = m_ns_detail.group("rest")
+            purview_lines.append(f"{indent}export namespace compat::detail{rest}")
+        else:
+            purview_lines.append(line)
 
-    gmf_lines = strip_outer_blanks(gmf_lines)
-    purview_lines = strip_outer_blanks(purview_lines)
+    # Clean outer blank lines in purview
+    while purview_lines and purview_lines[0].strip() == "":
+        purview_lines.pop(0)
+    while purview_lines and purview_lines[-1].strip() == "":
+        purview_lines.pop()
+
+    # Ensure preprocessor cleanup block is present at end of module purview
+    purview_text = "\n".join(purview_lines)
+    if "#undef COMPAT_CPLUSPLUS" not in purview_text:
+        purview_lines.append("")
+        purview_lines.append("// ============================================================================")
+        purview_lines.append("// Internal Preprocessor Cleanup")
+        purview_lines.append("// Undefine internal helper macros so no unwanted macros leak from module purview.")
+        purview_lines.append("// ============================================================================")
+        for macro in DEFAULT_CLEANUP_MACROS:
+            purview_lines.append(f"#undef {macro}")
+        purview_lines.append("")
 
     result_parts: list[str] = []
 
@@ -130,29 +172,32 @@ def convert_to_module(header_content: str, verbose: bool = False) -> str:
     result_parts.append("")
     result_parts.append("module;")
     result_parts.append("")
+    result_parts.append("// ----------------------------------------------------------------------------")
+    result_parts.append("// Global Module Fragment (GMF): Standard Library Headers")
+    result_parts.append("// ----------------------------------------------------------------------------")
+    for header in all_gmf_headers:
+        result_parts.append(f"#include <{header}>")
+    result_parts.append("")
 
-    if gmf_lines:
-        result_parts.append("// ----------------------------------------------------------------------------")
-        result_parts.append("// Global Module Fragment (GMF): Preprocessor Directives & Standard Headers")
-        result_parts.append("// ----------------------------------------------------------------------------")
-        result_parts.extend(gmf_lines)
-        result_parts.append("")
-        result_parts.append("// Conditional Standard Headers for C++20 / C++23 in GMF")
-        result_parts.append("#if defined(__has_include)")
-        result_parts.append("#  if __has_include(<string_view>)")
-        result_parts.append("#    include <string_view>")
-        result_parts.append("#  endif")
-        result_parts.append("#  if __has_include(<format>)")
-        result_parts.append("#    include <format>")
-        result_parts.append("#  endif")
-        result_parts.append("#  if __has_include(<expected>)")
-        result_parts.append("#    include <expected>")
-        result_parts.append("#  endif")
-        result_parts.append("#  if __has_include(<print>)")
-        result_parts.append("#    include <print>")
-        result_parts.append("#  endif")
-        result_parts.append("#endif")
-        result_parts.append("")
+    result_parts.append("// Conditional Standard Headers for C++20 / C++23 in GMF")
+    result_parts.append("#if defined(__has_include)")
+    result_parts.append("#  if __has_include(<version>)")
+    result_parts.append("#    include <version>")
+    result_parts.append("#  endif")
+    result_parts.append("#  if __has_include(<string_view>)")
+    result_parts.append("#    include <string_view>")
+    result_parts.append("#  endif")
+    result_parts.append("#  if __has_include(<format>)")
+    result_parts.append("#    include <format>")
+    result_parts.append("#  endif")
+    result_parts.append("#  if __has_include(<expected>)")
+    result_parts.append("#    include <expected>")
+    result_parts.append("#  endif")
+    result_parts.append("#  if __has_include(<print>)")
+    result_parts.append("#    include <print>")
+    result_parts.append("#  endif")
+    result_parts.append("#endif")
+    result_parts.append("")
 
     result_parts.append("// ============================================================================")
     result_parts.append("// Module Purview: compat")

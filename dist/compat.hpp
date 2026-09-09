@@ -12,9 +12,9 @@
 // Standard Library Headers (Deduplicated)
 // ----------------------------------------------------------------------------
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -23,6 +23,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <type_traits>
 
 // ============================================================================
@@ -30,6 +31,7 @@
 // ============================================================================
 
 // Feature detection and configuration header for compat library.
+
 
 #if defined(_MSVC_LANG)
 #  define COMPAT_CPLUSPLUS _MSVC_LANG
@@ -44,6 +46,40 @@
 #define COMPAT_CXX_20 202002L
 #define COMPAT_CXX_23 202302L
 
+// Backwards-compatible alias handling for forcing self/fallback implementation
+#if defined(COMPAT_FORCE_FALLBACK) && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#  define COMPAT_FORCE_SELF_IMPLEMENTATION 1
+#endif
+#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION) && !defined(COMPAT_FORCE_FALLBACK)
+#  define COMPAT_FORCE_FALLBACK 1
+#endif
+
+// Mutual exclusion check
+#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION) && defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#  error "Cannot force both self and std implementations simultaneously"
+#endif
+
+// Exception handling and throw-or-abort abstraction
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (defined(_MSC_VER) && defined(_CPPUNWIND))
+#  define COMPAT_HAS_EXCEPTIONS 1
+#  define COMPAT_THROW_OR_ABORT(ex) throw (ex)
+#else
+#  define COMPAT_HAS_EXCEPTIONS 0
+#  define COMPAT_THROW_OR_ABORT(ex) std::abort()
+#endif
+
+// Constexpr support for C++14+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#  define COMPAT_CONSTEXPR_14 constexpr
+#else
+#  define COMPAT_CONSTEXPR_14 inline
+#endif
+
+// ABI tagging and inline namespace support for fallback implementations
+#ifndef COMPAT_ABI_TAG
+#  define COMPAT_ABI_TAG abi_v1
+#endif
+
 // Probe standard library version header if available
 #if defined(__has_include)
 #  if __has_include(<version>)
@@ -51,9 +87,9 @@
 #  endif
 #endif
 
-#if defined(COMPAT_FORCE_FALLBACK)
+#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
 
-// Forced fallback mode: disable all native C++ standard features
+// Forced self-implementation mode: disable all native C++ standard features
 #  define COMPAT_HAS_STD_EXPECTED    0
 #  define COMPAT_HAS_STD_PRINT       0
 #  define COMPAT_HAS_STD_FORMAT      0
@@ -119,7 +155,14 @@
 #    define COMPAT_HAS_STD_PRINT 0
 #  endif
 
-#endif // !defined(COMPAT_FORCE_FALLBACK)
+#endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+
+// Check if forced std implementation is supported by standard library
+#if defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#  if !COMPAT_HAS_STD_STRING_VIEW
+#    error "Standard C++ library does not support requested modern features"
+#  endif
+#endif
 
 // Attribute support
 #if defined(__has_cpp_attribute)
@@ -144,10 +187,181 @@
 #include <utility>
 #include <type_traits>
 #include <stdexcept>
+#include <exception>
+#include <cstdint>
+
+#ifndef COMPAT_THROW_OR_ABORT
+#  if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#    define COMPAT_THROW_OR_ABORT(ex) throw (ex)
+#  else
+#    include <cstdlib>
+#    define COMPAT_THROW_OR_ABORT(ex) std::abort()
+#  endif
+#endif
 
 namespace compat {
 namespace detail {
+
+#ifndef COMPAT_BAD_EXPECTED_ACCESS_DEFINED
+#define COMPAT_BAD_EXPECTED_ACCESS_DEFINED
+
+/// <summary>
+/// Exception thrown when accessing an expected object's value or error illegally.
+/// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+template <typename E>
+class bad_expected_access : public std::exception {
+public:
+    /// <summary>
+    /// Default constructor for bad_expected_access without error payload.
+    /// </summary>
+    bad_expected_access() noexcept : m_has_error(false) {}
+
+    /// <summary>
+    /// Constructs bad_expected_access storing the error payload.
+    /// </summary>
+    /// <param name="err">The error value to store.</param>
+    explicit bad_expected_access(E err) : m_has_error(true) {
+        ::new (static_cast<void*>(&m_storage.m_val)) E(std::move(err));
+    }
+
+    /// <summary>
+    /// Copy constructor for bad_expected_access.
+    /// </summary>
+    /// <param name="other">Instance to copy.</param>
+    bad_expected_access(const bad_expected_access& other) : m_has_error(other.m_has_error) {
+        if (m_has_error) {
+            ::new (static_cast<void*>(&m_storage.m_val)) E(other.get_err());
+        }
+    }
+
+    /// <summary>
+    /// Move constructor for bad_expected_access.
+    /// </summary>
+    /// <param name="other">Instance to move.</param>
+    bad_expected_access(bad_expected_access&& other) noexcept : m_has_error(other.m_has_error) {
+        if (m_has_error) {
+            ::new (static_cast<void*>(&m_storage.m_val)) E(std::move(other.get_err()));
+        }
+    }
+
+    /// <summary>
+    /// Copy assignment operator.
+    /// </summary>
+    /// <param name="other">Instance to copy.</param>
+    /// <returns>Reference to this instance.</returns>
+    bad_expected_access& operator=(const bad_expected_access& other) {
+        if (this != &other) {
+            if (m_has_error) {
+                get_err().~E();
+                m_has_error = false;
+            }
+            if (other.m_has_error) {
+                ::new (static_cast<void*>(&m_storage.m_val)) E(other.get_err());
+                m_has_error = true;
+            }
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Move assignment operator.
+    /// </summary>
+    /// <param name="other">Instance to move.</param>
+    /// <returns>Reference to this instance.</returns>
+    bad_expected_access& operator=(bad_expected_access&& other) noexcept {
+        if (this != &other) {
+            if (m_has_error) {
+                get_err().~E();
+                m_has_error = false;
+            }
+            if (other.m_has_error) {
+                ::new (static_cast<void*>(&m_storage.m_val)) E(std::move(other.get_err()));
+                m_has_error = true;
+            }
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Destructor destroying error payload if present.
+    /// </summary>
+    ~bad_expected_access() noexcept override {
+        if (m_has_error) {
+            get_err().~E();
+        }
+    }
+
+    /// <summary>
+    /// Explanatory description of the exception.
+    /// </summary>
+    /// <returns>Null-terminated character sequence describing the error.</returns>
+    const char* what() const noexcept override {
+        return "bad expected access";
+    }
+
+    /// <summary>
+    /// Obtains mutable reference to the stored error.
+    /// </summary>
+    /// <returns>Reference to stored error.</returns>
+    E& error() & noexcept { return get_err(); }
+
+    /// <summary>
+    /// Obtains const reference to the stored error.
+    /// </summary>
+    /// <returns>Const reference to stored error.</returns>
+    const E& error() const & noexcept { return get_err(); }
+
+    /// <summary>
+    /// Obtains mutable rvalue reference to the stored error.
+    /// </summary>
+    /// <returns>Rvalue reference to stored error.</returns>
+    E&& error() && noexcept { return std::move(get_err()); }
+
+    /// <summary>
+    /// Obtains const rvalue reference to the stored error.
+    /// </summary>
+    /// <returns>Const rvalue reference to stored error.</returns>
+    const E&& error() const && noexcept { return std::move(get_err()); }
+
+private:
+    union Storage {
+        char m_dummy;
+        E m_val;
+        Storage() noexcept : m_dummy(0) {}
+        ~Storage() noexcept {}
+    } m_storage;
+    bool m_has_error;
+
+    E& get_err() noexcept { return m_storage.m_val; }
+    const E& get_err() const noexcept { return m_storage.m_val; }
+};
+
+/// <summary>
+/// Explicit specialization of bad_expected_access for void error type.
+/// </summary>
+template <>
+class bad_expected_access<void> : public std::exception {
+public:
+    /// <summary>
+    /// Default constructor.
+    /// </summary>
+    bad_expected_access() noexcept = default;
+
+    /// <summary>
+    /// Explanatory description of the exception.
+    /// </summary>
+    /// <returns>Null-terminated character sequence describing the error.</returns>
+    const char* what() const noexcept override {
+        return "bad expected access";
+    }
+};
+
+#endif // COMPAT_BAD_EXPECTED_ACCESS_DEFINED
+
 namespace variant_impl {
+
+using detail::bad_expected_access;
 
 /// <summary>
 /// Tag type indicating an unexpected error value construction.
@@ -172,6 +386,7 @@ public:
     constexpr unexpected(unexpected&&) = default;
     unexpected& operator=(const unexpected&) = default;
     unexpected& operator=(unexpected&&) = default;
+    ~unexpected() = default;
 
     /// <summary>
     /// Constructs unexpected from a const lvalue reference error.
@@ -245,6 +460,10 @@ private:
 /// <summary>
 /// Equality comparison for unexpected.
 /// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+/// <param name="lhs">Left hand unexpected.</param>
+/// <param name="rhs">Right hand unexpected.</param>
+/// <returns>True if both hold equal errors.</returns>
 template <typename E>
 inline constexpr bool operator==(const unexpected<E>& lhs, const unexpected<E>& rhs) noexcept {
     return lhs.error() == rhs.error();
@@ -253,6 +472,10 @@ inline constexpr bool operator==(const unexpected<E>& lhs, const unexpected<E>& 
 /// <summary>
 /// Inequality comparison for unexpected.
 /// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+/// <param name="lhs">Left hand unexpected.</param>
+/// <param name="rhs">Right hand unexpected.</param>
+/// <returns>True if errors are not equal.</returns>
 template <typename E>
 inline constexpr bool operator!=(const unexpected<E>& lhs, const unexpected<E>& rhs) noexcept {
     return !(lhs == rhs);
@@ -311,6 +534,7 @@ public:
 
     expected(const expected&) = default;
     expected(expected&&) = default;
+    ~expected() = default;
     expected& operator=(const expected&) = default;
     expected& operator=(expected&&) = default;
 
@@ -351,97 +575,97 @@ public:
     }
 
     /// <summary>
-    /// Returns mutable reference to value or throws std::logic_error.
+    /// Returns mutable reference to value or throws bad_expected_access.
     /// </summary>
     /// <returns>Reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T& value() & {
         if (!has_value()) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return std::get<T>(m_var);
     }
 
     /// <summary>
-    /// Returns const reference to value or throws std::logic_error.
+    /// Returns const reference to value or throws bad_expected_access.
     /// </summary>
     /// <returns>Const reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T& value() const & {
         if (!has_value()) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return std::get<T>(m_var);
     }
 
     /// <summary>
-    /// Returns rvalue reference to value or throws std::logic_error.
+    /// Returns rvalue reference to value or throws bad_expected_access.
     /// </summary>
     /// <returns>Rvalue reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T&& value() && {
         if (!has_value()) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::get<T>(std::move(m_var));
     }
 
     /// <summary>
-    /// Returns const rvalue reference to value or throws std::logic_error.
+    /// Returns const rvalue reference to value or throws bad_expected_access.
     /// </summary>
     /// <returns>Const rvalue reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T&& value() const && {
         if (!has_value()) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::get<T>(std::move(m_var));
     }
 
     /// <summary>
-    /// Returns mutable reference to error or throws std::logic_error.
+    /// Returns mutable reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E& error() & {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(m_var).error();
     }
 
     /// <summary>
-    /// Returns const reference to error or throws std::logic_error.
+    /// Returns const reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E& error() const & {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(m_var).error();
     }
 
     /// <summary>
-    /// Returns rvalue reference to error or throws std::logic_error.
+    /// Returns rvalue reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E&& error() && {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(std::move(m_var)).error();
     }
 
     /// <summary>
-    /// Returns const rvalue reference to error or throws std::logic_error.
+    /// Returns const rvalue reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E&& error() const && {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(std::move(m_var)).error();
     }
@@ -516,6 +740,330 @@ public:
         return has_value() ? std::get<T>(std::move(m_var)) : static_cast<T>(std::forward<U>(default_val));
     }
 
+    /// <summary>
+    /// Invokes f on value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) & -> decltype(std::forward<F>(f)(value())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(value()))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(value());
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on const value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const & -> decltype(std::forward<F>(f)(value())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(value()))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(value());
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on moved value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with moved value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) && -> decltype(std::forward<F>(f)(std::move(value()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(value())))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(std::move(value()));
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on const moved value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const moved value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const && -> decltype(std::forward<F>(f)(std::move(value()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(value())))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(std::move(value()));
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret(value());
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f on const error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) const & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret(value());
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f on moved error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with moved error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret(std::move(value()));
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on const moved error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const moved error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) const && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret(std::move(value()));
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(value()));
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) & {
+        if (has_value()) {
+            std::forward<F>(f)(value());
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the const stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(value()));
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the const stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const & {
+        if (has_value()) {
+            std::forward<F>(f)(value());
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the moved stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(std::move(value())));
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the moved stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) && {
+        if (has_value()) {
+            std::forward<F>(f)(std::move(value()));
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the const moved stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(std::move(value())));
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the const moved stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const && {
+        if (has_value()) {
+            std::forward<F>(f)(std::move(value()));
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) & -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(value());
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms the const stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const & -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(value());
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms the moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) && -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(std::move(value()));
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
+    }
+
+    /// <summary>
+    /// Transforms the const moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const && -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(std::move(value()));
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
+    }
+
 private:
     std::variant<T, unexpected<E>> m_var;
 };
@@ -559,6 +1107,7 @@ public:
 
     expected(const expected&) = default;
     expected(expected&&) = default;
+    ~expected() = default;
     expected& operator=(const expected&) = default;
     expected& operator=(expected&&) = default;
 
@@ -589,61 +1138,400 @@ public:
     }
 
     /// <summary>
-    /// Verifies success state or throws std::logic_error.
+    /// Dereference operator for expected of void.
     /// </summary>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
-    void value() const {
+    constexpr void operator*() const noexcept {}
+
+    /// <summary>
+    /// Verifies success state or throws bad_expected_access.
+    /// </summary>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
+    void value() const & {
         if (!has_value()) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
     }
 
     /// <summary>
-    /// Obtains mutable reference to error or throws std::logic_error.
+    /// Verifies success state on rvalue or throws bad_expected_access.
+    /// </summary>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
+    void value() && {
+        if (!has_value()) {
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
+        }
+    }
+
+    /// <summary>
+    /// Obtains mutable reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E& error() & {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(m_var).error();
     }
 
     /// <summary>
-    /// Obtains const reference to error or throws std::logic_error.
+    /// Obtains const reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E& error() const & {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(m_var).error();
     }
 
     /// <summary>
-    /// Obtains rvalue reference to error or throws std::logic_error.
+    /// Obtains rvalue reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E&& error() && {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(std::move(m_var)).error();
     }
 
     /// <summary>
-    /// Obtains const rvalue reference to error or throws std::logic_error.
+    /// Obtains const rvalue reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E&& error() const && {
         if (has_value()) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::get<unexpected<E>>(std::move(m_var)).error();
+    }
+
+    /// <summary>
+    /// Invokes f when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) & -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on const instance when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const & -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on rvalue when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding moved error.</returns>
+    template <typename F>
+    auto and_then(F&& f) && -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on const rvalue when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding moved error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const && -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f with error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f with const error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking const error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) const & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f with moved error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking moved error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f with const moved error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking const moved error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) const && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) & {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms const success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms const success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const & {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms moved success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms moved success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) && {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms const moved success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms const moved success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const && {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) & -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms const stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const & -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) && -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
+    }
+
+    /// <summary>
+    /// Transforms const moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const && -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
     }
 
 private:
@@ -657,9 +1545,13 @@ using variant_impl::unexpect_t;
 using variant_impl::unexpect;
 using variant_impl::unexpected;
 using variant_impl::expected;
+using variant_impl::bad_expected_access;
 #endif
 
 } // namespace detail
+
+using detail::bad_expected_access;
+
 } // namespace compat
 
 #endif // (!COMPAT_HAS_STD_EXPECTED && COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_VARIANT_EXPECTED)
@@ -670,6 +1562,7 @@ using variant_impl::expected;
 
 namespace compat {
 namespace detail {
+inline namespace COMPAT_ABI_TAG {
 
 namespace string_view_helper {
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
@@ -684,6 +1577,41 @@ namespace string_view_helper {
         return (!s || *s == '\0') ? 0 : (1 + ConstexprStrlen(s + 1));
     }
 #endif
+
+    /// <summary>
+    /// Constexpr-compatible lexicographical byte comparison helper for C++14 and later.
+    /// Uses std::memcmp at runtime for maximum SIMD throughput and constexpr loop at compile time.
+    /// </summary>
+    /// <param name="s1">First memory buffer.</param>
+    /// <param name="s2">Second memory buffer.</param>
+    /// <param name="n">Number of bytes to compare.</param>
+    /// <returns>Negative if s1 &lt; s2, 0 if equal, positive if s1 &gt; s2.</returns>
+    inline COMPAT_CONSTEXPR_14 int32_t ConstexprMemcmp(const char* s1, const char* s2, std::size_t n) noexcept {
+#if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
+        if (std::is_constant_evaluated()) {
+            for (std::size_t i = 0; i < n; ++i) {
+                unsigned char c1 = static_cast<unsigned char>(s1[i]);
+                unsigned char c2 = static_cast<unsigned char>(s2[i]);
+                if (c1 < c2) return -1;
+                if (c1 > c2) return 1;
+            }
+            return 0;
+        }
+#elif defined(__has_builtin)
+#  if __has_builtin(__builtin_is_constant_evaluated)
+        if (__builtin_is_constant_evaluated()) {
+            for (std::size_t i = 0; i < n; ++i) {
+                unsigned char c1 = static_cast<unsigned char>(s1[i]);
+                unsigned char c2 = static_cast<unsigned char>(s2[i]);
+                if (c1 < c2) return -1;
+                if (c1 > c2) return 1;
+            }
+            return 0;
+        }
+#  endif
+#endif
+        return (n > 0) ? std::memcmp(s1, s2, n) : 0;
+    }
 } // namespace string_view_helper
 
 /// <summary>
@@ -778,9 +1706,9 @@ public:
     /// <param name="pos">Zero-based character index.</param>
     /// <returns>Const reference to character.</returns>
     /// <exception cref="std::out_of_range">Thrown if pos is greater than or equal to size().</exception>
-    const_reference at(size_type pos) const {
+    COMPAT_CONSTEXPR_14 const_reference at(size_type pos) const {
         if (pos >= m_size) {
-            throw std::out_of_range("compat::string_view::at out of range");
+            COMPAT_THROW_OR_ABORT(std::out_of_range("compat::string_view::at out of range"));
         }
         return m_data[pos];
     }
@@ -837,7 +1765,7 @@ public:
     /// Shrinks the view from the front by n characters.
     /// </summary>
     /// <param name="n">Number of characters to remove.</param>
-    void remove_prefix(size_type n) noexcept {
+    COMPAT_CONSTEXPR_14 void remove_prefix(size_type n) noexcept {
         m_data += n;
         m_size -= n;
     }
@@ -846,8 +1774,21 @@ public:
     /// Shrinks the view from the back by n characters.
     /// </summary>
     /// <param name="n">Number of characters to remove.</param>
-    void remove_suffix(size_type n) noexcept {
+    COMPAT_CONSTEXPR_14 void remove_suffix(size_type n) noexcept {
         m_size -= n;
+    }
+
+    /// <summary>
+    /// Swaps this string_view with another.
+    /// </summary>
+    /// <param name="s">Another string_view.</param>
+    COMPAT_CONSTEXPR_14 void swap(string_view& s) noexcept {
+        const char* d = m_data;
+        m_data = s.m_data;
+        s.m_data = d;
+        size_type sz = m_size;
+        m_size = s.m_size;
+        s.m_size = sz;
     }
 
     /// <summary>
@@ -857,9 +1798,9 @@ public:
     /// <param name="count">Requested length or npos for entire remainder.</param>
     /// <returns>A new string_view covering the requested substring.</returns>
     /// <exception cref="std::out_of_range">Thrown if pos is greater than size().</exception>
-    string_view substr(size_type pos = 0, size_type count = npos) const {
+    COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
         if (pos > m_size) {
-            throw std::out_of_range("compat::string_view::substr out of range");
+            COMPAT_THROW_OR_ABORT(std::out_of_range("compat::string_view::substr out of range"));
         }
         size_type rcount = (count > m_size - pos) ? (m_size - pos) : count;
         return string_view(m_data + pos, rcount);
@@ -871,7 +1812,7 @@ public:
     /// <param name="v">Substring to find.</param>
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
-    size_type find(string_view v, size_type pos = 0) const noexcept {
+    COMPAT_CONSTEXPR_14 size_type find(string_view v, size_type pos = 0) const noexcept {
         if (v.m_size == 0) {
             return pos <= m_size ? pos : npos;
         }
@@ -879,7 +1820,7 @@ public:
             return npos;
         }
         for (size_type i = pos; i <= m_size - v.m_size; ++i) {
-            if (std::memcmp(m_data + i, v.m_data, v.m_size) == 0) {
+            if (string_view_helper::ConstexprMemcmp(m_data + i, v.m_data, v.m_size) == 0) {
                 return i;
             }
         }
@@ -892,7 +1833,7 @@ public:
     /// <param name="c">Character to find.</param>
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
-    size_type find(char c, size_type pos = 0) const noexcept {
+    COMPAT_CONSTEXPR_14 size_type find(char c, size_type pos = 0) const noexcept {
         for (size_type i = pos; i < m_size; ++i) {
             if (m_data[i] == c) {
                 return i;
@@ -908,7 +1849,7 @@ public:
     /// <param name="pos">Offset to begin search.</param>
     /// <param name="count">Length of buffer.</param>
     /// <returns>Position of match, or npos if not found.</returns>
-    size_type find(const char* s, size_type pos, size_type count) const noexcept {
+    COMPAT_CONSTEXPR_14 size_type find(const char* s, size_type pos, size_type count) const noexcept {
         return find(string_view(s, count), pos);
     }
 
@@ -918,8 +1859,78 @@ public:
     /// <param name="s">Null-terminated string.</param>
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
-    size_type find(const char* s, size_type pos = 0) const noexcept {
+    COMPAT_CONSTEXPR_14 size_type find(const char* s, size_type pos = 0) const noexcept {
         return s ? find(string_view(s), pos) : npos;
+    }
+
+    /// <summary>
+    /// Finds the last occurrence of another string_view.
+    /// </summary>
+    /// <param name="v">Substring to find.</param>
+    /// <param name="pos">Offset at which to begin searching backwards.</param>
+    /// <returns>Position of match, or npos if not found.</returns>
+    COMPAT_CONSTEXPR_14 size_type rfind(string_view v, size_type pos = npos) const noexcept {
+        if (v.m_size == 0) {
+            return pos < m_size ? pos : m_size;
+        }
+        if (m_size < v.m_size) {
+            return npos;
+        }
+        size_type cur = (pos < m_size - v.m_size) ? pos : (m_size - v.m_size);
+        while (true) {
+            if (string_view_helper::ConstexprMemcmp(m_data + cur, v.m_data, v.m_size) == 0) {
+                return cur;
+            }
+            if (cur == 0) {
+                break;
+            }
+            --cur;
+        }
+        return npos;
+    }
+
+    /// <summary>
+    /// Finds the last occurrence of a character.
+    /// </summary>
+    /// <param name="c">Character to find.</param>
+    /// <param name="pos">Offset at which to begin searching backwards.</param>
+    /// <returns>Position of match, or npos if not found.</returns>
+    COMPAT_CONSTEXPR_14 size_type rfind(char c, size_type pos = npos) const noexcept {
+        if (m_size == 0) {
+            return npos;
+        }
+        size_type cur = (pos < m_size) ? pos : (m_size - 1);
+        while (true) {
+            if (m_data[cur] == c) {
+                return cur;
+            }
+            if (cur == 0) {
+                break;
+            }
+            --cur;
+        }
+        return npos;
+    }
+
+    /// <summary>
+    /// Finds the last occurrence of a character buffer.
+    /// </summary>
+    /// <param name="s">Pointer to character buffer.</param>
+    /// <param name="pos">Offset at which to begin searching backwards.</param>
+    /// <param name="count">Length of buffer.</param>
+    /// <returns>Position of match, or npos if not found.</returns>
+    COMPAT_CONSTEXPR_14 size_type rfind(const char* s, size_type pos, size_type count) const noexcept {
+        return rfind(string_view(s, count), pos);
+    }
+
+    /// <summary>
+    /// Finds the last occurrence of a null-terminated string.
+    /// </summary>
+    /// <param name="s">Null-terminated string.</param>
+    /// <param name="pos">Offset at which to begin searching backwards.</param>
+    /// <returns>Position of match, or npos if not found.</returns>
+    COMPAT_CONSTEXPR_14 size_type rfind(const char* s, size_type pos = npos) const noexcept {
+        return s ? rfind(string_view(s), pos) : npos;
     }
 
     /// <summary>
@@ -927,9 +1938,9 @@ public:
     /// </summary>
     /// <param name="other">The other string_view to compare.</param>
     /// <returns>Negative if *this &lt; other, 0 if equal, positive if *this &gt; other.</returns>
-    int32_t compare(string_view other) const noexcept {
+    COMPAT_CONSTEXPR_14 int32_t compare(string_view other) const noexcept {
         size_type rlen = (m_size < other.m_size) ? m_size : other.m_size;
-        int res = (rlen > 0) ? std::memcmp(m_data, other.m_data, rlen) : 0;
+        int32_t res = (rlen > 0) ? string_view_helper::ConstexprMemcmp(m_data, other.m_data, rlen) : 0;
         if (res != 0) {
             return res < 0 ? -1 : 1;
         }
@@ -943,8 +1954,17 @@ public:
     /// </summary>
     /// <param name="sv">Prefix to check.</param>
     /// <returns>True if view starts with prefix, false otherwise.</returns>
-    bool starts_with(string_view sv) const noexcept {
-        return m_size >= sv.m_size && std::memcmp(m_data, sv.m_data, sv.m_size) == 0;
+    COMPAT_CONSTEXPR_14 bool starts_with(string_view sv) const noexcept {
+        return m_size >= sv.m_size && string_view_helper::ConstexprMemcmp(m_data, sv.m_data, sv.m_size) == 0;
+    }
+
+    /// <summary>
+    /// Checks if the view starts with the given character.
+    /// </summary>
+    /// <param name="c">Prefix character to check.</param>
+    /// <returns>True if view starts with prefix character, false otherwise.</returns>
+    COMPAT_CONSTEXPR_14 bool starts_with(char c) const noexcept {
+        return !empty() && front() == c;
     }
 
     /// <summary>
@@ -952,8 +1972,17 @@ public:
     /// </summary>
     /// <param name="sv">Suffix to check.</param>
     /// <returns>True if view ends with suffix, false otherwise.</returns>
-    bool ends_with(string_view sv) const noexcept {
-        return m_size >= sv.m_size && std::memcmp(m_data + (m_size - sv.m_size), sv.m_data, sv.m_size) == 0;
+    COMPAT_CONSTEXPR_14 bool ends_with(string_view sv) const noexcept {
+        return m_size >= sv.m_size && string_view_helper::ConstexprMemcmp(m_data + (m_size - sv.m_size), sv.m_data, sv.m_size) == 0;
+    }
+
+    /// <summary>
+    /// Checks if the view ends with the given character.
+    /// </summary>
+    /// <param name="c">Suffix character to check.</param>
+    /// <returns>True if view ends with suffix character, false otherwise.</returns>
+    COMPAT_CONSTEXPR_14 bool ends_with(char c) const noexcept {
+        return !empty() && back() == c;
     }
 
     /// <summary>
@@ -980,71 +2009,71 @@ private:
 /// <summary>
 /// Equality comparison between two string_views.
 /// </summary>
-inline bool operator==(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
-           (lhs.size() == 0 || std::memcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
+           (lhs.size() == 0 || string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
 }
 
 /// <summary>
 /// Inequality comparison between two string_views.
 /// </summary>
-inline bool operator!=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator!=(string_view lhs, string_view rhs) noexcept {
     return !(lhs == rhs);
 }
 
 /// <summary>
 /// Less-than comparison between two string_views.
 /// </summary>
-inline bool operator<(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator<(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) < 0;
 }
 
 /// <summary>
 /// Less-than-or-equal comparison between two string_views.
 /// </summary>
-inline bool operator<=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator<=(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) <= 0;
 }
 
 /// <summary>
 /// Greater-than comparison between two string_views.
 /// </summary>
-inline bool operator>(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator>(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) > 0;
 }
 
 /// <summary>
 /// Greater-than-or-equal comparison between two string_views.
 /// </summary>
-inline bool operator>=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator>=(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) >= 0;
 }
 
 /// <summary>
 /// Equality comparison between string_view and C-style string.
 /// </summary>
-inline bool operator==(string_view lhs, const char* rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, const char* rhs) noexcept {
     return lhs == string_view(rhs);
 }
 
 /// <summary>
 /// Equality comparison between C-style string and string_view.
 /// </summary>
-inline bool operator==(const char* lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator==(const char* lhs, string_view rhs) noexcept {
     return string_view(lhs) == rhs;
 }
 
 /// <summary>
 /// Inequality comparison between string_view and C-style string.
 /// </summary>
-inline bool operator!=(string_view lhs, const char* rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator!=(string_view lhs, const char* rhs) noexcept {
     return !(lhs == rhs);
 }
 
 /// <summary>
 /// Inequality comparison between C-style string and string_view.
 /// </summary>
-inline bool operator!=(const char* lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 inline bool operator!=(const char* lhs, string_view rhs) noexcept {
     return !(lhs == rhs);
 }
 
@@ -1089,6 +2118,7 @@ inline std::ostream& operator<<(std::ostream& os, string_view sv) {
     return os;
 }
 
+} // namespace COMPAT_ABI_TAG
 } // namespace detail
 } // namespace compat
 
@@ -1121,10 +2151,180 @@ namespace std {
 #include <type_traits>
 #include <new>
 #include <stdexcept>
+#include <exception>
+
+#ifndef COMPAT_THROW_OR_ABORT
+#  if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#    define COMPAT_THROW_OR_ABORT(ex) throw (ex)
+#  else
+#    include <cstdlib>
+#    define COMPAT_THROW_OR_ABORT(ex) std::abort()
+#  endif
+#endif
 
 namespace compat {
 namespace detail {
+
+#ifndef COMPAT_BAD_EXPECTED_ACCESS_DEFINED
+#define COMPAT_BAD_EXPECTED_ACCESS_DEFINED
+
+/// <summary>
+/// Exception thrown when accessing an expected object's value or error illegally.
+/// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+template <typename E>
+class bad_expected_access : public std::exception {
+public:
+    /// <summary>
+    /// Default constructor for bad_expected_access without error payload.
+    /// </summary>
+    bad_expected_access() noexcept : m_has_error(false) {}
+
+    /// <summary>
+    /// Constructs bad_expected_access storing the error payload.
+    /// </summary>
+    /// <param name="err">The error value to store.</param>
+    explicit bad_expected_access(E err) : m_has_error(true) {
+        ::new (static_cast<void*>(&m_storage.m_val)) E(std::move(err));
+    }
+
+    /// <summary>
+    /// Copy constructor for bad_expected_access.
+    /// </summary>
+    /// <param name="other">Instance to copy.</param>
+    bad_expected_access(const bad_expected_access& other) : m_has_error(other.m_has_error) {
+        if (m_has_error) {
+            ::new (static_cast<void*>(&m_storage.m_val)) E(other.get_err());
+        }
+    }
+
+    /// <summary>
+    /// Move constructor for bad_expected_access.
+    /// </summary>
+    /// <param name="other">Instance to move.</param>
+    bad_expected_access(bad_expected_access&& other) noexcept : m_has_error(other.m_has_error) {
+        if (m_has_error) {
+            ::new (static_cast<void*>(&m_storage.m_val)) E(std::move(other.get_err()));
+        }
+    }
+
+    /// <summary>
+    /// Copy assignment operator.
+    /// </summary>
+    /// <param name="other">Instance to copy.</param>
+    /// <returns>Reference to this instance.</returns>
+    bad_expected_access& operator=(const bad_expected_access& other) {
+        if (this != &other) {
+            if (m_has_error) {
+                get_err().~E();
+                m_has_error = false;
+            }
+            if (other.m_has_error) {
+                ::new (static_cast<void*>(&m_storage.m_val)) E(other.get_err());
+                m_has_error = true;
+            }
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Move assignment operator.
+    /// </summary>
+    /// <param name="other">Instance to move.</param>
+    /// <returns>Reference to this instance.</returns>
+    bad_expected_access& operator=(bad_expected_access&& other) noexcept {
+        if (this != &other) {
+            if (m_has_error) {
+                get_err().~E();
+                m_has_error = false;
+            }
+            if (other.m_has_error) {
+                ::new (static_cast<void*>(&m_storage.m_val)) E(std::move(other.get_err()));
+                m_has_error = true;
+            }
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Destructor destroying error payload if present.
+    /// </summary>
+    ~bad_expected_access() noexcept override {
+        if (m_has_error) {
+            get_err().~E();
+        }
+    }
+
+    /// <summary>
+    /// Explanatory description of the exception.
+    /// </summary>
+    /// <returns>Null-terminated character sequence describing the error.</returns>
+    const char* what() const noexcept override {
+        return "bad expected access";
+    }
+
+    /// <summary>
+    /// Obtains mutable reference to the stored error.
+    /// </summary>
+    /// <returns>Reference to stored error.</returns>
+    E& error() & noexcept { return get_err(); }
+
+    /// <summary>
+    /// Obtains const reference to the stored error.
+    /// </summary>
+    /// <returns>Const reference to stored error.</returns>
+    const E& error() const & noexcept { return get_err(); }
+
+    /// <summary>
+    /// Obtains mutable rvalue reference to the stored error.
+    /// </summary>
+    /// <returns>Rvalue reference to stored error.</returns>
+    E&& error() && noexcept { return std::move(get_err()); }
+
+    /// <summary>
+    /// Obtains const rvalue reference to the stored error.
+    /// </summary>
+    /// <returns>Const rvalue reference to stored error.</returns>
+    const E&& error() const && noexcept { return std::move(get_err()); }
+
+private:
+    union Storage {
+        char m_dummy;
+        E m_val;
+        Storage() noexcept : m_dummy(0) {}
+        ~Storage() noexcept {}
+    } m_storage;
+    bool m_has_error;
+
+    E& get_err() noexcept { return m_storage.m_val; }
+    const E& get_err() const noexcept { return m_storage.m_val; }
+};
+
+/// <summary>
+/// Explicit specialization of bad_expected_access for void error type.
+/// </summary>
+template <>
+class bad_expected_access<void> : public std::exception {
+public:
+    /// <summary>
+    /// Default constructor.
+    /// </summary>
+    bad_expected_access() noexcept = default;
+
+    /// <summary>
+    /// Explanatory description of the exception.
+    /// </summary>
+    /// <returns>Null-terminated character sequence describing the error.</returns>
+    const char* what() const noexcept override {
+        return "bad expected access";
+    }
+};
+
+#endif // COMPAT_BAD_EXPECTED_ACCESS_DEFINED
+
 namespace union_impl {
+
+using detail::bad_expected_access;
 
 /// <summary>
 /// Tag type indicating an unexpected error value construction.
@@ -1149,6 +2349,7 @@ public:
     constexpr unexpected(unexpected&&) = default;
     unexpected& operator=(const unexpected&) = default;
     unexpected& operator=(unexpected&&) = default;
+    ~unexpected() = default;
 
     /// <summary>
     /// Constructs unexpected from a const lvalue reference error.
@@ -1222,6 +2423,10 @@ private:
 /// <summary>
 /// Equality comparison for unexpected.
 /// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+/// <param name="lhs">Left hand unexpected.</param>
+/// <param name="rhs">Right hand unexpected.</param>
+/// <returns>True if both hold equal errors.</returns>
 template <typename E>
 inline constexpr bool operator==(const unexpected<E>& lhs, const unexpected<E>& rhs) noexcept {
     return lhs.error() == rhs.error();
@@ -1230,10 +2435,92 @@ inline constexpr bool operator==(const unexpected<E>& lhs, const unexpected<E>& 
 /// <summary>
 /// Inequality comparison for unexpected.
 /// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+/// <param name="lhs">Left hand unexpected.</param>
+/// <param name="rhs">Right hand unexpected.</param>
+/// <returns>True if errors are not equal.</returns>
 template <typename E>
 inline constexpr bool operator!=(const unexpected<E>& lhs, const unexpected<E>& rhs) noexcept {
     return !(lhs == rhs);
 }
+
+/// <summary>
+/// Conditional storage base class enabling trivial destructibility propagation for expected.
+/// </summary>
+/// <typeparam name="T">Expected value type.</typeparam>
+/// <typeparam name="E">Error value type.</typeparam>
+/// <typeparam name="IsTrivial">Whether both T and E are trivially destructible.</typeparam>
+template <typename T, typename E, bool IsTrivial = (std::is_trivially_destructible<T>::value && std::is_trivially_destructible<E>::value)>
+struct ExpectedStorageBase;
+
+/// <summary>
+/// Specialization of ExpectedStorageBase for types requiring non-trivial destruction.
+/// </summary>
+/// <typeparam name="T">Expected value type.</typeparam>
+/// <typeparam name="E">Error value type.</typeparam>
+template <typename T, typename E>
+struct ExpectedStorageBase<T, E, false> {
+    union Storage {
+        T m_val;
+        E m_err;
+        Storage() noexcept {}
+        ~Storage() noexcept {}
+    } m_storage;
+    bool m_has_value;
+
+    ExpectedStorageBase() noexcept : m_has_value(false) {}
+    explicit ExpectedStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
+
+    ExpectedStorageBase(const ExpectedStorageBase&) noexcept : m_has_value(false) {}
+    ExpectedStorageBase(ExpectedStorageBase&&) noexcept : m_has_value(false) {}
+    ExpectedStorageBase& operator=(const ExpectedStorageBase&) noexcept { return *this; }
+    ExpectedStorageBase& operator=(ExpectedStorageBase&&) noexcept { return *this; }
+
+    ~ExpectedStorageBase() {
+        destroy();
+    }
+
+    void destroy() noexcept {
+        if (m_has_value) {
+            m_storage.m_val.~T();
+        } else {
+            m_storage.m_err.~E();
+        }
+    }
+};
+
+/// <summary>
+/// Specialization of ExpectedStorageBase for trivially destructible types.
+/// </summary>
+/// <typeparam name="T">Expected value type.</typeparam>
+/// <typeparam name="E">Error value type.</typeparam>
+template <typename T, typename E>
+struct ExpectedStorageBase<T, E, true> {
+    union Storage {
+        T m_val;
+        E m_err;
+        Storage() noexcept {}
+        ~Storage() = default;
+    } m_storage;
+    bool m_has_value;
+
+    ExpectedStorageBase() noexcept : m_has_value(false) {}
+    explicit ExpectedStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
+
+    ExpectedStorageBase(const ExpectedStorageBase&) = default;
+    ExpectedStorageBase(ExpectedStorageBase&&) = default;
+    ExpectedStorageBase& operator=(const ExpectedStorageBase&) = default;
+    ExpectedStorageBase& operator=(ExpectedStorageBase&&) = default;
+    ~ExpectedStorageBase() = default;
+
+    void destroy() noexcept {}
+};
+
+/// <summary>
+/// Forward declaration of expected template.
+/// </summary>
+template <typename T, typename E>
+class expected;
 
 /// <summary>
 /// Discriminated union result type representing either an expected value T or an unexpected error E.
@@ -1242,7 +2529,12 @@ inline constexpr bool operator!=(const unexpected<E>& lhs, const unexpected<E>& 
 /// <typeparam name="T">Expected value type.</typeparam>
 /// <typeparam name="E">Error value type.</typeparam>
 template <typename T, typename E>
-class expected {
+class expected : private ExpectedStorageBase<T, E> {
+    using Base = ExpectedStorageBase<T, E>;
+    using Base::m_storage;
+    using Base::m_has_value;
+    using Base::destroy;
+
 public:
     using value_type = T;
     using error_type = E;
@@ -1252,7 +2544,7 @@ public:
     /// Default constructor initializing value when T is default-constructible.
     /// </summary>
     template <typename U = T, typename = typename std::enable_if<std::is_default_constructible<U>::value>::type>
-    expected() : m_has_value(true) {
+    expected() : Base(true) {
         ::new (static_cast<void*>(&m_storage.m_val)) T();
     }
 
@@ -1260,7 +2552,7 @@ public:
     /// Constructs expected holding a copy of val.
     /// </summary>
     /// <param name="val">Value to copy.</param>
-    expected(const T& val) : m_has_value(true) {
+    expected(const T& val) : Base(true) {
         ::new (static_cast<void*>(&m_storage.m_val)) T(val);
     }
 
@@ -1268,7 +2560,7 @@ public:
     /// Constructs expected holding a moved val.
     /// </summary>
     /// <param name="val">Value to move.</param>
-    expected(T&& val) : m_has_value(true) {
+    expected(T&& val) : Base(true) {
         ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(val));
     }
 
@@ -1276,7 +2568,7 @@ public:
     /// Constructs expected holding a copy of an error.
     /// </summary>
     /// <param name="unexp">The unexpected error wrapper.</param>
-    expected(const unexpected<E>& unexp) : m_has_value(false) {
+    expected(const unexpected<E>& unexp) : Base(false) {
         ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
     }
 
@@ -1284,7 +2576,7 @@ public:
     /// Constructs expected holding a moved error.
     /// </summary>
     /// <param name="unexp">The unexpected error wrapper.</param>
-    expected(unexpected<E>&& unexp) : m_has_value(false) {
+    expected(unexpected<E>&& unexp) : Base(false) {
         ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
     }
 
@@ -1294,7 +2586,7 @@ public:
     /// <typeparam name="Args">Constructor argument types for error.</typeparam>
     /// <param name="args">Forwarded arguments.</param>
     template <typename... Args>
-    explicit expected(unexpect_t, Args&&... args) : m_has_value(false) {
+    explicit expected(unexpect_t, Args&&... args) : Base(false) {
         ::new (static_cast<void*>(&m_storage.m_err)) E(std::forward<Args>(args)...);
     }
 
@@ -1302,7 +2594,7 @@ public:
     /// Copy constructor.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
-    expected(const expected& other) : m_has_value(other.m_has_value) {
+    expected(const expected& other) : Base(other.m_has_value) {
         if (m_has_value) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
         } else {
@@ -1314,7 +2606,7 @@ public:
     /// Move constructor.
     /// </summary>
     /// <param name="other">Instance to move.</param>
-    expected(expected&& other) noexcept : m_has_value(other.m_has_value) {
+    expected(expected&& other) noexcept : Base(other.m_has_value) {
         if (m_has_value) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
         } else {
@@ -1323,11 +2615,9 @@ public:
     }
 
     /// <summary>
-    /// Destructor properly invoking active union member's destructor.
+    /// Defaulted destructor invoking ExpectedStorageBase conditionally.
     /// </summary>
-    ~expected() {
-        destroy();
-    }
+    ~expected() = default;
 
     /// <summary>
     /// Copy assignment operator.
@@ -1368,6 +2658,8 @@ public:
     /// <summary>
     /// Value assignment operator.
     /// </summary>
+    /// <param name="val">Value to copy-assign.</param>
+    /// <returns>Reference to self.</returns>
     expected& operator=(const T& val) {
         destroy();
         m_has_value = true;
@@ -1378,6 +2670,8 @@ public:
     /// <summary>
     /// Value move assignment operator.
     /// </summary>
+    /// <param name="val">Value to move-assign.</param>
+    /// <returns>Reference to self.</returns>
     expected& operator=(T&& val) {
         destroy();
         m_has_value = true;
@@ -1388,6 +2682,8 @@ public:
     /// <summary>
     /// Unexpected assignment operator.
     /// </summary>
+    /// <param name="unexp">Unexpected error wrapper to assign.</param>
+    /// <returns>Reference to self.</returns>
     expected& operator=(const unexpected<E>& unexp) {
         destroy();
         m_has_value = false;
@@ -1398,6 +2694,8 @@ public:
     /// <summary>
     /// Unexpected move assignment operator.
     /// </summary>
+    /// <param name="unexp">Unexpected error wrapper to move-assign.</param>
+    /// <returns>Reference to self.</returns>
     expected& operator=(unexpected<E>&& unexp) {
         destroy();
         m_has_value = false;
@@ -1422,97 +2720,97 @@ public:
     }
 
     /// <summary>
-    /// Obtains mutable reference to the contained value or throws std::logic_error.
+    /// Obtains mutable reference to the contained value or throws bad_expected_access.
     /// </summary>
     /// <returns>Reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T& value() & {
         if (!m_has_value) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return m_storage.m_val;
     }
 
     /// <summary>
-    /// Obtains const reference to the contained value or throws std::logic_error.
+    /// Obtains const reference to the contained value or throws bad_expected_access.
     /// </summary>
     /// <returns>Const reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T& value() const & {
         if (!m_has_value) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return m_storage.m_val;
     }
 
     /// <summary>
-    /// Obtains rvalue reference to the contained value or throws std::logic_error.
+    /// Obtains rvalue reference to the contained value or throws bad_expected_access.
     /// </summary>
     /// <returns>Rvalue reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T&& value() && {
         if (!m_has_value) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::move(m_storage.m_val);
     }
 
     /// <summary>
-    /// Obtains const rvalue reference to the contained value or throws std::logic_error.
+    /// Obtains const rvalue reference to the contained value or throws bad_expected_access.
     /// </summary>
     /// <returns>Const rvalue reference to value.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T&& value() const && {
         if (!m_has_value) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::move(m_storage.m_val);
     }
 
     /// <summary>
-    /// Obtains mutable reference to the contained error or throws std::logic_error.
+    /// Obtains mutable reference to the contained error or throws bad_expected_access.
     /// </summary>
     /// <returns>Reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E& error() & {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
     }
 
     /// <summary>
-    /// Obtains const reference to the contained error or throws std::logic_error.
+    /// Obtains const reference to the contained error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E& error() const & {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
     }
 
     /// <summary>
-    /// Obtains rvalue reference to the contained error or throws std::logic_error.
+    /// Obtains rvalue reference to the contained error or throws bad_expected_access.
     /// </summary>
     /// <returns>Rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E&& error() && {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
     }
 
     /// <summary>
-    /// Obtains const rvalue reference to the contained error or throws std::logic_error.
+    /// Obtains const rvalue reference to the contained error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when holding value.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E&& error() const && {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
     }
@@ -1587,22 +2885,396 @@ public:
         return m_has_value ? std::move(m_storage.m_val) : static_cast<T>(std::forward<U>(default_val));
     }
 
-private:
+    /// <summary>
+    /// Invokes f on value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) & -> decltype(std::forward<F>(f)(value())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(value()))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(value());
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on const value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const & -> decltype(std::forward<F>(f)(value())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(value()))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(value());
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on moved value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with moved value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) && -> decltype(std::forward<F>(f)(std::move(value()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(value())))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(std::move(value()));
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on const moved value if present, returning the resulting expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const moved value.</param>
+    /// <returns>Result of f or expected containing current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const && -> decltype(std::forward<F>(f)(std::move(value()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(value())))>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)(std::move(value()));
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret(value());
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f on const error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) const & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret(value());
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f on moved error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with moved error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret(std::move(value()));
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on const moved error if present, returning the resulting expected or self.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function to invoke with const moved error.</param>
+    /// <returns>Self if has value, or result of f.</returns>
+    template <typename F>
+    auto or_else(F&& f) const && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret(std::move(value()));
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(value()));
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) & {
+        if (has_value()) {
+            std::forward<F>(f)(value());
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the const stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(value()));
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the const stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const & {
+        if (has_value()) {
+            std::forward<F>(f)(value());
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms the moved stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(std::move(value())));
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the moved stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<T&&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) && {
+        if (has_value()) {
+            std::forward<F>(f)(std::move(value()));
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the const moved stored value using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&&>())),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)(std::move(value())));
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the const moved stored value using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Transformation function.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()(std::declval<const T&&>())),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const && {
+        if (has_value()) {
+            std::forward<F>(f)(std::move(value()));
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms the stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) & -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(value());
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms the const stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const & -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(value());
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms the moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) && -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(std::move(value()));
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
+    }
+
+    /// <summary>
+    /// Transforms the const moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected containing value or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const && -> expected<T, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<T, G>;
+        if (has_value()) {
+            return Res(std::move(value()));
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
+    }
+};
+
+/// <summary>
+/// Conditional storage base class enabling trivial destructibility propagation for expected<void, E>.
+/// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+/// <typeparam name="IsTrivial">Whether E is trivially destructible.</typeparam>
+template <typename E, bool IsTrivial = std::is_trivially_destructible<E>::value>
+struct ExpectedVoidStorageBase;
+
+/// <summary>
+/// Specialization of ExpectedVoidStorageBase for non-trivially destructible error types.
+/// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+template <typename E>
+struct ExpectedVoidStorageBase<E, false> {
     union Storage {
-        T m_val;
+        char m_dummy;
         E m_err;
-        Storage() {}
-        ~Storage() {}
+        Storage() noexcept : m_dummy(0) {}
+        ~Storage() noexcept {}
     } m_storage;
     bool m_has_value;
 
+    ExpectedVoidStorageBase() noexcept : m_has_value(false) {}
+    explicit ExpectedVoidStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
+
+    ExpectedVoidStorageBase(const ExpectedVoidStorageBase&) noexcept : m_has_value(false) {}
+    ExpectedVoidStorageBase(ExpectedVoidStorageBase&&) noexcept : m_has_value(false) {}
+    ExpectedVoidStorageBase& operator=(const ExpectedVoidStorageBase&) noexcept { return *this; }
+    ExpectedVoidStorageBase& operator=(ExpectedVoidStorageBase&&) noexcept { return *this; }
+
+    ~ExpectedVoidStorageBase() {
+        destroy();
+    }
+
     void destroy() noexcept {
-        if (m_has_value) {
-            m_storage.m_val.~T();
-        } else {
+        if (!m_has_value) {
             m_storage.m_err.~E();
         }
     }
+};
+
+/// <summary>
+/// Specialization of ExpectedVoidStorageBase for trivially destructible error types.
+/// </summary>
+/// <typeparam name="E">Error value type.</typeparam>
+template <typename E>
+struct ExpectedVoidStorageBase<E, true> {
+    union Storage {
+        char m_dummy;
+        E m_err;
+        Storage() noexcept : m_dummy(0) {}
+        ~Storage() = default;
+    } m_storage;
+    bool m_has_value;
+
+    ExpectedVoidStorageBase() noexcept : m_has_value(false) {}
+    explicit ExpectedVoidStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
+
+    ExpectedVoidStorageBase(const ExpectedVoidStorageBase&) = default;
+    ExpectedVoidStorageBase(ExpectedVoidStorageBase&&) = default;
+    ExpectedVoidStorageBase& operator=(const ExpectedVoidStorageBase&) = default;
+    ExpectedVoidStorageBase& operator=(ExpectedVoidStorageBase&&) = default;
+    ~ExpectedVoidStorageBase() = default;
+
+    void destroy() noexcept {}
 };
 
 /// <summary>
@@ -1610,7 +3282,12 @@ private:
 /// </summary>
 /// <typeparam name="E">Error value type.</typeparam>
 template <typename E>
-class expected<void, E> {
+class expected<void, E> : private ExpectedVoidStorageBase<E> {
+    using Base = ExpectedVoidStorageBase<E>;
+    using Base::m_storage;
+    using Base::m_has_value;
+    using Base::destroy;
+
 public:
     using value_type = void;
     using error_type = E;
@@ -1619,13 +3296,13 @@ public:
     /// <summary>
     /// Default constructor initializing success state.
     /// </summary>
-    expected() : m_has_value(true) {}
+    expected() : Base(true) {}
 
     /// <summary>
     /// Constructs expected from copy of error.
     /// </summary>
     /// <param name="unexp">The unexpected wrapper.</param>
-    expected(const unexpected<E>& unexp) : m_has_value(false) {
+    expected(const unexpected<E>& unexp) : Base(false) {
         ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
     }
 
@@ -1633,7 +3310,7 @@ public:
     /// Constructs expected from moved error.
     /// </summary>
     /// <param name="unexp">The unexpected wrapper.</param>
-    expected(unexpected<E>&& unexp) : m_has_value(false) {
+    expected(unexpected<E>&& unexp) : Base(false) {
         ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
     }
 
@@ -1641,9 +3318,9 @@ public:
     /// In-place error constructor.
     /// </summary>
     /// <typeparam name="Args">Constructor argument types.</typeparam>
-    /// <param name="args">Forwarded arguments.</param>
+    /// <param name="args">Forwarded constructor arguments.</param>
     template <typename... Args>
-    explicit expected(unexpect_t, Args&&... args) : m_has_value(false) {
+    explicit expected(unexpect_t, Args&&... args) : Base(false) {
         ::new (static_cast<void*>(&m_storage.m_err)) E(std::forward<Args>(args)...);
     }
 
@@ -1651,7 +3328,7 @@ public:
     /// Copy constructor.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
-    expected(const expected& other) : m_has_value(other.m_has_value) {
+    expected(const expected& other) : Base(other.m_has_value) {
         if (!m_has_value) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
         }
@@ -1661,18 +3338,16 @@ public:
     /// Move constructor.
     /// </summary>
     /// <param name="other">Instance to move.</param>
-    expected(expected&& other) noexcept : m_has_value(other.m_has_value) {
+    expected(expected&& other) noexcept : Base(other.m_has_value) {
         if (!m_has_value) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
         }
     }
 
     /// <summary>
-    /// Destructor.
+    /// Defaulted destructor invoking ExpectedVoidStorageBase conditionally.
     /// </summary>
-    ~expected() {
-        destroy();
-    }
+    ~expected() = default;
 
     /// <summary>
     /// Copy assignment operator.
@@ -1709,6 +3384,8 @@ public:
     /// <summary>
     /// Unexpected assignment operator.
     /// </summary>
+    /// <param name="unexp">Unexpected error wrapper.</param>
+    /// <returns>Reference to self.</returns>
     expected& operator=(const unexpected<E>& unexp) {
         destroy();
         m_has_value = false;
@@ -1719,6 +3396,8 @@ public:
     /// <summary>
     /// Unexpected move assignment operator.
     /// </summary>
+    /// <param name="unexp">Unexpected error wrapper.</param>
+    /// <returns>Reference to self.</returns>
     expected& operator=(unexpected<E>&& unexp) {
         destroy();
         m_has_value = false;
@@ -1743,76 +3422,400 @@ public:
     }
 
     /// <summary>
-    /// Verifies success state or throws std::logic_error.
+    /// Dereference operator for expected of void.
     /// </summary>
-    /// <exception cref="std::logic_error">Thrown when holding error.</exception>
-    void value() const {
+    constexpr void operator*() const noexcept {}
+
+    /// <summary>
+    /// Verifies success state or throws bad_expected_access.
+    /// </summary>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
+    void value() const & {
         if (!m_has_value) {
-            throw std::logic_error("Bad expected access: object contains error");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
     }
 
     /// <summary>
-    /// Obtains mutable reference to error or throws std::logic_error.
+    /// Verifies success state on rvalue or throws bad_expected_access.
+    /// </summary>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
+    void value() && {
+        if (!m_has_value) {
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
+        }
+    }
+
+    /// <summary>
+    /// Obtains mutable reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when in success state.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E& error() & {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
     }
 
     /// <summary>
-    /// Obtains const reference to error or throws std::logic_error.
+    /// Obtains const reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when in success state.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E& error() const & {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
     }
 
     /// <summary>
-    /// Obtains rvalue reference to error or throws std::logic_error.
+    /// Obtains rvalue reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when in success state.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E&& error() && {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
     }
 
     /// <summary>
-    /// Obtains const rvalue reference to error or throws std::logic_error.
+    /// Obtains const rvalue reference to error or throws bad_expected_access.
     /// </summary>
     /// <returns>Const rvalue reference to error.</returns>
-    /// <exception cref="std::logic_error">Thrown when in success state.</exception>
+    /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E&& error() const && {
         if (m_has_value) {
-            throw std::logic_error("Bad expected access: object contains value");
+            COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
     }
 
-private:
-    union Storage {
-        char m_dummy;
-        E m_err;
-        Storage() : m_dummy(0) {}
-        ~Storage() {}
-    } m_storage;
-    bool m_has_value;
-
-    void destroy() noexcept {
-        if (!m_has_value) {
-            m_storage.m_err.~E();
+    /// <summary>
+    /// Invokes f when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) & -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
         }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on const instance when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding current error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const & -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, error());
+    }
+
+    /// <summary>
+    /// Invokes f on rvalue when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding moved error.</returns>
+    template <typename F>
+    auto and_then(F&& f) && -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f on const rvalue when in success state.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Result of f or expected holding moved error.</returns>
+    template <typename F>
+    auto and_then(F&& f) const && -> decltype(std::forward<F>(f)()) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)())>::type>::type;
+        if (has_value()) {
+            return std::forward<F>(f)();
+        }
+        return Ret(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f with error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f with const error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking const error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) const & -> decltype(std::forward<F>(f)(error())) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(error());
+    }
+
+    /// <summary>
+    /// Invokes f with moved error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking moved error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Invokes f with const moved error when holding error, or returns success expected.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Function taking const moved error.</param>
+    /// <returns>Self on success or result of f on error.</returns>
+    template <typename F>
+    auto or_else(F&& f) const && -> decltype(std::forward<F>(f)(std::move(error()))) {
+        using Ret = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        if (has_value()) {
+            return Ret();
+        }
+        return std::forward<F>(f)(std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) & {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms const success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const & {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms const success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const & {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, error());
+    }
+
+    /// <summary>
+    /// Transforms moved success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms moved success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) && {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms const moved success state using non-void returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected containing transformed value or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<!std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<typename std::remove_cv<typename std::remove_reference<Ret>::type>::type, E> transform(F&& f) const && {
+        using U = typename std::remove_cv<typename std::remove_reference<Ret>::type>::type;
+        using Res = expected<U, E>;
+        if (has_value()) {
+            return Res(std::forward<F>(f)());
+        }
+        return Res(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms const moved success state using void-returning f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <typeparam name="Ret">Inferred invocation result.</typeparam>
+    /// <param name="f">Function taking no arguments.</param>
+    /// <returns>Expected of void containing success or error.</returns>
+    template <typename F, typename Ret = decltype(std::declval<F>()()),
+              typename std::enable_if<std::is_void<Ret>::value, int32_t>::type = 0>
+    expected<void, E> transform(F&& f) const && {
+        if (has_value()) {
+            std::forward<F>(f)();
+            return expected<void, E>();
+        }
+        return expected<void, E>(unexpect, std::move(error()));
+    }
+
+    /// <summary>
+    /// Transforms stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) & -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms const stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const & -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(error()))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(error()));
+    }
+
+    /// <summary>
+    /// Transforms moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) && -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
+    }
+
+    /// <summary>
+    /// Transforms const moved stored error using f.
+    /// </summary>
+    /// <typeparam name="F">Callable type.</typeparam>
+    /// <param name="f">Error transformation function.</param>
+    /// <returns>Expected of void containing success or transformed error.</returns>
+    template <typename F>
+    auto transform_error(F&& f) const && -> expected<void, typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type> {
+        using G = typename std::remove_cv<typename std::remove_reference<decltype(std::forward<F>(f)(std::move(error())))>::type>::type;
+        using Res = expected<void, G>;
+        if (has_value()) {
+            return Res();
+        }
+        return Res(unexpect, std::forward<F>(f)(std::move(error())));
     }
 };
 
@@ -1823,9 +3826,13 @@ using union_impl::unexpect_t;
 using union_impl::unexpect;
 using union_impl::unexpected;
 using union_impl::expected;
+using union_impl::bad_expected_access;
 #endif
 
 } // namespace detail
+
+using detail::bad_expected_access;
+
 } // namespace compat
 
 #endif // (!COMPAT_HAS_STD_EXPECTED && !COMPAT_HAS_STD_VARIANT) || defined(COMPAT_ENABLE_UNION_EXPECTED)
@@ -1849,6 +3856,7 @@ namespace compat {
     using detail::unexpected;
     using detail::unexpect_t;
     using detail::unexpect;
+    using detail::bad_expected_access;
 }
 #else
 namespace compat {
@@ -1856,6 +3864,7 @@ namespace compat {
     using detail::unexpected;
     using detail::unexpect_t;
     using detail::unexpect;
+    using detail::bad_expected_access;
 }
 #endif
 
@@ -1869,6 +3878,9 @@ namespace compat {
     using string_view = std::string_view;
 }
 #else
+#  if defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#    error "Standard C++ library does not support requested modern features"
+#  endif
 namespace compat {
     using string_view = detail::string_view;
 }
@@ -1880,194 +3892,473 @@ namespace compat {
 
 namespace compat {
 namespace detail {
+inline namespace COMPAT_ABI_TAG {
 
 /// <summary>
-/// Parses an unsigned integer from a string_view with boundary checking.
+/// Result structure for from_chars operations indicating end of match and error code.
 /// </summary>
+struct from_chars_result {
+    const char* ptr;
+    std::errc ec;
+
+    /// <summary>
+    /// Explicit boolean conversion indicating whether parsing succeeded without error.
+    /// </summary>
+    /// <returns>True if ec is empty (success), false otherwise.</returns>
+    constexpr explicit operator bool() const noexcept {
+        return ec == std::errc{};
+    }
+};
+
+/// <summary>
+/// Parses an unsigned integer from a character buffer without heap allocations or locale dependency.
+/// </summary>
+/// <typeparam name="UIntType">Unsigned integral destination type.</typeparam>
+/// <param name="first">Pointer to beginning of character range.</param>
+/// <param name="last">Pointer past end of character range.</param>
+/// <param name="value">Output reference to receive parsed value.</param>
+/// <param name="base">Radix base between 2 and 36 inclusive.</param>
+/// <returns>from_chars_result with updated pointer and error code.</returns>
+template <typename UIntType>
+inline from_chars_result from_chars_unsigned(const char* first, const char* last, UIntType& value, int32_t base = 10) noexcept {
+    from_chars_result res{first, std::errc{}};
+    if (base < 2 || base > 36 || first >= last) {
+        res.ec = std::errc::invalid_argument;
+        return res;
+    }
+
+    const uint64_t max_val = static_cast<uint64_t>(std::numeric_limits<UIntType>::max());
+    const uint64_t ubase = static_cast<uint64_t>(base);
+    const uint64_t limit_div = max_val / ubase;
+    const uint64_t limit_mod = max_val % ubase;
+
+    const char* ptr = first;
+    uint64_t result = 0;
+    bool overflow = false;
+    bool has_digits = false;
+
+    while (ptr < last) {
+        char c = *ptr;
+        int32_t digit = -1;
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'z') {
+            digit = c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'Z') {
+            digit = c - 'A' + 10;
+        }
+
+        if (digit < 0 || digit >= base) {
+            break;
+        }
+
+        has_digits = true;
+        uint64_t udigit = static_cast<uint64_t>(digit);
+        if (!overflow) {
+            if (result > limit_div || (result == limit_div && udigit > limit_mod)) {
+                overflow = true;
+            } else {
+                result = result * ubase + udigit;
+            }
+        }
+        ++ptr;
+    }
+
+    if (!has_digits) {
+        res.ec = std::errc::invalid_argument;
+        res.ptr = first;
+        return res;
+    }
+
+    if (overflow) {
+        res.ec = std::errc::result_out_of_range;
+        res.ptr = ptr;
+        return res;
+    }
+
+    value = static_cast<UIntType>(result);
+    res.ptr = ptr;
+    res.ec = std::errc{};
+    return res;
+}
+
+/// <summary>
+/// Parses a signed integer from a character buffer without heap allocations or locale dependency.
+/// </summary>
+/// <typeparam name="IntType">Signed integral destination type.</typeparam>
+/// <param name="first">Pointer to beginning of character range.</param>
+/// <param name="last">Pointer past end of character range.</param>
+/// <param name="value">Output reference to receive parsed value.</param>
+/// <param name="base">Radix base between 2 and 36 inclusive.</param>
+/// <returns>from_chars_result with updated pointer and error code.</returns>
+template <typename IntType>
+inline from_chars_result from_chars_signed(const char* first, const char* last, IntType& value, int32_t base = 10) noexcept {
+    from_chars_result res{first, std::errc{}};
+    if (base < 2 || base > 36 || first >= last) {
+        res.ec = std::errc::invalid_argument;
+        return res;
+    }
+
+    const char* ptr = first;
+    bool negative = false;
+    if (*ptr == '-') {
+        negative = true;
+        ++ptr;
+        if (ptr >= last) {
+            res.ec = std::errc::invalid_argument;
+            res.ptr = first;
+            return res;
+        }
+    }
+
+    const uint64_t max_mag = negative
+        ? (static_cast<uint64_t>(0) - static_cast<uint64_t>(std::numeric_limits<IntType>::min()))
+        : static_cast<uint64_t>(std::numeric_limits<IntType>::max());
+
+    const uint64_t ubase = static_cast<uint64_t>(base);
+    const uint64_t limit_div = max_mag / ubase;
+    const uint64_t limit_mod = max_mag % ubase;
+
+    uint64_t result = 0;
+    bool overflow = false;
+    bool has_digits = false;
+
+    while (ptr < last) {
+        char c = *ptr;
+        int32_t digit = -1;
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'z') {
+            digit = c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'Z') {
+            digit = c - 'A' + 10;
+        }
+
+        if (digit < 0 || digit >= base) {
+            break;
+        }
+
+        has_digits = true;
+        uint64_t udigit = static_cast<uint64_t>(digit);
+        if (!overflow) {
+            if (result > limit_div || (result == limit_div && udigit > limit_mod)) {
+                overflow = true;
+            } else {
+                result = result * ubase + udigit;
+            }
+        }
+        ++ptr;
+    }
+
+    if (!has_digits) {
+        res.ec = std::errc::invalid_argument;
+        res.ptr = first;
+        return res;
+    }
+
+    if (overflow) {
+        res.ec = std::errc::result_out_of_range;
+        res.ptr = ptr;
+        return res;
+    }
+
+    if (negative) {
+        if (result == max_mag) {
+            value = std::numeric_limits<IntType>::min();
+        } else {
+            value = static_cast<IntType>(-static_cast<int64_t>(result));
+        }
+    } else {
+        value = static_cast<IntType>(result);
+    }
+
+    res.ptr = ptr;
+    res.ec = std::errc{};
+    return res;
+}
+
+/// <summary>
+/// Computes positive powers of 10 up to 10^308 without external dependencies.
+/// </summary>
+/// <param name="exp">Non-negative exponent value.</param>
+/// <returns>10^exp as a double.</returns>
+inline double Pow10Positive(int32_t exp) noexcept {
+    static const double kPow10[] = {
+        1e1, 1e2, 1e4, 1e8, 1e16, 1e32, 1e64, 1e128, 1e256
+    };
+    double r = 1.0;
+    for (int32_t i = 0; i < 9; ++i) {
+        if (exp & (1 << i)) {
+            r *= kPow10[i];
+        }
+    }
+    return r;
+}
+
+/// <summary>
+/// Case-insensitive character prefix comparison helper.
+/// </summary>
+/// <param name="a">Input character sequence.</param>
+/// <param name="b">Target lower-case ASCII literal.</param>
+/// <param name="len">Length of sequence to compare.</param>
+/// <returns>True if characters match case-insensitively.</returns>
+inline bool CaseInsensitiveEqual(const char* a, const char* b, std::size_t len) noexcept {
+    for (std::size_t i = 0; i < len; ++i) {
+        char c1 = a[i];
+        char c2 = b[i];
+        if (c1 >= 'A' && c1 <= 'Z') c1 = static_cast<char>(c1 + ('a' - 'A'));
+        if (c2 >= 'A' && c2 <= 'Z') c2 = static_cast<char>(c2 + ('a' - 'A'));
+        if (c1 != c2) return false;
+    }
+    return true;
+}
+
+/// <summary>
+/// Parses a floating-point number from a character buffer without heap allocations or locale dependency.
+/// </summary>
+/// <typeparam name="FloatType">Floating-point destination type (float or double).</typeparam>
+/// <param name="first">Pointer to beginning of character range.</param>
+/// <param name="last">Pointer past end of character range.</param>
+/// <param name="value">Output reference to receive parsed value.</param>
+/// <returns>from_chars_result with updated pointer and error code.</returns>
+template <typename FloatType>
+inline from_chars_result from_chars_float(const char* first, const char* last, FloatType& value) noexcept {
+    from_chars_result res{first, std::errc{}};
+    if (first >= last) {
+        res.ec = std::errc::invalid_argument;
+        return res;
+    }
+
+    const char* ptr = first;
+    bool negative = false;
+    if (ptr < last && (*ptr == '-' || *ptr == '+')) {
+        negative = (*ptr == '-');
+        ++ptr;
+    }
+
+    std::size_t rem = static_cast<std::size_t>(last - ptr);
+    if (rem >= 8 && CaseInsensitiveEqual(ptr, "infinity", 8)) {
+        ptr += 8;
+        FloatType inf_val = std::numeric_limits<FloatType>::infinity();
+        value = negative ? -inf_val : inf_val;
+        res.ptr = ptr;
+        res.ec = std::errc{};
+        return res;
+    }
+    if (rem >= 3 && CaseInsensitiveEqual(ptr, "inf", 3)) {
+        ptr += 3;
+        FloatType inf_val = std::numeric_limits<FloatType>::infinity();
+        value = negative ? -inf_val : inf_val;
+        res.ptr = ptr;
+        res.ec = std::errc{};
+        return res;
+    }
+    if (rem >= 3 && CaseInsensitiveEqual(ptr, "nan", 3)) {
+        ptr += 3;
+        FloatType nan_val = std::numeric_limits<FloatType>::quiet_NaN();
+        value = negative ? -nan_val : nan_val;
+        res.ptr = ptr;
+        res.ec = std::errc{};
+        return res;
+    }
+
+    double mantissa = 0.0;
+    int32_t frac_digits = 0;
+    int32_t extra_exp = 0;
+    bool has_digits = false;
+
+    while (ptr < last && *ptr >= '0' && *ptr <= '9') {
+        has_digits = true;
+        if (mantissa < 1e16) {
+            mantissa = mantissa * 10.0 + (*ptr - '0');
+        } else {
+            ++extra_exp;
+        }
+        ++ptr;
+    }
+
+    if (ptr < last && *ptr == '.') {
+        ++ptr;
+        while (ptr < last && *ptr >= '0' && *ptr <= '9') {
+            has_digits = true;
+            if (mantissa < 1e16) {
+                mantissa = mantissa * 10.0 + (*ptr - '0');
+                ++frac_digits;
+            }
+            ++ptr;
+        }
+    }
+
+    if (!has_digits) {
+        res.ec = std::errc::invalid_argument;
+        res.ptr = first;
+        return res;
+    }
+
+    int32_t exp_val = 0;
+    if (ptr < last && (*ptr == 'e' || *ptr == 'E')) {
+        const char* exp_start = ptr;
+        const char* p = ptr + 1;
+        bool exp_neg = false;
+        if (p < last && (*p == '-' || *p == '+')) {
+            exp_neg = (*p == '-');
+            ++p;
+        }
+        if (p < last && *p >= '0' && *p <= '9') {
+            while (p < last && *p >= '0' && *p <= '9') {
+                if (exp_val < 10000) {
+                    exp_val = exp_val * 10 + (*p - '0');
+                }
+                ++p;
+            }
+            if (exp_neg) {
+                exp_val = -exp_val;
+            }
+            ptr = p;
+        } else {
+            ptr = exp_start;
+        }
+    }
+
+    int32_t total_exp = exp_val + extra_exp - frac_digits;
+
+    if (total_exp > 308 && mantissa != 0.0) {
+        res.ec = std::errc::result_out_of_range;
+        res.ptr = ptr;
+        return res;
+    }
+
+    double dval = mantissa;
+    if (total_exp > 0) {
+        dval *= Pow10Positive(total_exp);
+    } else if (total_exp < 0) {
+        if (total_exp < -324) {
+            dval = 0.0;
+        } else {
+            dval /= Pow10Positive(-total_exp);
+        }
+    }
+
+    // Overflow check for double
+    if (dval > 1.7976931348623157e+308 || dval < -1.7976931348623157e+308) {
+        res.ec = std::errc::result_out_of_range;
+        res.ptr = ptr;
+        return res;
+    }
+
+    // Overflow check for float
+    if (std::is_same<FloatType, float>::value) {
+        if (dval > 3.4028234663852886e+38 || dval < -3.4028234663852886e+38) {
+            res.ec = std::errc::result_out_of_range;
+            res.ptr = ptr;
+            return res;
+        }
+    }
+
+    if (negative) {
+        dval = -dval;
+    }
+
+    value = static_cast<FloatType>(dval);
+    res.ptr = ptr;
+    res.ec = std::errc{};
+    return res;
+}
+
+/// <summary>
+/// Parses an unsigned integer from a string_view with boundary checking, delegating to from_chars_unsigned.
+/// </summary>
+/// <typeparam name="UIntType">Unsigned integer destination type.</typeparam>
+/// <param name="str">Input string view.</param>
+/// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename UIntType>
 inline compat::expected<UIntType, compat::string_view> ParseUnsigned(compat::string_view str) noexcept {
     if (str.empty()) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
-    std::size_t i = 0;
-    if (str[0] == '+') {
-        i = 1;
-        if (i >= str.size()) {
-            return compat::unexpected<compat::string_view>("Sign without digits");
-        }
-    } else if (str[0] == '-') {
+    if (str[0] == '-') {
         return compat::unexpected<compat::string_view>("Negative sign in unsigned integer");
     }
-
-    uint64_t result = 0;
-    const uint64_t max_val = static_cast<uint64_t>(std::numeric_limits<UIntType>::max());
-    const uint64_t limit_div_10 = max_val / 10;
-    const uint64_t limit_mod_10 = max_val % 10;
-
-    for (; i < str.size(); ++i) {
-        char c = str[i];
-        if (c < '0' || c > '9') {
-            return compat::unexpected<compat::string_view>("Invalid character in integer");
+    const char* first = str.data();
+    const char* last = str.data() + str.size();
+    if (*first == '+') {
+        ++first;
+        if (first == last) {
+            return compat::unexpected<compat::string_view>("Sign without digits");
         }
-        uint64_t digit = static_cast<uint64_t>(c - '0');
-        if (result > limit_div_10 || (result == limit_div_10 && digit > limit_mod_10)) {
-            return compat::unexpected<compat::string_view>("Integer overflow");
-        }
-        result = result * 10 + digit;
     }
-    return static_cast<UIntType>(result);
+    UIntType value{};
+    from_chars_result res = from_chars_unsigned(first, last, value, 10);
+    if (res.ec == std::errc::invalid_argument) {
+        return compat::unexpected<compat::string_view>("Invalid character in integer");
+    }
+    if (res.ec == std::errc::result_out_of_range) {
+        return compat::unexpected<compat::string_view>("Integer overflow");
+    }
+    if (res.ptr != last) {
+        return compat::unexpected<compat::string_view>("Invalid character in integer");
+    }
+    return value;
 }
 
 /// <summary>
-/// Parses a signed integer from a string_view with boundary checking.
+/// Parses a signed integer from a string_view with boundary checking, delegating to from_chars_signed.
 /// </summary>
+/// <typeparam name="IntType">Signed integer destination type.</typeparam>
+/// <param name="str">Input string view.</param>
+/// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename IntType>
 inline compat::expected<IntType, compat::string_view> ParseSigned(compat::string_view str) noexcept {
     if (str.empty()) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
-    std::size_t i = 0;
-    bool negative = false;
-    if (str[0] == '-') {
-        negative = true;
-        i = 1;
-    } else if (str[0] == '+') {
-        i = 1;
-    }
-    if (i >= str.size()) {
-        return compat::unexpected<compat::string_view>("Sign without digits");
-    }
-
-    const uint64_t max_magnitude = negative
-        ? (static_cast<uint64_t>(0) - static_cast<uint64_t>(std::numeric_limits<IntType>::min()))
-        : static_cast<uint64_t>(std::numeric_limits<IntType>::max());
-
-    const uint64_t limit_div_10 = max_magnitude / 10;
-    const uint64_t limit_mod_10 = max_magnitude % 10;
-
-    uint64_t result = 0;
-    for (; i < str.size(); ++i) {
-        char c = str[i];
-        if (c < '0' || c > '9') {
-            return compat::unexpected<compat::string_view>("Invalid character in integer");
+    const char* first = str.data();
+    const char* last = str.data() + str.size();
+    if (*first == '+') {
+        ++first;
+        if (first == last) {
+            return compat::unexpected<compat::string_view>("Sign without digits");
         }
-        uint64_t digit = static_cast<uint64_t>(c - '0');
-        if (result > limit_div_10 || (result == limit_div_10 && digit > limit_mod_10)) {
-            return compat::unexpected<compat::string_view>("Integer overflow");
-        }
-        result = result * 10 + digit;
     }
-
-    if (negative) {
-        if (result == max_magnitude) {
-            return std::numeric_limits<IntType>::min();
-        }
-        return static_cast<IntType>(-static_cast<int64_t>(result));
+    IntType value{};
+    from_chars_result res = from_chars_signed(first, last, value, 10);
+    if (res.ec == std::errc::invalid_argument) {
+        return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
-    return static_cast<IntType>(result);
+    if (res.ec == std::errc::result_out_of_range) {
+        return compat::unexpected<compat::string_view>("Integer overflow");
+    }
+    if (res.ptr != last) {
+        return compat::unexpected<compat::string_view>("Invalid character in integer");
+    }
+    return value;
 }
 
 /// <summary>
-/// Parses a floating-point number from a string_view with boundary checking.
+/// Parses a floating-point number from a string_view with boundary checking, delegating to from_chars_float.
 /// </summary>
+/// <typeparam name="FloatType">Floating-point destination type.</typeparam>
+/// <param name="str">Input string view.</param>
+/// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename FloatType>
 inline compat::expected<FloatType, compat::string_view> ParseFloating(compat::string_view str) noexcept {
     if (str.empty()) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
-    std::size_t i = 0;
-    bool negative = false;
-    if (str[0] == '-') {
-        negative = true;
-        i = 1;
-    } else if (str[0] == '+') {
-        i = 1;
-    }
-    if (i >= str.size()) {
-        return compat::unexpected<compat::string_view>("Sign without digits");
-    }
-
-    compat::string_view remaining = str.substr(i);
-    if (remaining == "nan" || remaining == "NaN" || remaining == "NAN") {
-        FloatType val = std::numeric_limits<FloatType>::quiet_NaN();
-        return negative ? -val : val;
-    }
-    if (remaining == "inf" || remaining == "Inf" || remaining == "infinity" || remaining == "Infinity") {
-        FloatType val = std::numeric_limits<FloatType>::infinity();
-        return negative ? -val : val;
-    }
-
-    double value = 0.0;
-    bool has_digits = false;
-
-    while (i < str.size() && str[i] >= '0' && str[i] <= '9') {
-        has_digits = true;
-        value = value * 10.0 + (str[i] - '0');
-        ++i;
-    }
-
-    if (i < str.size() && str[i] == '.') {
-        ++i;
-        double factor = 0.1;
-        while (i < str.size() && str[i] >= '0' && str[i] <= '9') {
-            has_digits = true;
-            value += (str[i] - '0') * factor;
-            factor *= 0.1;
-            ++i;
-        }
-    }
-
-    if (!has_digits) {
-        return compat::unexpected<compat::string_view>("No digits in floating point number");
-    }
-
-    if (i < str.size() && (str[i] == 'e' || str[i] == 'E')) {
-        ++i;
-        if (i >= str.size()) {
-            return compat::unexpected<compat::string_view>("Missing exponent digits");
-        }
-        bool exp_negative = false;
-        if (str[i] == '-') {
-            exp_negative = true;
-            ++i;
-        } else if (str[i] == '+') {
-            ++i;
-        }
-        if (i >= str.size() || str[i] < '0' || str[i] > '9') {
-            return compat::unexpected<compat::string_view>("Missing exponent digits");
-        }
-        int32_t exp_val = 0;
-        while (i < str.size() && str[i] >= '0' && str[i] <= '9') {
-            if (exp_val < 1000) {
-                exp_val = exp_val * 10 + (str[i] - '0');
-            }
-            ++i;
-        }
-        if (exp_negative) {
-            exp_val = -exp_val;
-        }
-        value = value * std::pow(10.0, static_cast<double>(exp_val));
-    }
-
-    if (i < str.size()) {
+    const char* first = str.data();
+    const char* last = str.data() + str.size();
+    FloatType value{};
+    from_chars_result res = from_chars_float(first, last, value);
+    if (res.ec == std::errc::invalid_argument) {
         return compat::unexpected<compat::string_view>("Invalid character in floating point number");
     }
-
-    if (negative) {
-        value = -value;
-    }
-
-    if (std::isinf(value)) {
+    if (res.ec == std::errc::result_out_of_range) {
         return compat::unexpected<compat::string_view>("Floating point overflow");
     }
-
-    if (std::is_same<FloatType, float>::value) {
-        if (value > 3.402823466e+38 || value < -3.402823466e+38) {
-            return compat::unexpected<compat::string_view>("Floating point overflow");
-        }
+    if (res.ptr != last) {
+        return compat::unexpected<compat::string_view>("Invalid character in floating point number");
     }
-
-    return static_cast<FloatType>(value);
+    return value;
 }
 
 /// <summary>
@@ -2133,6 +4424,7 @@ struct Parser<compat::string_view> {
     }
 };
 
+} // namespace COMPAT_ABI_TAG
 } // namespace detail
 } // namespace compat
 
@@ -2140,38 +4432,373 @@ struct Parser<compat::string_view> {
 // Module Section: include/compat/detail/SelfPrint.hpp
 // ============================================================================
 
+#if COMPAT_HAS_STD_FORMAT
+#  include <format>
+#endif
+
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <io.h>
+#  include <stdio.h>
+#else
+#  include <unistd.h>
+#  include <stdio.h>
+#endif
+
 namespace compat {
+
+#if !COMPAT_HAS_STD_FORMAT
+
+/// <summary>
+/// Forward declaration of compat::formatter extension point.
+/// </summary>
+/// <typeparam name="T">Type to be formatted.</typeparam>
+/// <typeparam name="CharT">Character type, defaults to char.</typeparam>
+template <typename T, typename CharT = char>
+struct formatter;
+
+#endif // !COMPAT_HAS_STD_FORMAT
+
 namespace detail {
 
 /// <summary>
-/// Streams a generic argument to an output stream.
+/// Minimal basic_format_context for compatibility with std::formatter pattern.
 /// </summary>
+/// <typeparam name="OutputIt">Output iterator type.</typeparam>
+/// <typeparam name="CharT">Character type.</typeparam>
+template <typename OutputIt, typename CharT = char>
+class basic_format_context {
+public:
+    using iterator = OutputIt;
+    using char_type = CharT;
+
+    /// <summary>
+    /// Constructs a basic_format_context with the given output iterator.
+    /// </summary>
+    /// <param name="out">Output iterator.</param>
+    explicit basic_format_context(OutputIt out) : out_(out) {}
+
+    /// <summary>
+    /// Returns the current output iterator.
+    /// </summary>
+    /// <returns>The output iterator.</returns>
+    iterator out() const { return out_; }
+
+    /// <summary>
+    /// Advances the current output iterator.
+    /// </summary>
+    /// <param name="it">New iterator position.</param>
+    void advance_to(iterator it) { out_ = it; }
+
+private:
+    OutputIt out_;
+};
+
+using format_context = basic_format_context<std::ostreambuf_iterator<char>, char>;
+
+} // namespace detail
+
+#if !COMPAT_HAS_STD_FORMAT
+
+// Specializations of compat::formatter for primitive types
+
+/// <summary>
+/// Formatter specialization for std::string.
+/// </summary>
+template <>
+struct formatter<std::string, char> {
+    template <typename FormatContext>
+    auto format(const std::string& val, FormatContext& ctx) const {
+        auto it = ctx.out();
+        for (char c : val) {
+            *it++ = c;
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
+
+/// <summary>
+/// Formatter specialization for compat::string_view.
+/// </summary>
+template <>
+struct formatter<compat::string_view, char> {
+    template <typename FormatContext>
+    auto format(compat::string_view val, FormatContext& ctx) const {
+        auto it = ctx.out();
+        for (std::size_t i = 0; i < val.size(); ++i) {
+            *it++ = val[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
+
+/// <summary>
+/// Formatter specialization for const char*.
+/// </summary>
+template <>
+struct formatter<const char*, char> {
+    template <typename FormatContext>
+    auto format(const char* val, FormatContext& ctx) const {
+        auto it = ctx.out();
+        if (val != nullptr) {
+            while (*val != '\0') {
+                *it++ = *val++;
+            }
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
+
+/// <summary>
+/// Formatter specialization for char* (non-const).
+/// </summary>
+template <>
+struct formatter<char*, char> {
+    template <typename FormatContext>
+    auto format(char* val, FormatContext& ctx) const {
+        const char* p = val;
+        return formatter<const char*, char>{}.format(p, ctx);
+    }
+};
+
+/// <summary>
+/// Formatter specialization for single char.
+/// </summary>
+template <>
+struct formatter<char, char> {
+    template <typename FormatContext>
+    auto format(char val, FormatContext& ctx) const {
+        auto it = ctx.out();
+        *it++ = val;
+        ctx.advance_to(it);
+        return it;
+    }
+};
+
+/// <summary>
+/// Formatter specialization for bool.
+/// </summary>
+template <>
+struct formatter<bool, char> {
+    template <typename FormatContext>
+    auto format(bool val, FormatContext& ctx) const {
+        const char* s = val ? "true" : "false";
+        return formatter<const char*, char>{}.format(s, ctx);
+    }
+};
+
+/// <summary>
+/// Formatter specialization for const void*.
+/// </summary>
+template <>
+struct formatter<const void*, char> {
+    template <typename FormatContext>
+    auto format(const void* val, FormatContext& ctx) const {
+        std::ostringstream ss;
+        ss << val;
+        std::string s = ss.str();
+        return formatter<std::string, char>{}.format(s, ctx);
+    }
+};
+
+/// <summary>
+/// Formatter specialization for void*.
+/// </summary>
+template <>
+struct formatter<void*, char> {
+    template <typename FormatContext>
+    auto format(void* val, FormatContext& ctx) const {
+        return formatter<const void*, char>{}.format(val, ctx);
+    }
+};
+
+#define COMPAT_DEFINE_ARITHMETIC_FORMATTER(Type) \
+template <> \
+struct formatter<Type, char> { \
+    template <typename FormatContext> \
+    auto format(Type val, FormatContext& ctx) const { \
+        std::ostringstream ss; \
+        ss << val; \
+        std::string s = ss.str(); \
+        return formatter<std::string, char>{}.format(s, ctx); \
+    } \
+};
+
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(short)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned short)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(int)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned int)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(long)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned long)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(long long)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned long long)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(float)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(double)
+COMPAT_DEFINE_ARITHMETIC_FORMATTER(long double)
+
+#undef COMPAT_DEFINE_ARITHMETIC_FORMATTER
+
+/// <summary>
+/// Formatter specialization for signed char (printed as integer).
+/// </summary>
+template <>
+struct formatter<signed char, char> {
+    template <typename FormatContext>
+    auto format(signed char val, FormatContext& ctx) const {
+        return formatter<int, char>{}.format(static_cast<int>(val), ctx);
+    }
+};
+
+/// <summary>
+/// Formatter specialization for unsigned char (printed as integer).
+/// </summary>
+template <>
+struct formatter<unsigned char, char> {
+    template <typename FormatContext>
+    auto format(unsigned char val, FormatContext& ctx) const {
+        return formatter<unsigned int, char>{}.format(static_cast<unsigned int>(val), ctx);
+    }
+};
+
+#endif // !COMPAT_HAS_STD_FORMAT
+
+namespace detail {
+
 template <typename T>
-inline void StreamFormatArg(std::ostream& os, const T& arg) {
+struct format_arg_traits {
+    using type = typename std::decay<T>::type;
+};
+
+template <std::size_t N>
+struct format_arg_traits<char[N]> {
+    using type = const char*;
+};
+
+template <std::size_t N>
+struct format_arg_traits<const char[N]> {
+    using type = const char*;
+};
+
+#if COMPAT_HAS_STD_FORMAT
+
+template <typename T, typename = void>
+struct has_std_formatter : std::false_type {};
+
+template <typename T>
+struct has_std_formatter<T, std::void_t<
+    decltype(std::declval<std::formatter<typename format_arg_traits<T>::type, char>>()
+        .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<std::format_context&>()))
+>> : std::true_type {};
+
+template <typename T>
+inline typename std::enable_if<has_std_formatter<T>::value, void>::type
+StreamFormatArg(std::ostream& os, const T& arg) {
+    using FormatterType = typename format_arg_traits<T>::type;
+    FormatterType formatted_arg = static_cast<FormatterType>(arg);
+    std::string s = std::format("{}", formatted_arg);
+    os << s;
+}
+
+template <typename T>
+inline typename std::enable_if<!has_std_formatter<T>::value, void>::type
+StreamFormatArg(std::ostream& os, const T& arg) {
     os << arg;
 }
 
-/// <summary>
-/// Streams int8_t as an integer number rather than ASCII character.
-/// </summary>
-inline void StreamFormatArg(std::ostream& os, int8_t arg) {
+inline void StreamFormatArg(std::ostream& os, signed char arg) {
     os << static_cast<int32_t>(arg);
 }
 
-/// <summary>
-/// Streams uint8_t as an integer number rather than ASCII character.
-/// </summary>
-inline void StreamFormatArg(std::ostream& os, uint8_t arg) {
+inline void StreamFormatArg(std::ostream& os, unsigned char arg) {
     os << static_cast<uint32_t>(arg);
 }
 
+#else
+
+template <typename T, typename = void>
+struct has_compat_formatter : std::false_type {};
+
+template <typename T>
+struct has_compat_formatter<T, std::void_t<
+    decltype(std::declval<formatter<typename format_arg_traits<T>::type, char>>()
+        .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<format_context&>()))
+>> : std::true_type {};
+
+template <typename T>
+inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
+StreamFormatArg(std::ostream& os, const T& arg) {
+    std::ostreambuf_iterator<char> out_it(os);
+    format_context ctx(out_it);
+    using FormatterType = typename format_arg_traits<T>::type;
+    formatter<FormatterType, char> fmt_obj;
+    FormatterType formatted_arg = static_cast<FormatterType>(arg);
+    fmt_obj.format(formatted_arg, ctx);
+}
+
+template <typename T>
+inline typename std::enable_if<!has_compat_formatter<T>::value, void>::type
+StreamFormatArg(std::ostream& os, const T& arg) {
+    os << arg;
+}
+
+inline void StreamFormatArg(std::ostream& os, signed char arg) {
+    os << static_cast<int32_t>(arg);
+}
+
+inline void StreamFormatArg(std::ostream& os, unsigned char arg) {
+    os << static_cast<uint32_t>(arg);
+}
+
+#endif
+
 /// <summary>
-/// Base case for recursive template format string parser.
+/// Counts the number of {} placeholders in a format string (skipping escaped {{ and }}).
+/// Validates balanced braces.
+/// </summary>
+/// <param name="fmt">Format string view.</param>
+/// <returns>Number of {} replacement fields.</returns>
+/// <exception cref="std::invalid_argument">Thrown on unmatched single { or }.</exception>
+inline std::size_t CountAndValidatePlaceholders(compat::string_view fmt) {
+    std::size_t count = 0;
+    std::size_t i = 0;
+    while (i < fmt.size()) {
+        if (fmt[i] == '{') {
+            if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
+                i += 2;
+            } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                ++count;
+                i += 2;
+            } else {
+                throw std::invalid_argument("Unmatched '{' in format string");
+            }
+        } else if (fmt[i] == '}') {
+            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                i += 2;
+            } else {
+                throw std::invalid_argument("Unmatched '}' in format string");
+            }
+        } else {
+            ++i;
+        }
+    }
+    return count;
+}
+
+/// <summary>
+/// Base case for recursive template format string writer.
 /// </summary>
 /// <param name="os">Target output stream.</param>
 /// <param name="fmt">Format string view.</param>
-/// <exception cref="std::invalid_argument">Thrown if unmatched placeholder remains.</exception>
-inline void WriteFormatted(std::ostream& os, compat::string_view fmt) {
+inline void WriteFormattedImpl(std::ostream& os, compat::string_view fmt) {
     for (std::size_t i = 0; i < fmt.size(); ++i) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
@@ -2192,17 +4819,10 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt) {
 }
 
 /// <summary>
-/// Recursive template format string parser substituting {} placeholders with arguments.
+/// Recursive template format string writer substituting {} placeholders with arguments.
 /// </summary>
-/// <typeparam name="First">Type of head argument.</typeparam>
-/// <typeparam name="Rest">Types of tail arguments.</typeparam>
-/// <param name="os">Target output stream.</param>
-/// <param name="fmt">Format string view.</param>
-/// <param name="first">Head argument.</param>
-/// <param name="rest">Tail arguments.</param>
-/// <exception cref="std::invalid_argument">Thrown if excess arguments are supplied.</exception>
 template <typename First, typename... Rest>
-inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const First& first, const Rest&... rest) {
+inline void WriteFormattedImpl(std::ostream& os, compat::string_view fmt, const First& first, const Rest&... rest) {
     for (std::size_t i = 0; i < fmt.size(); ++i) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
@@ -2210,7 +4830,7 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Firs
                 ++i;
             } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
                 StreamFormatArg(os, first);
-                WriteFormatted(os, fmt.substr(i + 2), rest...);
+                WriteFormattedImpl(os, fmt.substr(i + 2), rest...);
                 return;
             } else {
                 os << fmt[i];
@@ -2225,6 +4845,59 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Firs
     throw std::invalid_argument("Too many arguments for format string");
 }
 
+/// <summary>
+/// Validates placeholder count against argument count and writes formatted output to stream.
+/// </summary>
+/// <typeparam name="Args">Types of arguments.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to format.</param>
+/// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
+template <typename... Args>
+inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args&... args) {
+    constexpr std::size_t num_args = sizeof...(Args);
+    std::size_t num_placeholders = CountAndValidatePlaceholders(fmt);
+    if (num_placeholders < num_args) {
+        throw std::invalid_argument("Too many arguments for format string");
+    }
+    if (num_placeholders > num_args) {
+        throw std::invalid_argument("Too few arguments for format string");
+    }
+    WriteFormattedImpl(os, fmt, args...);
+}
+
+/// <summary>
+/// Writes UTF-8 encoded string view to stdout, converting to UTF-16 via WriteConsoleW if attached to a Windows console.
+/// </summary>
+/// <param name="text">UTF-8 encoded string view to write.</param>
+inline void WriteStdoutUtf8(compat::string_view text) {
+#if defined(_WIN32)
+    int stdout_fd = _fileno(stdout);
+    if (stdout_fd >= 0 && _isatty(stdout_fd)) {
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD mode = 0;
+        if (hConsole != INVALID_HANDLE_VALUE && hConsole != NULL && GetConsoleMode(hConsole, &mode)) {
+            if (!text.empty()) {
+                int wide_len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), NULL, 0);
+                if (wide_len > 0) {
+                    std::wstring wide_buf(static_cast<std::size_t>(wide_len), L'\0');
+                    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), &wide_buf[0], wide_len);
+                    DWORD written = 0;
+                    WriteConsoleW(hConsole, wide_buf.data(), static_cast<DWORD>(wide_buf.size()), &written, NULL);
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+    }
+#endif
+    if (!text.empty()) {
+        std::fwrite(text.data(), 1, text.size(), stdout);
+        std::fflush(stdout);
+    }
+}
+
 } // namespace detail
 } // namespace compat
 
@@ -2233,6 +4906,9 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Firs
 // ============================================================================
 
 namespace compat {
+
+// compat::formatter is declared in SelfPrint.hpp and can be specialized here or in user code.
+
 namespace detail {
 
 /// <summary>
@@ -2260,6 +4936,7 @@ inline std::string FormatToString(compat::string_view fmt, const Args&... args) 
 #  include <format>
 namespace compat {
     using std::format;
+    using std::formatter;
 }
 #else
 namespace compat {
@@ -2284,6 +4961,52 @@ inline std::string format(compat::string_view fmt, const Args&... args) {
 // ============================================================================
 
 namespace compat {
+
+using from_chars_result = detail::from_chars_result;
+
+/// <summary>
+/// Parses an unsigned integer from a character buffer with specified radix base.
+/// </summary>
+/// <typeparam name="IntType">Unsigned integer destination type.</typeparam>
+/// <param name="first">Pointer to start of character sequence.</param>
+/// <param name="last">Pointer past end of character sequence.</param>
+/// <param name="value">Output reference for parsed value.</param>
+/// <param name="base">Radix base between 2 and 36 inclusive.</param>
+/// <returns>from_chars_result with position and error state.</returns>
+template <typename IntType,
+          typename std::enable_if<std::is_integral<IntType>::value && std::is_unsigned<IntType>::value && !std::is_same<IntType, bool>::value, int32_t>::type = 0>
+inline from_chars_result from_chars(const char* first, const char* last, IntType& value, int32_t base = 10) noexcept {
+    return detail::from_chars_unsigned(first, last, value, base);
+}
+
+/// <summary>
+/// Parses a signed integer from a character buffer with specified radix base.
+/// </summary>
+/// <typeparam name="IntType">Signed integer destination type.</typeparam>
+/// <param name="first">Pointer to start of character sequence.</param>
+/// <param name="last">Pointer past end of character sequence.</param>
+/// <param name="value">Output reference for parsed value.</param>
+/// <param name="base">Radix base between 2 and 36 inclusive.</param>
+/// <returns>from_chars_result with position and error state.</returns>
+template <typename IntType,
+          typename std::enable_if<std::is_integral<IntType>::value && std::is_signed<IntType>::value && !std::is_same<IntType, bool>::value, int32_t>::type = 0>
+inline from_chars_result from_chars(const char* first, const char* last, IntType& value, int32_t base = 10) noexcept {
+    return detail::from_chars_signed(first, last, value, base);
+}
+
+/// <summary>
+/// Parses a floating-point number from a character buffer without allocations or locale dependency.
+/// </summary>
+/// <typeparam name="FloatType">Floating-point destination type (float or double).</typeparam>
+/// <param name="first">Pointer to start of character sequence.</param>
+/// <param name="last">Pointer past end of character sequence.</param>
+/// <param name="value">Output reference for parsed value.</param>
+/// <returns>from_chars_result with position and error state.</returns>
+template <typename FloatType,
+          typename std::enable_if<std::is_floating_point<FloatType>::value, int32_t>::type = 0>
+inline from_chars_result from_chars(const char* first, const char* last, FloatType& value) noexcept {
+    return detail::from_chars_float(first, last, value);
+}
 
 /// <summary>
 /// Parses a string_view into the specified type T with fail-fast validation.
@@ -2315,22 +5038,35 @@ namespace compat {
 /// <summary>
 /// Writes formatted text to the specified output stream.
 /// </summary>
+/// <typeparam name="Args">Types of arguments to format.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void print(std::ostream& os, compat::string_view fmt, const Args&... args) {
     detail::WriteFormatted(os, fmt, args...);
 }
 
 /// <summary>
-/// Writes formatted text to standard output (std::cout).
+/// Writes formatted text to standard output using UTF-8 console output when available.
 /// </summary>
+/// <typeparam name="Args">Types of arguments to format.</typeparam>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void print(compat::string_view fmt, const Args&... args) {
-    detail::WriteFormatted(std::cout, fmt, args...);
+    std::ostringstream oss;
+    detail::WriteFormatted(oss, fmt, args...);
+    detail::WriteStdoutUtf8(oss.str());
 }
 
 /// <summary>
 /// Writes formatted text followed by a newline to the specified output stream.
 /// </summary>
+/// <typeparam name="Args">Types of arguments to format.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void println(std::ostream& os, compat::string_view fmt, const Args&... args) {
     detail::WriteFormatted(os, fmt, args...);
@@ -2338,26 +5074,32 @@ inline void println(std::ostream& os, compat::string_view fmt, const Args&... ar
 }
 
 /// <summary>
-/// Writes formatted text followed by a newline to standard output (std::cout).
+/// Writes formatted text followed by a newline to standard output using UTF-8 console output when available.
 /// </summary>
+/// <typeparam name="Args">Types of arguments to format.</typeparam>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void println(compat::string_view fmt, const Args&... args) {
-    detail::WriteFormatted(std::cout, fmt, args...);
-    std::cout << '\n';
+    std::ostringstream oss;
+    detail::WriteFormatted(oss, fmt, args...);
+    oss << '\n';
+    detail::WriteStdoutUtf8(oss.str());
 }
 
 /// <summary>
 /// Writes a single newline character to the specified output stream.
 /// </summary>
+/// <param name="os">Target output stream.</param>
 inline void println(std::ostream& os) {
     os << '\n';
 }
 
 /// <summary>
-/// Writes a single newline character to standard output (std::cout).
+/// Writes a single newline character to standard output.
 /// </summary>
 inline void println() {
-    std::cout << '\n';
+    detail::WriteStdoutUtf8("\n");
 }
 
 } // namespace compat
@@ -2369,6 +5111,28 @@ inline void println() {
 
 // Master include header for compat library.
 // Zero external dependencies, downward compatible from C++23 to C++11.
+
+// ============================================================================
+// Internal Preprocessor Cleanup
+// Undefine internal helper macros to prevent macro leakage into consumer code,
+// while retaining public API macros (e.g. COMPAT_NODISCARD).
+// ============================================================================
+#undef COMPAT_CPLUSPLUS
+#undef COMPAT_CXX_11
+#undef COMPAT_CXX_14
+#undef COMPAT_CXX_17
+#undef COMPAT_CXX_20
+#undef COMPAT_CXX_23
+#undef COMPAT_HAS_EXCEPTIONS
+#undef COMPAT_THROW_OR_ABORT
+#undef COMPAT_CONSTEXPR_14
+#undef COMPAT_ABI_TAG
+#undef COMPAT_HAS_STD_EXPECTED
+#undef COMPAT_HAS_STD_PRINT
+#undef COMPAT_HAS_STD_FORMAT
+#undef COMPAT_HAS_STD_STRING_VIEW
+#undef COMPAT_HAS_STD_VARIANT
+#undef COMPAT_BAD_EXPECTED_ACCESS_DEFINED
 
 // ============================================================================
 // End of Single-Header Distribution: dist/compat.hpp

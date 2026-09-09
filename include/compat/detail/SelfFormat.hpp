@@ -5,6 +5,9 @@
 #include <sstream>
 
 namespace compat {
+
+// compat::formatter is declared in SelfPrint.hpp and can be specialized here or in user code.
+
 namespace detail {
 
 /// <summary>

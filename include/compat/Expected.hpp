@@ -18,6 +18,7 @@ namespace compat {
     using detail::unexpected;
     using detail::unexpect_t;
     using detail::unexpect;
+    using detail::bad_expected_access;
 }
 #else
 #  include "detail/SelfUnionExpected.hpp"
@@ -26,5 +27,6 @@ namespace compat {
     using detail::unexpected;
     using detail::unexpect_t;
     using detail::unexpect;
+    using detail::bad_expected_access;
 }
 #endif
