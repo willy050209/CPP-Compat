@@ -1838,7 +1838,7 @@ public:
     /// <param name="count">Requested length or npos for entire remainder.</param>
     /// <returns>A new string_view covering the requested substring.</returns>
     /// <exception cref="std::out_of_range">Thrown if pos is greater than size().</exception>
-    COMPAT_ALWAYS_INLINE COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
+    COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
         if (pos > m_size) {
             COMPAT_THROW_OR_ABORT(std::out_of_range("compat::string_view::substr out of range"));
         }
@@ -2086,7 +2086,7 @@ private:
 /// <summary>
 /// Equality comparison between two string_views.
 /// </summary>
-COMPAT_ALWAYS_INLINE COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
            (lhs.data() == rhs.data() || lhs.size() == 0 ||
             string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
