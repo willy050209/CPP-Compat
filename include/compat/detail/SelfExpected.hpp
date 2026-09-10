@@ -961,7 +961,7 @@ public:
     /// <summary>
     /// Dereference operator for expected of void.
     /// </summary>
-    constexpr void operator*() const noexcept {}
+    COMPAT_CONSTEXPR_14 void operator*() const noexcept {}
 
     /// <summary>
     /// Verifies success state or throws bad_expected_access.

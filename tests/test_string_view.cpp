@@ -21,8 +21,10 @@ constexpr bool TestConstexprStringView() {
     if (sv.substr(0, 9) != "constexpr") return false;
     if (sv.find("test") != 10) return false;
     if (sv.rfind('t') != 16) return false;
+#if !COMPAT_HAS_STD_STRING_VIEW || (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
     if (!sv.starts_with("const")) return false;
     if (!sv.ends_with("string")) return false;
+#endif
     if (sv.compare("constexpr_test_string") != 0) return false;
     return true;
 }

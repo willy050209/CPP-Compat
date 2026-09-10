@@ -39,30 +39,26 @@ namespace string_view_helper {
     COMPAT_CONSTEXPR_14 int32_t ConstexprMemcmp(const char* s1, const char* s2, std::size_t n) noexcept {
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
 #  if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
-        if (std::is_constant_evaluated()) {
-            for (std::size_t i = 0; i < n; ++i) {
-                unsigned char c1 = static_cast<unsigned char>(s1[i]);
-                unsigned char c2 = static_cast<unsigned char>(s2[i]);
-                if (c1 < c2) return -1;
-                if (c1 > c2) return 1;
-            }
-            return 0;
+        if (!std::is_constant_evaluated()) {
+            return (n > 0) ? std::memcmp(s1, s2, n) : 0;
         }
 #  elif defined(__has_builtin)
 #    if __has_builtin(__builtin_is_constant_evaluated)
-        if (__builtin_is_constant_evaluated()) {
-            for (std::size_t i = 0; i < n; ++i) {
-                unsigned char c1 = static_cast<unsigned char>(s1[i]);
-                unsigned char c2 = static_cast<unsigned char>(s2[i]);
-                if (c1 < c2) return -1;
-                if (c1 > c2) return 1;
-            }
-            return 0;
+        if (!__builtin_is_constant_evaluated()) {
+            return (n > 0) ? std::memcmp(s1, s2, n) : 0;
         }
 #    endif
 #  endif
-#endif
+        for (std::size_t i = 0; i < n; ++i) {
+            unsigned char c1 = static_cast<unsigned char>(s1[i]);
+            unsigned char c2 = static_cast<unsigned char>(s2[i]);
+            if (c1 < c2) return -1;
+            if (c1 > c2) return 1;
+        }
+        return 0;
+#else
         return (n > 0) ? std::memcmp(s1, s2, n) : 0;
+#endif
     }
 } // namespace string_view_helper
 
