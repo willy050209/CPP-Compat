@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../Config.hpp"
 #include <cstddef>
@@ -36,8 +36,9 @@ namespace string_view_helper {
     /// <param name="s2">Second memory buffer.</param>
     /// <param name="n">Number of bytes to compare.</param>
     /// <returns>Negative if s1 &lt; s2, 0 if equal, positive if s1 &gt; s2.</returns>
-    inline COMPAT_CONSTEXPR_14 int32_t ConstexprMemcmp(const char* s1, const char* s2, std::size_t n) noexcept {
-#if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
+    COMPAT_CONSTEXPR_14 int32_t ConstexprMemcmp(const char* s1, const char* s2, std::size_t n) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#  if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
         if (std::is_constant_evaluated()) {
             for (std::size_t i = 0; i < n; ++i) {
                 unsigned char c1 = static_cast<unsigned char>(s1[i]);
@@ -47,8 +48,8 @@ namespace string_view_helper {
             }
             return 0;
         }
-#elif defined(__has_builtin)
-#  if __has_builtin(__builtin_is_constant_evaluated)
+#  elif defined(__has_builtin)
+#    if __has_builtin(__builtin_is_constant_evaluated)
         if (__builtin_is_constant_evaluated()) {
             for (std::size_t i = 0; i < n; ++i) {
                 unsigned char c1 = static_cast<unsigned char>(s1[i]);
@@ -58,6 +59,7 @@ namespace string_view_helper {
             }
             return 0;
         }
+#    endif
 #  endif
 #endif
         return (n > 0) ? std::memcmp(s1, s2, n) : 0;
@@ -459,7 +461,7 @@ private:
 /// <summary>
 /// Equality comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
            (lhs.size() == 0 || string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
 }
@@ -467,63 +469,63 @@ COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, string_view rhs) noe
 /// <summary>
 /// Inequality comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator!=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator!=(string_view lhs, string_view rhs) noexcept {
     return !(lhs == rhs);
 }
 
 /// <summary>
 /// Less-than comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator<(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator<(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) < 0;
 }
 
 /// <summary>
 /// Less-than-or-equal comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator<=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator<=(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) <= 0;
 }
 
 /// <summary>
 /// Greater-than comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator>(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator>(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) > 0;
 }
 
 /// <summary>
 /// Greater-than-or-equal comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator>=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator>=(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) >= 0;
 }
 
 /// <summary>
 /// Equality comparison between string_view and C-style string.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, const char* rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, const char* rhs) noexcept {
     return lhs == string_view(rhs);
 }
 
 /// <summary>
 /// Equality comparison between C-style string and string_view.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator==(const char* lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(const char* lhs, string_view rhs) noexcept {
     return string_view(lhs) == rhs;
 }
 
 /// <summary>
 /// Inequality comparison between string_view and C-style string.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator!=(string_view lhs, const char* rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator!=(string_view lhs, const char* rhs) noexcept {
     return !(lhs == rhs);
 }
 
 /// <summary>
 /// Inequality comparison between C-style string and string_view.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator!=(const char* lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator!=(const char* lhs, string_view rhs) noexcept {
     return !(lhs == rhs);
 }
 

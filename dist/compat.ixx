@@ -212,6 +212,26 @@ export module compat;
 #  define COMPAT_NODISCARD
 #endif
 
+export namespace compat {
+namespace detail {
+
+    /// <summary>
+    /// C++11 相容之 void_t 輔助模板型別（相當於 C++17 std::void_t）。
+    /// </summary>
+    template <typename... Ts>
+    struct make_void {
+        using type = void;
+    };
+
+    /// <summary>
+    /// 用於 SFINAE 的 void 映射別名模板。
+    /// </summary>
+    template <typename... Ts>
+    using void_t = typename make_void<Ts...>::type;
+
+} // namespace detail
+} // namespace compat
+
 // ============================================================================
 // Module Section: include/compat/detail/SelfExpected.hpp
 // ============================================================================
@@ -1614,8 +1634,9 @@ namespace string_view_helper {
     /// <param name="s2">Second memory buffer.</param>
     /// <param name="n">Number of bytes to compare.</param>
     /// <returns>Negative if s1 &lt; s2, 0 if equal, positive if s1 &gt; s2.</returns>
-    inline COMPAT_CONSTEXPR_14 int32_t ConstexprMemcmp(const char* s1, const char* s2, std::size_t n) noexcept {
-#if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
+    COMPAT_CONSTEXPR_14 int32_t ConstexprMemcmp(const char* s1, const char* s2, std::size_t n) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#  if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
         if (std::is_constant_evaluated()) {
             for (std::size_t i = 0; i < n; ++i) {
                 unsigned char c1 = static_cast<unsigned char>(s1[i]);
@@ -1625,8 +1646,8 @@ namespace string_view_helper {
             }
             return 0;
         }
-#elif defined(__has_builtin)
-#  if __has_builtin(__builtin_is_constant_evaluated)
+#  elif defined(__has_builtin)
+#    if __has_builtin(__builtin_is_constant_evaluated)
         if (__builtin_is_constant_evaluated()) {
             for (std::size_t i = 0; i < n; ++i) {
                 unsigned char c1 = static_cast<unsigned char>(s1[i]);
@@ -1636,6 +1657,7 @@ namespace string_view_helper {
             }
             return 0;
         }
+#    endif
 #  endif
 #endif
         return (n > 0) ? std::memcmp(s1, s2, n) : 0;
@@ -2037,7 +2059,7 @@ private:
 /// <summary>
 /// Equality comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
            (lhs.size() == 0 || string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
 }
@@ -2045,63 +2067,63 @@ COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, string_view rhs) noe
 /// <summary>
 /// Inequality comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator!=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator!=(string_view lhs, string_view rhs) noexcept {
     return !(lhs == rhs);
 }
 
 /// <summary>
 /// Less-than comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator<(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator<(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) < 0;
 }
 
 /// <summary>
 /// Less-than-or-equal comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator<=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator<=(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) <= 0;
 }
 
 /// <summary>
 /// Greater-than comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator>(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator>(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) > 0;
 }
 
 /// <summary>
 /// Greater-than-or-equal comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator>=(string_view lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator>=(string_view lhs, string_view rhs) noexcept {
     return lhs.compare(rhs) >= 0;
 }
 
 /// <summary>
 /// Equality comparison between string_view and C-style string.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator==(string_view lhs, const char* rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, const char* rhs) noexcept {
     return lhs == string_view(rhs);
 }
 
 /// <summary>
 /// Equality comparison between C-style string and string_view.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator==(const char* lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator==(const char* lhs, string_view rhs) noexcept {
     return string_view(lhs) == rhs;
 }
 
 /// <summary>
 /// Inequality comparison between string_view and C-style string.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator!=(string_view lhs, const char* rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator!=(string_view lhs, const char* rhs) noexcept {
     return !(lhs == rhs);
 }
 
 /// <summary>
 /// Inequality comparison between C-style string and string_view.
 /// </summary>
-COMPAT_CONSTEXPR_14 inline bool operator!=(const char* lhs, string_view rhs) noexcept {
+COMPAT_CONSTEXPR_14 bool operator!=(const char* lhs, string_view rhs) noexcept {
     return !(lhs == rhs);
 }
 
@@ -4526,7 +4548,7 @@ using format_context = basic_format_context<std::ostreambuf_iterator<char>, char
 template <>
 struct formatter<std::string, char> {
     template <typename FormatContext>
-    auto format(const std::string& val, FormatContext& ctx) const {
+    auto format(const std::string& val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         for (char c : val) {
             *it++ = c;
@@ -4542,7 +4564,7 @@ struct formatter<std::string, char> {
 template <>
 struct formatter<compat::string_view, char> {
     template <typename FormatContext>
-    auto format(compat::string_view val, FormatContext& ctx) const {
+    auto format(compat::string_view val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         for (std::size_t i = 0; i < val.size(); ++i) {
             *it++ = val[i];
@@ -4558,7 +4580,7 @@ struct formatter<compat::string_view, char> {
 template <>
 struct formatter<const char*, char> {
     template <typename FormatContext>
-    auto format(const char* val, FormatContext& ctx) const {
+    auto format(const char* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         if (val != nullptr) {
             while (*val != '\0') {
@@ -4576,7 +4598,7 @@ struct formatter<const char*, char> {
 template <>
 struct formatter<char*, char> {
     template <typename FormatContext>
-    auto format(char* val, FormatContext& ctx) const {
+    auto format(char* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         const char* p = val;
         return formatter<const char*, char>{}.format(p, ctx);
     }
@@ -4588,7 +4610,7 @@ struct formatter<char*, char> {
 template <>
 struct formatter<char, char> {
     template <typename FormatContext>
-    auto format(char val, FormatContext& ctx) const {
+    auto format(char val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         *it++ = val;
         ctx.advance_to(it);
@@ -4602,7 +4624,7 @@ struct formatter<char, char> {
 template <>
 struct formatter<bool, char> {
     template <typename FormatContext>
-    auto format(bool val, FormatContext& ctx) const {
+    auto format(bool val, FormatContext& ctx) const -> decltype(ctx.out()) {
         const char* s = val ? "true" : "false";
         return formatter<const char*, char>{}.format(s, ctx);
     }
@@ -4614,7 +4636,7 @@ struct formatter<bool, char> {
 template <>
 struct formatter<const void*, char> {
     template <typename FormatContext>
-    auto format(const void* val, FormatContext& ctx) const {
+    auto format(const void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         std::ostringstream ss;
         ss << val;
         std::string s = ss.str();
@@ -4628,7 +4650,7 @@ struct formatter<const void*, char> {
 template <>
 struct formatter<void*, char> {
     template <typename FormatContext>
-    auto format(void* val, FormatContext& ctx) const {
+    auto format(void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         return formatter<const void*, char>{}.format(val, ctx);
     }
 };
@@ -4637,7 +4659,7 @@ struct formatter<void*, char> {
 template <> \
 struct formatter<Type, char> { \
     template <typename FormatContext> \
-    auto format(Type val, FormatContext& ctx) const { \
+    auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) { \
         std::ostringstream ss; \
         ss << val; \
         std::string s = ss.str(); \
@@ -4665,7 +4687,7 @@ COMPAT_DEFINE_ARITHMETIC_FORMATTER(long double)
 template <>
 struct formatter<signed char, char> {
     template <typename FormatContext>
-    auto format(signed char val, FormatContext& ctx) const {
+    auto format(signed char val, FormatContext& ctx) const -> decltype(ctx.out()) {
         return formatter<int, char>{}.format(static_cast<int>(val), ctx);
     }
 };
@@ -4676,7 +4698,7 @@ struct formatter<signed char, char> {
 template <>
 struct formatter<unsigned char, char> {
     template <typename FormatContext>
-    auto format(unsigned char val, FormatContext& ctx) const {
+    auto format(unsigned char val, FormatContext& ctx) const -> decltype(ctx.out()) {
         return formatter<unsigned int, char>{}.format(static_cast<unsigned int>(val), ctx);
     }
 };
@@ -4706,7 +4728,7 @@ template <typename T, typename = void>
 struct has_std_formatter : std::false_type {};
 
 template <typename T>
-struct has_std_formatter<T, std::void_t<
+struct has_std_formatter<T, compat::detail::void_t<
     decltype(std::declval<std::formatter<typename format_arg_traits<T>::type, char>>()
         .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<std::format_context&>()))
 >> : std::true_type {};
@@ -4740,7 +4762,7 @@ template <typename T, typename = void>
 struct has_compat_formatter : std::false_type {};
 
 template <typename T>
-struct has_compat_formatter<T, std::void_t<
+struct has_compat_formatter<T, compat::detail::void_t<
     decltype(std::declval<formatter<typename format_arg_traits<T>::type, char>>()
         .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<format_context&>()))
 >> : std::true_type {};

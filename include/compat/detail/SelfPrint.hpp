@@ -91,7 +91,7 @@ using format_context = basic_format_context<std::ostreambuf_iterator<char>, char
 template <>
 struct formatter<std::string, char> {
     template <typename FormatContext>
-    auto format(const std::string& val, FormatContext& ctx) const {
+    auto format(const std::string& val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         for (char c : val) {
             *it++ = c;
@@ -107,7 +107,7 @@ struct formatter<std::string, char> {
 template <>
 struct formatter<compat::string_view, char> {
     template <typename FormatContext>
-    auto format(compat::string_view val, FormatContext& ctx) const {
+    auto format(compat::string_view val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         for (std::size_t i = 0; i < val.size(); ++i) {
             *it++ = val[i];
@@ -123,7 +123,7 @@ struct formatter<compat::string_view, char> {
 template <>
 struct formatter<const char*, char> {
     template <typename FormatContext>
-    auto format(const char* val, FormatContext& ctx) const {
+    auto format(const char* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         if (val != nullptr) {
             while (*val != '\0') {
@@ -141,7 +141,7 @@ struct formatter<const char*, char> {
 template <>
 struct formatter<char*, char> {
     template <typename FormatContext>
-    auto format(char* val, FormatContext& ctx) const {
+    auto format(char* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         const char* p = val;
         return formatter<const char*, char>{}.format(p, ctx);
     }
@@ -153,7 +153,7 @@ struct formatter<char*, char> {
 template <>
 struct formatter<char, char> {
     template <typename FormatContext>
-    auto format(char val, FormatContext& ctx) const {
+    auto format(char val, FormatContext& ctx) const -> decltype(ctx.out()) {
         auto it = ctx.out();
         *it++ = val;
         ctx.advance_to(it);
@@ -167,7 +167,7 @@ struct formatter<char, char> {
 template <>
 struct formatter<bool, char> {
     template <typename FormatContext>
-    auto format(bool val, FormatContext& ctx) const {
+    auto format(bool val, FormatContext& ctx) const -> decltype(ctx.out()) {
         const char* s = val ? "true" : "false";
         return formatter<const char*, char>{}.format(s, ctx);
     }
@@ -179,7 +179,7 @@ struct formatter<bool, char> {
 template <>
 struct formatter<const void*, char> {
     template <typename FormatContext>
-    auto format(const void* val, FormatContext& ctx) const {
+    auto format(const void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         std::ostringstream ss;
         ss << val;
         std::string s = ss.str();
@@ -193,7 +193,7 @@ struct formatter<const void*, char> {
 template <>
 struct formatter<void*, char> {
     template <typename FormatContext>
-    auto format(void* val, FormatContext& ctx) const {
+    auto format(void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         return formatter<const void*, char>{}.format(val, ctx);
     }
 };
@@ -202,7 +202,7 @@ struct formatter<void*, char> {
 template <> \
 struct formatter<Type, char> { \
     template <typename FormatContext> \
-    auto format(Type val, FormatContext& ctx) const { \
+    auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) { \
         std::ostringstream ss; \
         ss << val; \
         std::string s = ss.str(); \
@@ -230,7 +230,7 @@ COMPAT_DEFINE_ARITHMETIC_FORMATTER(long double)
 template <>
 struct formatter<signed char, char> {
     template <typename FormatContext>
-    auto format(signed char val, FormatContext& ctx) const {
+    auto format(signed char val, FormatContext& ctx) const -> decltype(ctx.out()) {
         return formatter<int, char>{}.format(static_cast<int>(val), ctx);
     }
 };
@@ -241,7 +241,7 @@ struct formatter<signed char, char> {
 template <>
 struct formatter<unsigned char, char> {
     template <typename FormatContext>
-    auto format(unsigned char val, FormatContext& ctx) const {
+    auto format(unsigned char val, FormatContext& ctx) const -> decltype(ctx.out()) {
         return formatter<unsigned int, char>{}.format(static_cast<unsigned int>(val), ctx);
     }
 };
@@ -271,7 +271,7 @@ template <typename T, typename = void>
 struct has_std_formatter : std::false_type {};
 
 template <typename T>
-struct has_std_formatter<T, std::void_t<
+struct has_std_formatter<T, compat::detail::void_t<
     decltype(std::declval<std::formatter<typename format_arg_traits<T>::type, char>>()
         .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<std::format_context&>()))
 >> : std::true_type {};
@@ -305,7 +305,7 @@ template <typename T, typename = void>
 struct has_compat_formatter : std::false_type {};
 
 template <typename T>
-struct has_compat_formatter<T, std::void_t<
+struct has_compat_formatter<T, compat::detail::void_t<
     decltype(std::declval<formatter<typename format_arg_traits<T>::type, char>>()
         .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<format_context&>()))
 >> : std::true_type {};

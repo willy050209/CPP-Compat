@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include <compat/Format.hpp>
 #include <string>
 #include <cstdint>
@@ -29,7 +29,7 @@ struct std::formatter<Point> : std::formatter<std::string> {
 template <>
 struct compat::formatter<Point, char> {
     template <typename FormatContext>
-    auto format(const Point& p, FormatContext& ctx) const {
+    auto format(const Point& p, FormatContext& ctx) const -> decltype(ctx.out()) {
         std::string s = "(" + std::to_string(p.x) + ", " + std::to_string(p.y) + ")";
         auto it = ctx.out();
         for (char c : s) {

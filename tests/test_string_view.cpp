@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <cstdint>
 
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14) || defined(COMPAT_CXX14)
 /// <summary>
 /// Compile-time verification of compat::string_view constexpr operations in C++14 and later.
 /// </summary>
@@ -26,7 +27,6 @@ constexpr bool TestConstexprStringView() {
     return true;
 }
 
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
 static_assert(TestConstexprStringView(), "compat::string_view constexpr tests failed");
 #endif
 

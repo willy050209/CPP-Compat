@@ -147,3 +147,24 @@
 #else
 #  define COMPAT_NODISCARD
 #endif
+
+namespace compat {
+namespace detail {
+
+    /// <summary>
+    /// C++11 相容之 void_t 輔助模板型別（相當於 C++17 std::void_t）。
+    /// </summary>
+    template <typename... Ts>
+    struct make_void {
+        using type = void;
+    };
+
+    /// <summary>
+    /// 用於 SFINAE 的 void 映射別名模板。
+    /// </summary>
+    template <typename... Ts>
+    using void_t = typename make_void<Ts...>::type;
+
+} // namespace detail
+} // namespace compat
+

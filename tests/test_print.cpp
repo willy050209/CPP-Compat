@@ -29,7 +29,7 @@ struct std::formatter<Color> : std::formatter<std::string> {
 template <>
 struct compat::formatter<Color, char> {
     template <typename FormatContext>
-    auto format(const Color& c, FormatContext& ctx) const {
+    auto format(const Color& c, FormatContext& ctx) const -> decltype(ctx.out()) {
         std::string s = "rgb(" + std::to_string(c.r) + ", " + std::to_string(c.g) + ", " + std::to_string(c.b) + ")";
         auto it = ctx.out();
         for (char ch : s) {
