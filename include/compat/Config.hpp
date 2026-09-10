@@ -39,6 +39,23 @@
 #  define COMPAT_THROW_OR_ABORT(ex) std::abort()
 #endif
 
+// Microarchitecture optimization macros
+#if defined(_MSC_VER)
+#  define COMPAT_ALWAYS_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#  define COMPAT_ALWAYS_INLINE __attribute__((always_inline)) inline
+#else
+#  define COMPAT_ALWAYS_INLINE inline
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#  define COMPAT_LIKELY(x)   __builtin_expect(!!(x), 1)
+#  define COMPAT_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#  define COMPAT_LIKELY(x)   (x)
+#  define COMPAT_UNLIKELY(x) (x)
+#endif
+
 // Constexpr support for C++14+
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
 #  define COMPAT_CONSTEXPR_14 constexpr

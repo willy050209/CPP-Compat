@@ -340,7 +340,7 @@ struct ExpectedStorageBase<T, E, false> {
     }
 
     void destroy() noexcept {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             m_storage.m_val.~T();
         } else {
             m_storage.m_err.~E();
@@ -454,7 +454,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to copy.</param>
     expected(const expected& other) : Base(other.m_has_value) {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
@@ -466,7 +466,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to move.</param>
     expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
@@ -487,7 +487,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (m_has_value) {
+            if (COMPAT_UNLIKELY(m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
             } else {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
@@ -505,7 +505,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (m_has_value) {
+            if (COMPAT_UNLIKELY(m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
             } else {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
@@ -584,7 +584,7 @@ public:
     /// <returns>Reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T& value() & {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return m_storage.m_val;
@@ -596,7 +596,7 @@ public:
     /// <returns>Const reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T& value() const & {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return m_storage.m_val;
@@ -608,7 +608,7 @@ public:
     /// <returns>Rvalue reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T&& value() && {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::move(m_storage.m_val);
@@ -620,7 +620,7 @@ public:
     /// <returns>Const rvalue reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T&& value() const && {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::move(m_storage.m_val);
@@ -632,7 +632,7 @@ public:
     /// <returns>Reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E& error() & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -644,7 +644,7 @@ public:
     /// <returns>Const reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E& error() const & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -656,7 +656,7 @@ public:
     /// <returns>Rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E&& error() && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -668,7 +668,7 @@ public:
     /// <returns>Const rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E&& error() const && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -730,7 +730,7 @@ public:
     /// <returns>Stored value or fallback value.</returns>
     template <typename U>
     T value_or(U&& default_val) const & {
-        return m_has_value ? m_storage.m_val : static_cast<T>(std::forward<U>(default_val));
+        return COMPAT_LIKELY(m_has_value) ? m_storage.m_val : static_cast<T>(std::forward<U>(default_val));
     }
 
     /// <summary>
@@ -741,7 +741,7 @@ public:
     /// <returns>Stored value or fallback value.</returns>
     template <typename U>
     T value_or(U&& default_val) && {
-        return m_has_value ? std::move(m_storage.m_val) : static_cast<T>(std::forward<U>(default_val));
+        return COMPAT_LIKELY(m_has_value) ? std::move(m_storage.m_val) : static_cast<T>(std::forward<U>(default_val));
     }
 
     /// <summary>
@@ -1104,7 +1104,7 @@ struct ExpectedVoidStorageBase<E, false> {
     }
 
     void destroy() noexcept {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             m_storage.m_err.~E();
         }
     }
@@ -1188,7 +1188,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to copy.</param>
     expected(const expected& other) : Base(other.m_has_value) {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
         }
     }
@@ -1198,7 +1198,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to move.</param>
     expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
         }
     }
@@ -1217,7 +1217,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (!m_has_value) {
+            if (COMPAT_UNLIKELY(!m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
             }
         }
@@ -1233,7 +1233,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (!m_has_value) {
+            if (COMPAT_UNLIKELY(!m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
             }
         }
@@ -1290,7 +1290,7 @@ public:
     /// </summary>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     void value() const & {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
     }
@@ -1300,7 +1300,7 @@ public:
     /// </summary>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     void value() && {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
     }
@@ -1311,7 +1311,7 @@ public:
     /// <returns>Reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E& error() & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -1323,7 +1323,7 @@ public:
     /// <returns>Const reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E& error() const & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -1335,7 +1335,7 @@ public:
     /// <returns>Rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E&& error() && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -1347,7 +1347,7 @@ public:
     /// <returns>Const rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E&& error() const && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);

@@ -42,6 +42,10 @@ namespace string_view_helper {
         if (!std::is_constant_evaluated()) {
             return (n > 0) ? std::memcmp(s1, s2, n) : 0;
         }
+#  elif defined(_MSC_VER)
+        if (!__builtin_is_constant_evaluated()) {
+            return (n > 0) ? std::memcmp(s1, s2, n) : 0;
+        }
 #  elif defined(__has_builtin)
 #    if __has_builtin(__builtin_is_constant_evaluated)
         if (!__builtin_is_constant_evaluated()) {
@@ -111,7 +115,7 @@ public:
     /// Returns a pointer to the beginning of the viewed buffer.
     /// </summary>
     /// <returns>Pointer to character data.</returns>
-    constexpr const_pointer data() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_pointer data() const noexcept {
         return m_data;
     }
 
@@ -119,7 +123,7 @@ public:
     /// Returns the number of characters in the view.
     /// </summary>
     /// <returns>Number of characters.</returns>
-    constexpr size_type size() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr size_type size() const noexcept {
         return m_size;
     }
 
@@ -127,7 +131,7 @@ public:
     /// Returns the number of characters in the view (alias for size).
     /// </summary>
     /// <returns>Number of characters.</returns>
-    constexpr size_type length() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr size_type length() const noexcept {
         return m_size;
     }
 
@@ -135,7 +139,7 @@ public:
     /// Checks if the view contains no characters.
     /// </summary>
     /// <returns>True if empty, false otherwise.</returns>
-    constexpr bool empty() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr bool empty() const noexcept {
         return m_size == 0;
     }
 
@@ -144,7 +148,7 @@ public:
     /// </summary>
     /// <param name="pos">Zero-based character index.</param>
     /// <returns>Const reference to character.</returns>
-    constexpr const_reference operator[](size_type pos) const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_reference operator[](size_type pos) const noexcept {
         return m_data[pos];
     }
 
@@ -165,7 +169,7 @@ public:
     /// Returns a const reference to the first character.
     /// </summary>
     /// <returns>Const reference to first character.</returns>
-    constexpr const_reference front() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_reference front() const noexcept {
         return m_data[0];
     }
 
@@ -173,7 +177,7 @@ public:
     /// Returns a const reference to the last character.
     /// </summary>
     /// <returns>Const reference to last character.</returns>
-    constexpr const_reference back() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_reference back() const noexcept {
         return m_data[m_size - 1];
     }
 
@@ -246,7 +250,7 @@ public:
     /// <param name="count">Requested length or npos for entire remainder.</param>
     /// <returns>A new string_view covering the requested substring.</returns>
     /// <exception cref="std::out_of_range">Thrown if pos is greater than size().</exception>
-    COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
+    COMPAT_ALWAYS_INLINE COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
         if (pos > m_size) {
             COMPAT_THROW_OR_ABORT(std::out_of_range("compat::string_view::substr out of range"));
         }
@@ -261,16 +265,27 @@ public:
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
     COMPAT_CONSTEXPR_14 size_type find(string_view v, size_type pos = 0) const noexcept {
-        if (v.m_size == 0) {
+        if (COMPAT_UNLIKELY(v.m_size == 0)) {
             return pos <= m_size ? pos : npos;
         }
-        if (pos >= m_size || v.m_size > m_size - pos) {
+        if (COMPAT_UNLIKELY(pos >= m_size || v.m_size > m_size - pos)) {
             return npos;
         }
-        for (size_type i = pos; i <= m_size - v.m_size; ++i) {
-            if (string_view_helper::ConstexprMemcmp(m_data + i, v.m_data, v.m_size) == 0) {
-                return i;
+        if (v.m_size == 1) {
+            return find(v.m_data[0], pos);
+        }
+        const char first_char = v.m_data[0];
+        const size_type max_pos = m_size - v.m_size;
+        size_type cur = pos;
+        while (cur <= max_pos) {
+            size_type match = find(first_char, cur);
+            if (match == npos || match > max_pos) {
+                return npos;
             }
+            if (string_view_helper::ConstexprMemcmp(m_data + match + 1, v.m_data + 1, v.m_size - 1) == 0) {
+                return match;
+            }
+            cur = match + 1;
         }
         return npos;
     }
@@ -282,6 +297,32 @@ public:
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
     COMPAT_CONSTEXPR_14 size_type find(char c, size_type pos = 0) const noexcept {
+        if (pos >= m_size) {
+            return npos;
+        }
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#  if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
+        if (!std::is_constant_evaluated()) {
+            const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+            return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+        }
+#  elif defined(_MSC_VER)
+        if (!__builtin_is_constant_evaluated()) {
+            const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+            return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+        }
+#  elif defined(__has_builtin)
+#    if __has_builtin(__builtin_is_constant_evaluated)
+        if (!__builtin_is_constant_evaluated()) {
+            const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+            return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+        }
+#    endif
+#  endif
+#else
+        const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+        return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+#endif
         for (size_type i = pos; i < m_size; ++i) {
             if (m_data[i] == c) {
                 return i;
@@ -457,9 +498,10 @@ private:
 /// <summary>
 /// Equality comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
+COMPAT_ALWAYS_INLINE COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
-           (lhs.size() == 0 || string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
+           (lhs.data() == rhs.data() || lhs.size() == 0 ||
+            string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
 }
 
 /// <summary>

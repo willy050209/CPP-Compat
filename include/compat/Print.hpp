@@ -4,7 +4,6 @@
 #include "StringView.hpp"
 #include "detail/SelfPrint.hpp"
 #include <iostream>
-#include <sstream>
 
 #if COMPAT_HAS_STD_PRINT
 #  include <print>
@@ -16,7 +15,7 @@ namespace compat {
 namespace compat {
 
 /// <summary>
-/// Writes formatted text to the specified output stream.
+/// Writes formatted text to the specified output stream using single-write buffered output.
 /// </summary>
 /// <typeparam name="Args">Types of arguments to format.</typeparam>
 /// <param name="os">Target output stream.</param>
@@ -24,7 +23,9 @@ namespace compat {
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void print(std::ostream& os, compat::string_view fmt, const Args&... args) {
-    detail::WriteFormatted(os, fmt, args...);
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 }
 
 /// <summary>
@@ -35,13 +36,13 @@ inline void print(std::ostream& os, compat::string_view fmt, const Args&... args
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void print(compat::string_view fmt, const Args&... args) {
-    std::ostringstream oss;
-    detail::WriteFormatted(oss, fmt, args...);
-    detail::WriteStdoutUtf8(oss.str());
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    detail::WriteStdoutUtf8(buf.view());
 }
 
 /// <summary>
-/// Writes formatted text followed by a newline to the specified output stream.
+/// Writes formatted text followed by a newline to the specified output stream using single-write buffered output.
 /// </summary>
 /// <typeparam name="Args">Types of arguments to format.</typeparam>
 /// <param name="os">Target output stream.</param>
@@ -49,8 +50,10 @@ inline void print(compat::string_view fmt, const Args&... args) {
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void println(std::ostream& os, compat::string_view fmt, const Args&... args) {
-    detail::WriteFormatted(os, fmt, args...);
-    os << '\n';
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    buf.push_back('\n');
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 }
 
 /// <summary>
@@ -61,10 +64,10 @@ inline void println(std::ostream& os, compat::string_view fmt, const Args&... ar
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void println(compat::string_view fmt, const Args&... args) {
-    std::ostringstream oss;
-    detail::WriteFormatted(oss, fmt, args...);
-    oss << '\n';
-    detail::WriteStdoutUtf8(oss.str());
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    buf.push_back('\n');
+    detail::WriteStdoutUtf8(buf.view());
 }
 
 /// <summary>

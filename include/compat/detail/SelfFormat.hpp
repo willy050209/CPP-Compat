@@ -2,7 +2,6 @@
 
 #include "SelfPrint.hpp"
 #include <string>
-#include <sstream>
 
 namespace compat {
 
@@ -11,7 +10,7 @@ namespace compat {
 namespace detail {
 
 /// <summary>
-/// Formats arguments into a std::string according to the format string.
+/// Formats arguments into a std::string using zero-heap-allocation stack_buffer.
 /// </summary>
 /// <typeparam name="Args">Types of arguments to format.</typeparam>
 /// <param name="fmt">Format string view containing {} placeholders.</param>
@@ -19,9 +18,9 @@ namespace detail {
 /// <returns>Formatted std::string.</returns>
 template <typename... Args>
 inline std::string FormatToString(compat::string_view fmt, const Args&... args) {
-    std::ostringstream oss;
-    WriteFormatted(oss, fmt, args...);
-    return oss.str();
+    stack_buffer<512> buf;
+    WriteFormattedBuffer(buf, fmt, args...);
+    return buf.str();
 }
 
 } // namespace detail

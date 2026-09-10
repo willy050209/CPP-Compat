@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 #include "../StringView.hpp"
@@ -8,6 +8,8 @@
 #include <type_traits>
 #include <stdexcept>
 #include <cstdint>
+#include <cstring>
+#include <cstdio>
 
 #if COMPAT_HAS_STD_FORMAT
 #  include <format>
@@ -45,6 +47,224 @@ struct formatter;
 namespace detail {
 
 /// <summary>
+/// Small-buffer-optimized stack buffer with fallback to heap allocation for formatted output.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity in bytes (default 512).</typeparam>
+template <std::size_t Capacity = 512>
+class stack_buffer {
+public:
+    /// <summary>
+    /// Constructs an empty stack_buffer.
+    /// </summary>
+    stack_buffer() noexcept : size_(0), heap_ptr_(nullptr), capacity_(Capacity) {}
+
+    /// <summary>
+    /// Destructor releasing heap allocation if buffer expanded beyond stack capacity.
+    /// </summary>
+    ~stack_buffer() {
+        if (heap_ptr_ != nullptr) {
+            delete[] heap_ptr_;
+        }
+    }
+
+    stack_buffer(const stack_buffer&) = delete;
+    stack_buffer& operator=(const stack_buffer&) = delete;
+
+    /// <summary>
+    /// Move constructor transferring heap buffer ownership or copying stack contents.
+    /// </summary>
+    /// <param name="other">Source buffer to move from.</param>
+    stack_buffer(stack_buffer&& other) noexcept
+        : size_(other.size_), heap_ptr_(other.heap_ptr_), capacity_(other.capacity_) {
+        if (other.heap_ptr_ == nullptr) {
+            std::memcpy(stack_buf_, other.stack_buf_, other.size_);
+        }
+        other.heap_ptr_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = Capacity;
+    }
+
+    /// <summary>
+    /// Move assignment operator transferring heap buffer ownership or copying stack contents.
+    /// </summary>
+    /// <param name="other">Source buffer to move from.</param>
+    /// <returns>Reference to this buffer.</returns>
+    stack_buffer& operator=(stack_buffer&& other) noexcept {
+        if (this != &other) {
+            if (heap_ptr_ != nullptr) {
+                delete[] heap_ptr_;
+            }
+            size_ = other.size_;
+            heap_ptr_ = other.heap_ptr_;
+            capacity_ = other.capacity_;
+            if (other.heap_ptr_ == nullptr) {
+                std::memcpy(stack_buf_, other.stack_buf_, other.size_);
+            }
+            other.heap_ptr_ = nullptr;
+            other.size_ = 0;
+            other.capacity_ = Capacity;
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Appends a single character to the buffer, growing capacity if needed.
+    /// </summary>
+    /// <param name="c">Character to append.</param>
+    COMPAT_ALWAYS_INLINE void push_back(char c) {
+        if (COMPAT_UNLIKELY(size_ >= capacity_)) {
+            grow(size_ + 1);
+        }
+        char* p = heap_ptr_ ? heap_ptr_ : stack_buf_;
+        p[size_++] = c;
+    }
+
+    /// <summary>
+    /// Appends a contiguous sequence of characters to the buffer.
+    /// </summary>
+    /// <param name="data">Pointer to character sequence.</param>
+    /// <param name="len">Number of characters to append.</param>
+    COMPAT_ALWAYS_INLINE void append(const char* data, std::size_t len) {
+        if (COMPAT_UNLIKELY(len == 0)) {
+            return;
+        }
+        if (COMPAT_UNLIKELY(size_ + len > capacity_)) {
+            grow(size_ + len);
+        }
+        char* p = heap_ptr_ ? heap_ptr_ : stack_buf_;
+        std::memcpy(p + size_, data, len);
+        size_ += len;
+    }
+
+    /// <summary>
+    /// Returns pointer to constant buffer data.
+    /// </summary>
+    /// <returns>Pointer to data.</returns>
+    COMPAT_ALWAYS_INLINE const char* data() const noexcept {
+        return heap_ptr_ ? heap_ptr_ : stack_buf_;
+    }
+
+    /// <summary>
+    /// Returns pointer to mutable buffer data.
+    /// </summary>
+    /// <returns>Pointer to data.</returns>
+    COMPAT_ALWAYS_INLINE char* data() noexcept {
+        return heap_ptr_ ? heap_ptr_ : stack_buf_;
+    }
+
+    /// <summary>
+    /// Returns the current number of characters in the buffer.
+    /// </summary>
+    /// <returns>Character count.</returns>
+    COMPAT_ALWAYS_INLINE std::size_t size() const noexcept {
+        return size_;
+    }
+
+    /// <summary>
+    /// Checks whether the buffer is empty.
+    /// </summary>
+    /// <returns>True if size is zero, false otherwise.</returns>
+    COMPAT_ALWAYS_INLINE bool empty() const noexcept {
+        return size_ == 0;
+    }
+
+    /// <summary>
+    /// Returns a string_view spanning the buffer contents.
+    /// </summary>
+    /// <returns>compat::string_view representing the buffer.</returns>
+    COMPAT_ALWAYS_INLINE compat::string_view view() const noexcept {
+        return compat::string_view(data(), size_);
+    }
+
+    /// <summary>
+    /// Constructs a std::string from the buffer contents.
+    /// </summary>
+    /// <returns>std::string copy.</returns>
+    std::string str() const {
+        return std::string(data(), size_);
+    }
+
+    /// <summary>
+    /// Clears buffer contents without deallocating heap storage.
+    /// </summary>
+    COMPAT_ALWAYS_INLINE void clear() noexcept {
+        size_ = 0;
+    }
+
+private:
+    void grow(std::size_t min_capacity) {
+        std::size_t new_cap = capacity_ * 2;
+        if (new_cap < min_capacity) {
+            new_cap = min_capacity;
+        }
+        char* new_ptr = new char[new_cap];
+        char* old_ptr = heap_ptr_ ? heap_ptr_ : stack_buf_;
+        std::memcpy(new_ptr, old_ptr, size_);
+        if (heap_ptr_ != nullptr) {
+            delete[] heap_ptr_;
+        }
+        heap_ptr_ = new_ptr;
+        capacity_ = new_cap;
+    }
+
+    char stack_buf_[Capacity];
+    std::size_t size_;
+    char* heap_ptr_;
+    std::size_t capacity_;
+};
+
+/// <summary>
+/// Output iterator adapter appending characters directly into a stack_buffer.
+/// </summary>
+/// <typeparam name="Buffer">Buffer type supporting push_back.</typeparam>
+template <typename Buffer>
+class buffer_appender {
+public:
+    using iterator_category = std::output_iterator_tag;
+    using value_type = void;
+    using difference_type = void;
+    using pointer = void;
+    using reference = void;
+
+    /// <summary>
+    /// Constructs a buffer_appender bound to the target buffer.
+    /// </summary>
+    /// <param name="buf">Target buffer reference.</param>
+    COMPAT_ALWAYS_INLINE explicit buffer_appender(Buffer& buf) noexcept : buf_(&buf) {}
+
+    /// <summary>
+    /// Appends a character to the bound buffer.
+    /// </summary>
+    /// <param name="c">Character to write.</param>
+    /// <returns>Reference to this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender& operator=(char c) {
+        buf_->push_back(c);
+        return *this;
+    }
+
+    /// <summary>
+    /// Dereference operator returning this iterator.
+    /// </summary>
+    /// <returns>Reference to this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender& operator*() noexcept { return *this; }
+
+    /// <summary>
+    /// Prefix increment operator.
+    /// </summary>
+    /// <returns>Reference to this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender& operator++() noexcept { return *this; }
+
+    /// <summary>
+    /// Postfix increment operator.
+    /// </summary>
+    /// <returns>Copy of this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender operator++(int) noexcept { return *this; }
+
+private:
+    Buffer* buf_;
+};
+
+/// <summary>
 /// Minimal basic_format_context for compatibility with std::formatter pattern.
 /// </summary>
 /// <typeparam name="OutputIt">Output iterator type.</typeparam>
@@ -77,7 +297,66 @@ private:
     OutputIt out_;
 };
 
-using format_context = basic_format_context<std::ostreambuf_iterator<char>, char>;
+using format_context = basic_format_context<buffer_appender<stack_buffer<512>>, char>;
+
+alignas(64) static const char DigitsLut[200] = {
+    '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9',
+    '1', '0', '1', '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9',
+    '2', '0', '2', '1', '2', '2', '2', '3', '2', '4', '2', '5', '2', '6', '2', '7', '2', '8', '2', '9',
+    '3', '0', '3', '1', '3', '2', '3', '3', '3', '4', '3', '5', '3', '6', '3', '7', '3', '8', '3', '9',
+    '4', '0', '4', '1', '4', '2', '4', '3', '4', '4', '4', '5', '4', '6', '4', '7', '4', '8', '4', '9',
+    '5', '0', '5', '1', '5', '2', '5', '3', '5', '4', '5', '5', '5', '6', '5', '7', '5', '8', '5', '9',
+    '6', '0', '6', '1', '6', '2', '6', '3', '6', '4', '6', '5', '6', '6', '6', '7', '6', '8', '6', '9',
+    '7', '0', '7', '1', '7', '2', '7', '3', '7', '4', '7', '5', '7', '6', '7', '7', '7', '8', '7', '9',
+    '8', '0', '8', '1', '8', '2', '8', '3', '8', '4', '8', '5', '8', '6', '8', '7', '8', '8', '8', '9',
+    '9', '0', '9', '1', '9', '2', '9', '3', '9', '4', '9', '5', '9', '6', '9', '7', '9', '8', '9', '9'
+};
+
+/// <summary>
+/// Formats an unsigned 64-bit integer into a buffer using Radix-100 table lookup from back to front.
+/// </summary>
+/// <param name="end_ptr">Pointer to end of destination buffer.</param>
+/// <param name="val">Unsigned 64-bit value to format.</param>
+/// <returns>Pointer to first character of formatted string.</returns>
+COMPAT_ALWAYS_INLINE char* FormatUIntToBuffer(char* end_ptr, uint64_t val) noexcept {
+    while (val >= 100) {
+        uint32_t rem = static_cast<uint32_t>(val % 100);
+        val /= 100;
+        end_ptr -= 2;
+        end_ptr[0] = DigitsLut[rem * 2];
+        end_ptr[1] = DigitsLut[rem * 2 + 1];
+    }
+    if (val >= 10) {
+        end_ptr -= 2;
+        end_ptr[0] = DigitsLut[val * 2];
+        end_ptr[1] = DigitsLut[val * 2 + 1];
+    } else {
+        *--end_ptr = static_cast<char>('0' + val);
+    }
+    return end_ptr;
+}
+
+/// <summary>
+/// Formats a signed 64-bit integer into a buffer using Radix-100 table lookup from back to front.
+/// </summary>
+/// <param name="end_ptr">Pointer to end of destination buffer.</param>
+/// <param name="val">Signed 64-bit value to format.</param>
+/// <returns>Pointer to first character of formatted string.</returns>
+COMPAT_ALWAYS_INLINE char* FormatIntToBuffer(char* end_ptr, int64_t val) noexcept {
+    uint64_t uval;
+    bool negative = false;
+    if (val < 0) {
+        negative = true;
+        uval = static_cast<uint64_t>(-(val + 1)) + 1;
+    } else {
+        uval = static_cast<uint64_t>(val);
+    }
+    char* p = FormatUIntToBuffer(end_ptr, uval);
+    if (negative) {
+        *--p = '-';
+    }
+    return p;
+}
 
 } // namespace detail
 
@@ -180,10 +459,14 @@ template <>
 struct formatter<const void*, char> {
     template <typename FormatContext>
     auto format(const void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        std::ostringstream ss;
-        ss << val;
-        std::string s = ss.str();
-        return formatter<std::string, char>{}.format(s, ctx);
+        char buf[32];
+        int len = std::snprintf(buf, sizeof(buf), "%p", val);
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
     }
 };
 
@@ -198,31 +481,75 @@ struct formatter<void*, char> {
     }
 };
 
-#define COMPAT_DEFINE_ARITHMETIC_FORMATTER(Type) \
-template <> \
-struct formatter<Type, char> { \
-    template <typename FormatContext> \
-    auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) { \
-        std::ostringstream ss; \
-        ss << val; \
-        std::string s = ss.str(); \
-        return formatter<std::string, char>{}.format(s, ctx); \
-    } \
+#define COMPAT_DEFINE_UINT_FORMATTER(Type) template <> struct formatter<Type, char> {     template <typename FormatContext>     auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) {         char buf[32];         char* end = buf + sizeof(buf);         char* start = detail::FormatUIntToBuffer(end, static_cast<uint64_t>(val));         auto it = ctx.out();         for (char* p = start; p < end; ++p) {             *it++ = *p;         }         ctx.advance_to(it);         return it;     } };
+
+#define COMPAT_DEFINE_SINT_FORMATTER(Type) template <> struct formatter<Type, char> {     template <typename FormatContext>     auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) {         char buf[32];         char* end = buf + sizeof(buf);         char* start = detail::FormatIntToBuffer(end, static_cast<int64_t>(val));         auto it = ctx.out();         for (char* p = start; p < end; ++p) {             *it++ = *p;         }         ctx.advance_to(it);         return it;     } };
+
+COMPAT_DEFINE_SINT_FORMATTER(short)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned short)
+COMPAT_DEFINE_SINT_FORMATTER(int)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned int)
+COMPAT_DEFINE_SINT_FORMATTER(long)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned long)
+COMPAT_DEFINE_SINT_FORMATTER(long long)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned long long)
+
+#undef COMPAT_DEFINE_UINT_FORMATTER
+#undef COMPAT_DEFINE_SINT_FORMATTER
+
+/// <summary>
+/// Formatter specialization for float.
+/// </summary>
+template <>
+struct formatter<float, char> {
+    template <typename FormatContext>
+    auto format(float val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        char buf[64];
+        int len = std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(val));
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
 };
 
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(short)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned short)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(int)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned int)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(long long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned long long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(float)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(double)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(long double)
+/// <summary>
+/// Formatter specialization for double.
+/// </summary>
+template <>
+struct formatter<double, char> {
+    template <typename FormatContext>
+    auto format(double val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        char buf[64];
+        int len = std::snprintf(buf, sizeof(buf), "%g", val);
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
 
-#undef COMPAT_DEFINE_ARITHMETIC_FORMATTER
+/// <summary>
+/// Formatter specialization for long double.
+/// </summary>
+template <>
+struct formatter<long double, char> {
+    template <typename FormatContext>
+    auto format(long double val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        char buf[64];
+        int len = std::snprintf(buf, sizeof(buf), "%Lg", val);
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
 
 /// <summary>
 /// Formatter specialization for signed char (printed as integer).
@@ -278,25 +605,20 @@ struct has_std_formatter<T, compat::detail::void_t<
 
 template <typename T>
 inline typename std::enable_if<has_std_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
     using FormatterType = typename format_arg_traits<T>::type;
     FormatterType formatted_arg = static_cast<FormatterType>(arg);
     std::string s = std::format("{}", formatted_arg);
-    os << s;
+    buf.append(s.data(), s.size());
 }
 
 template <typename T>
 inline typename std::enable_if<!has_std_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
-    os << arg;
-}
-
-inline void StreamFormatArg(std::ostream& os, signed char arg) {
-    os << static_cast<int32_t>(arg);
-}
-
-inline void StreamFormatArg(std::ostream& os, unsigned char arg) {
-    os << static_cast<uint32_t>(arg);
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
+    std::ostringstream oss;
+    oss << arg;
+    std::string s = oss.str();
+    buf.append(s.data(), s.size());
 }
 
 #else
@@ -312,9 +634,9 @@ struct has_compat_formatter<T, compat::detail::void_t<
 
 template <typename T>
 inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
-    std::ostreambuf_iterator<char> out_it(os);
-    format_context ctx(out_it);
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
+    buffer_appender<stack_buffer<512>> app(buf);
+    basic_format_context<buffer_appender<stack_buffer<512>>, char> ctx(app);
     using FormatterType = typename format_arg_traits<T>::type;
     formatter<FormatterType, char> fmt_obj;
     FormatterType formatted_arg = static_cast<FormatterType>(arg);
@@ -323,19 +645,154 @@ StreamFormatArg(std::ostream& os, const T& arg) {
 
 template <typename T>
 inline typename std::enable_if<!has_compat_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
-    os << arg;
-}
-
-inline void StreamFormatArg(std::ostream& os, signed char arg) {
-    os << static_cast<int32_t>(arg);
-}
-
-inline void StreamFormatArg(std::ostream& os, unsigned char arg) {
-    os << static_cast<uint32_t>(arg);
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
+    std::ostringstream oss;
+    oss << arg;
+    std::string s = oss.str();
+    buf.append(s.data(), s.size());
 }
 
 #endif
+
+// Fast-path overloads for common standard types to bypass std::format/format_context abstraction overhead
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::string& val) {
+    buf.append(val.data(), val.size());
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, compat::string_view val) {
+    buf.append(val.data(), val.size());
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char* val) {
+    if (val != nullptr) {
+        buf.append(val, std::strlen(val));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char* val) {
+    if (val != nullptr) {
+        buf.append(val, std::strlen(val));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char val) {
+    buf.push_back(val);
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, bool val) {
+    if (val) {
+        buf.append("true", 4);
+    } else {
+        buf.append("false", 5);
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, signed char arg) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(arg));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned char arg) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(arg));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, short val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned short val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, int val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned int val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned long long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, val);
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, float val) {
+    char sbuf[64];
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", static_cast<double>(val));
+    if (len > 0) {
+        buf.append(sbuf, static_cast<std::size_t>(len));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, double val) {
+    char sbuf[64];
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", val);
+    if (len > 0) {
+        buf.append(sbuf, static_cast<std::size_t>(len));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long double val) {
+    char sbuf[64];
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%Lg", val);
+    if (len > 0) {
+        buf.append(sbuf, static_cast<std::size_t>(len));
+    }
+}
+
+/// <summary>
+/// Formats an argument to an output stream via stack buffer to minimize stream operations.
+/// </summary>
+/// <typeparam name="T">Argument type.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="arg">Argument to format.</param>
+template <typename T>
+inline void StreamFormatArg(std::ostream& os, const T& arg) {
+    stack_buffer<512> buf;
+    FormatArgToBuffer(buf, arg);
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+}
 
 /// <summary>
 /// Counts the number of {} placeholders in a format string (skipping escaped {{ and }}).
@@ -371,67 +828,107 @@ inline std::size_t CountAndValidatePlaceholders(compat::string_view fmt) {
 }
 
 /// <summary>
-/// Base case for recursive template format string writer.
+/// Base case for recursive template format string writer into stack_buffer.
 /// </summary>
-/// <param name="os">Target output stream.</param>
+/// <param name="buf">Target stack buffer.</param>
 /// <param name="fmt">Format string view.</param>
-inline void WriteFormattedImpl(std::ostream& os, compat::string_view fmt) {
-    for (std::size_t i = 0; i < fmt.size(); ++i) {
+inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt) {
+    std::size_t i = 0;
+    std::size_t start = 0;
+    while (i < fmt.size()) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                os << '{';
-                ++i;
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('{');
+                i += 2;
+                start = i;
             } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
                 throw std::invalid_argument("Too few arguments for format string");
             } else {
-                os << fmt[i];
+                ++i;
             }
-        } else if (fmt[i] == '}' && i + 1 < fmt.size() && fmt[i + 1] == '}') {
-            os << '}';
-            ++i;
+        } else if (fmt[i] == '}') {
+            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('}');
+                i += 2;
+                start = i;
+            } else {
+                ++i;
+            }
         } else {
-            os << fmt[i];
+            ++i;
         }
+    }
+    if (i > start) {
+        buf.append(fmt.data() + start, i - start);
     }
 }
 
 /// <summary>
-/// Recursive template format string writer substituting {} placeholders with arguments.
+/// Recursive template format string writer substituting {} placeholders into stack_buffer.
 /// </summary>
+/// <typeparam name="First">First argument type.</typeparam>
+/// <typeparam name="Rest">Remaining argument types.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="first">First argument.</param>
+/// <param name="rest">Remaining arguments.</param>
 template <typename First, typename... Rest>
-inline void WriteFormattedImpl(std::ostream& os, compat::string_view fmt, const First& first, const Rest&... rest) {
-    for (std::size_t i = 0; i < fmt.size(); ++i) {
+inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt, const First& first, const Rest&... rest) {
+    std::size_t i = 0;
+    std::size_t start = 0;
+    while (i < fmt.size()) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                os << '{';
-                ++i;
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('{');
+                i += 2;
+                start = i;
             } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                StreamFormatArg(os, first);
-                WriteFormattedImpl(os, fmt.substr(i + 2), rest...);
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                FormatArgToBuffer(buf, first);
+                WriteFormattedBufferImpl(buf, fmt.substr(i + 2), rest...);
                 return;
             } else {
-                os << fmt[i];
+                ++i;
             }
-        } else if (fmt[i] == '}' && i + 1 < fmt.size() && fmt[i + 1] == '}') {
-            os << '}';
-            ++i;
+        } else if (fmt[i] == '}') {
+            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('}');
+                i += 2;
+                start = i;
+            } else {
+                ++i;
+            }
         } else {
-            os << fmt[i];
+            ++i;
         }
     }
     throw std::invalid_argument("Too many arguments for format string");
 }
 
 /// <summary>
-/// Validates placeholder count against argument count and writes formatted output to stream.
+/// Validates placeholder count against argument count and writes formatted output to stack buffer.
 /// </summary>
 /// <typeparam name="Args">Types of arguments.</typeparam>
-/// <param name="os">Target output stream.</param>
+/// <param name="buf">Target stack buffer.</param>
 /// <param name="fmt">Format string view.</param>
 /// <param name="args">Arguments to format.</param>
 /// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
 template <typename... Args>
-inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args&... args) {
+inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt, const Args&... args) {
     constexpr std::size_t num_args = sizeof...(Args);
     std::size_t num_placeholders = CountAndValidatePlaceholders(fmt);
     if (num_placeholders < num_args) {
@@ -440,7 +937,22 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args
     if (num_placeholders > num_args) {
         throw std::invalid_argument("Too few arguments for format string");
     }
-    WriteFormattedImpl(os, fmt, args...);
+    WriteFormattedBufferImpl(buf, fmt, args...);
+}
+
+/// <summary>
+/// Validates placeholder count against argument count and writes formatted output to stream via stack_buffer.
+/// </summary>
+/// <typeparam name="Args">Types of arguments.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to format.</param>
+/// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
+template <typename... Args>
+inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args&... args) {
+    stack_buffer<512> buf;
+    WriteFormattedBuffer(buf, fmt, args...);
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 }
 
 /// <summary>
@@ -457,10 +969,16 @@ inline void WriteStdoutUtf8(compat::string_view text) {
             if (!text.empty()) {
                 int wide_len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), NULL, 0);
                 if (wide_len > 0) {
-                    std::wstring wide_buf(static_cast<std::size_t>(wide_len), L'\0');
-                    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), &wide_buf[0], wide_len);
+                    wchar_t stack_wbuf[256];
+                    wchar_t* wptr = stack_wbuf;
+                    std::wstring heap_wbuf;
+                    if (static_cast<std::size_t>(wide_len) > 256) {
+                        heap_wbuf.resize(static_cast<std::size_t>(wide_len));
+                        wptr = &heap_wbuf[0];
+                    }
+                    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wptr, wide_len);
                     DWORD written = 0;
-                    WriteConsoleW(hConsole, wide_buf.data(), static_cast<DWORD>(wide_buf.size()), &written, NULL);
+                    WriteConsoleW(hConsole, wptr, static_cast<DWORD>(wide_len), &written, NULL);
                     return;
                 }
             } else {

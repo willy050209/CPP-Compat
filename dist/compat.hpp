@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -66,6 +67,23 @@
 #else
 #  define COMPAT_HAS_EXCEPTIONS 0
 #  define COMPAT_THROW_OR_ABORT(ex) std::abort()
+#endif
+
+// Microarchitecture optimization macros
+#if defined(_MSC_VER)
+#  define COMPAT_ALWAYS_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#  define COMPAT_ALWAYS_INLINE __attribute__((always_inline)) inline
+#else
+#  define COMPAT_ALWAYS_INLINE inline
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#  define COMPAT_LIKELY(x)   __builtin_expect(!!(x), 1)
+#  define COMPAT_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#  define COMPAT_LIKELY(x)   (x)
+#  define COMPAT_UNLIKELY(x) (x)
 #endif
 
 // Constexpr support for C++14+
@@ -1612,6 +1630,10 @@ namespace string_view_helper {
         if (!std::is_constant_evaluated()) {
             return (n > 0) ? std::memcmp(s1, s2, n) : 0;
         }
+#  elif defined(_MSC_VER)
+        if (!__builtin_is_constant_evaluated()) {
+            return (n > 0) ? std::memcmp(s1, s2, n) : 0;
+        }
 #  elif defined(__has_builtin)
 #    if __has_builtin(__builtin_is_constant_evaluated)
         if (!__builtin_is_constant_evaluated()) {
@@ -1681,7 +1703,7 @@ public:
     /// Returns a pointer to the beginning of the viewed buffer.
     /// </summary>
     /// <returns>Pointer to character data.</returns>
-    constexpr const_pointer data() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_pointer data() const noexcept {
         return m_data;
     }
 
@@ -1689,7 +1711,7 @@ public:
     /// Returns the number of characters in the view.
     /// </summary>
     /// <returns>Number of characters.</returns>
-    constexpr size_type size() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr size_type size() const noexcept {
         return m_size;
     }
 
@@ -1697,7 +1719,7 @@ public:
     /// Returns the number of characters in the view (alias for size).
     /// </summary>
     /// <returns>Number of characters.</returns>
-    constexpr size_type length() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr size_type length() const noexcept {
         return m_size;
     }
 
@@ -1705,7 +1727,7 @@ public:
     /// Checks if the view contains no characters.
     /// </summary>
     /// <returns>True if empty, false otherwise.</returns>
-    constexpr bool empty() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr bool empty() const noexcept {
         return m_size == 0;
     }
 
@@ -1714,7 +1736,7 @@ public:
     /// </summary>
     /// <param name="pos">Zero-based character index.</param>
     /// <returns>Const reference to character.</returns>
-    constexpr const_reference operator[](size_type pos) const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_reference operator[](size_type pos) const noexcept {
         return m_data[pos];
     }
 
@@ -1735,7 +1757,7 @@ public:
     /// Returns a const reference to the first character.
     /// </summary>
     /// <returns>Const reference to first character.</returns>
-    constexpr const_reference front() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_reference front() const noexcept {
         return m_data[0];
     }
 
@@ -1743,7 +1765,7 @@ public:
     /// Returns a const reference to the last character.
     /// </summary>
     /// <returns>Const reference to last character.</returns>
-    constexpr const_reference back() const noexcept {
+    COMPAT_ALWAYS_INLINE constexpr const_reference back() const noexcept {
         return m_data[m_size - 1];
     }
 
@@ -1816,7 +1838,7 @@ public:
     /// <param name="count">Requested length or npos for entire remainder.</param>
     /// <returns>A new string_view covering the requested substring.</returns>
     /// <exception cref="std::out_of_range">Thrown if pos is greater than size().</exception>
-    COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
+    COMPAT_ALWAYS_INLINE COMPAT_CONSTEXPR_14 string_view substr(size_type pos = 0, size_type count = npos) const {
         if (pos > m_size) {
             COMPAT_THROW_OR_ABORT(std::out_of_range("compat::string_view::substr out of range"));
         }
@@ -1831,16 +1853,27 @@ public:
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
     COMPAT_CONSTEXPR_14 size_type find(string_view v, size_type pos = 0) const noexcept {
-        if (v.m_size == 0) {
+        if (COMPAT_UNLIKELY(v.m_size == 0)) {
             return pos <= m_size ? pos : npos;
         }
-        if (pos >= m_size || v.m_size > m_size - pos) {
+        if (COMPAT_UNLIKELY(pos >= m_size || v.m_size > m_size - pos)) {
             return npos;
         }
-        for (size_type i = pos; i <= m_size - v.m_size; ++i) {
-            if (string_view_helper::ConstexprMemcmp(m_data + i, v.m_data, v.m_size) == 0) {
-                return i;
+        if (v.m_size == 1) {
+            return find(v.m_data[0], pos);
+        }
+        const char first_char = v.m_data[0];
+        const size_type max_pos = m_size - v.m_size;
+        size_type cur = pos;
+        while (cur <= max_pos) {
+            size_type match = find(first_char, cur);
+            if (match == npos || match > max_pos) {
+                return npos;
             }
+            if (string_view_helper::ConstexprMemcmp(m_data + match + 1, v.m_data + 1, v.m_size - 1) == 0) {
+                return match;
+            }
+            cur = match + 1;
         }
         return npos;
     }
@@ -1852,6 +1885,32 @@ public:
     /// <param name="pos">Offset to begin search.</param>
     /// <returns>Position of match, or npos if not found.</returns>
     COMPAT_CONSTEXPR_14 size_type find(char c, size_type pos = 0) const noexcept {
+        if (pos >= m_size) {
+            return npos;
+        }
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#  if defined(__cpp_lib_is_constant_evaluated) && (__cpp_lib_is_constant_evaluated >= 201811L)
+        if (!std::is_constant_evaluated()) {
+            const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+            return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+        }
+#  elif defined(_MSC_VER)
+        if (!__builtin_is_constant_evaluated()) {
+            const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+            return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+        }
+#  elif defined(__has_builtin)
+#    if __has_builtin(__builtin_is_constant_evaluated)
+        if (!__builtin_is_constant_evaluated()) {
+            const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+            return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+        }
+#    endif
+#  endif
+#else
+        const void* p = std::memchr(m_data + pos, static_cast<unsigned char>(c), m_size - pos);
+        return p ? static_cast<size_type>(static_cast<const char*>(p) - m_data) : npos;
+#endif
         for (size_type i = pos; i < m_size; ++i) {
             if (m_data[i] == c) {
                 return i;
@@ -2027,9 +2086,10 @@ private:
 /// <summary>
 /// Equality comparison between two string_views.
 /// </summary>
-COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
+COMPAT_ALWAYS_INLINE COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
-           (lhs.size() == 0 || string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
+           (lhs.data() == rhs.data() || lhs.size() == 0 ||
+            string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
 }
 
 /// <summary>
@@ -2499,7 +2559,7 @@ struct ExpectedStorageBase<T, E, false> {
     }
 
     void destroy() noexcept {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             m_storage.m_val.~T();
         } else {
             m_storage.m_err.~E();
@@ -2613,7 +2673,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to copy.</param>
     expected(const expected& other) : Base(other.m_has_value) {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
@@ -2625,7 +2685,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to move.</param>
     expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
@@ -2646,7 +2706,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (m_has_value) {
+            if (COMPAT_UNLIKELY(m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
             } else {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
@@ -2664,7 +2724,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (m_has_value) {
+            if (COMPAT_UNLIKELY(m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
             } else {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
@@ -2743,7 +2803,7 @@ public:
     /// <returns>Reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T& value() & {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return m_storage.m_val;
@@ -2755,7 +2815,7 @@ public:
     /// <returns>Const reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T& value() const & {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
         return m_storage.m_val;
@@ -2767,7 +2827,7 @@ public:
     /// <returns>Rvalue reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     T&& value() && {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::move(m_storage.m_val);
@@ -2779,7 +2839,7 @@ public:
     /// <returns>Const rvalue reference to value.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     const T&& value() const && {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
         return std::move(m_storage.m_val);
@@ -2791,7 +2851,7 @@ public:
     /// <returns>Reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E& error() & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -2803,7 +2863,7 @@ public:
     /// <returns>Const reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E& error() const & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -2815,7 +2875,7 @@ public:
     /// <returns>Rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     E&& error() && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -2827,7 +2887,7 @@ public:
     /// <returns>Const rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding value.</exception>
     const E&& error() const && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -2889,7 +2949,7 @@ public:
     /// <returns>Stored value or fallback value.</returns>
     template <typename U>
     T value_or(U&& default_val) const & {
-        return m_has_value ? m_storage.m_val : static_cast<T>(std::forward<U>(default_val));
+        return COMPAT_LIKELY(m_has_value) ? m_storage.m_val : static_cast<T>(std::forward<U>(default_val));
     }
 
     /// <summary>
@@ -2900,7 +2960,7 @@ public:
     /// <returns>Stored value or fallback value.</returns>
     template <typename U>
     T value_or(U&& default_val) && {
-        return m_has_value ? std::move(m_storage.m_val) : static_cast<T>(std::forward<U>(default_val));
+        return COMPAT_LIKELY(m_has_value) ? std::move(m_storage.m_val) : static_cast<T>(std::forward<U>(default_val));
     }
 
     /// <summary>
@@ -3263,7 +3323,7 @@ struct ExpectedVoidStorageBase<E, false> {
     }
 
     void destroy() noexcept {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             m_storage.m_err.~E();
         }
     }
@@ -3347,7 +3407,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to copy.</param>
     expected(const expected& other) : Base(other.m_has_value) {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
         }
     }
@@ -3357,7 +3417,7 @@ public:
     /// </summary>
     /// <param name="other">Instance to move.</param>
     expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
         }
     }
@@ -3376,7 +3436,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (!m_has_value) {
+            if (COMPAT_UNLIKELY(!m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
             }
         }
@@ -3392,7 +3452,7 @@ public:
         if (this != &other) {
             destroy();
             m_has_value = other.m_has_value;
-            if (!m_has_value) {
+            if (COMPAT_UNLIKELY(!m_has_value)) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
             }
         }
@@ -3449,7 +3509,7 @@ public:
     /// </summary>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     void value() const & {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(error()));
         }
     }
@@ -3459,7 +3519,7 @@ public:
     /// </summary>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when holding error.</exception>
     void value() && {
-        if (!m_has_value) {
+        if (COMPAT_UNLIKELY(!m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>(std::move(error())));
         }
     }
@@ -3470,7 +3530,7 @@ public:
     /// <returns>Reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E& error() & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -3482,7 +3542,7 @@ public:
     /// <returns>Const reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E& error() const & {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return m_storage.m_err;
@@ -3494,7 +3554,7 @@ public:
     /// <returns>Rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     E&& error() && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -3506,7 +3566,7 @@ public:
     /// <returns>Const rvalue reference to error.</returns>
     /// <exception cref="bad_expected_access&lt;E&gt;">Thrown when in success state.</exception>
     const E&& error() const && {
-        if (m_has_value) {
+        if (COMPAT_UNLIKELY(m_has_value)) {
             COMPAT_THROW_OR_ABORT(bad_expected_access<E>());
         }
         return std::move(m_storage.m_err);
@@ -3940,7 +4000,7 @@ struct from_chars_result {
 template <typename UIntType>
 inline from_chars_result from_chars_unsigned(const char* first, const char* last, UIntType& value, int32_t base = 10) noexcept {
     from_chars_result res{first, std::errc{}};
-    if (base < 2 || base > 36 || first >= last) {
+    if (COMPAT_UNLIKELY(base < 2 || base > 36 || first >= last)) {
         res.ec = std::errc::invalid_argument;
         return res;
     }
@@ -3955,40 +4015,59 @@ inline from_chars_result from_chars_unsigned(const char* first, const char* last
     bool overflow = false;
     bool has_digits = false;
 
-    while (ptr < last) {
-        char c = *ptr;
-        int32_t digit = -1;
-        if (c >= '0' && c <= '9') {
-            digit = c - '0';
-        } else if (c >= 'a' && c <= 'z') {
-            digit = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'Z') {
-            digit = c - 'A' + 10;
-        }
-
-        if (digit < 0 || digit >= base) {
-            break;
-        }
-
-        has_digits = true;
-        uint64_t udigit = static_cast<uint64_t>(digit);
-        if (!overflow) {
-            if (result > limit_div || (result == limit_div && udigit > limit_mod)) {
-                overflow = true;
-            } else {
-                result = result * ubase + udigit;
+    if (COMPAT_LIKELY(base == 10)) {
+        while (ptr < last) {
+            uint8_t c = static_cast<uint8_t>(*ptr);
+            uint8_t digit = static_cast<uint8_t>(c - '0');
+            if (digit > 9) {
+                break;
             }
+            has_digits = true;
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && digit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * 10 + digit;
+                }
+            }
+            ++ptr;
         }
-        ++ptr;
+    } else {
+        while (ptr < last) {
+            char c = *ptr;
+            int32_t digit = -1;
+            if (c >= '0' && c <= '9') {
+                digit = c - '0';
+            } else if (c >= 'a' && c <= 'z') {
+                digit = c - 'a' + 10;
+            } else if (c >= 'A' && c <= 'Z') {
+                digit = c - 'A' + 10;
+            }
+
+            if (digit < 0 || digit >= base) {
+                break;
+            }
+
+            has_digits = true;
+            uint64_t udigit = static_cast<uint64_t>(digit);
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && udigit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * ubase + udigit;
+                }
+            }
+            ++ptr;
+        }
     }
 
-    if (!has_digits) {
+    if (COMPAT_UNLIKELY(!has_digits)) {
         res.ec = std::errc::invalid_argument;
         res.ptr = first;
         return res;
     }
 
-    if (overflow) {
+    if (COMPAT_UNLIKELY(overflow)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
@@ -4012,7 +4091,7 @@ inline from_chars_result from_chars_unsigned(const char* first, const char* last
 template <typename IntType>
 inline from_chars_result from_chars_signed(const char* first, const char* last, IntType& value, int32_t base = 10) noexcept {
     from_chars_result res{first, std::errc{}};
-    if (base < 2 || base > 36 || first >= last) {
+    if (COMPAT_UNLIKELY(base < 2 || base > 36 || first >= last)) {
         res.ec = std::errc::invalid_argument;
         return res;
     }
@@ -4022,7 +4101,7 @@ inline from_chars_result from_chars_signed(const char* first, const char* last, 
     if (*ptr == '-') {
         negative = true;
         ++ptr;
-        if (ptr >= last) {
+        if (COMPAT_UNLIKELY(ptr >= last)) {
             res.ec = std::errc::invalid_argument;
             res.ptr = first;
             return res;
@@ -4041,40 +4120,59 @@ inline from_chars_result from_chars_signed(const char* first, const char* last, 
     bool overflow = false;
     bool has_digits = false;
 
-    while (ptr < last) {
-        char c = *ptr;
-        int32_t digit = -1;
-        if (c >= '0' && c <= '9') {
-            digit = c - '0';
-        } else if (c >= 'a' && c <= 'z') {
-            digit = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'Z') {
-            digit = c - 'A' + 10;
-        }
-
-        if (digit < 0 || digit >= base) {
-            break;
-        }
-
-        has_digits = true;
-        uint64_t udigit = static_cast<uint64_t>(digit);
-        if (!overflow) {
-            if (result > limit_div || (result == limit_div && udigit > limit_mod)) {
-                overflow = true;
-            } else {
-                result = result * ubase + udigit;
+    if (COMPAT_LIKELY(base == 10)) {
+        while (ptr < last) {
+            uint8_t c = static_cast<uint8_t>(*ptr);
+            uint8_t digit = static_cast<uint8_t>(c - '0');
+            if (digit > 9) {
+                break;
             }
+            has_digits = true;
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && digit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * 10 + digit;
+                }
+            }
+            ++ptr;
         }
-        ++ptr;
+    } else {
+        while (ptr < last) {
+            char c = *ptr;
+            int32_t digit = -1;
+            if (c >= '0' && c <= '9') {
+                digit = c - '0';
+            } else if (c >= 'a' && c <= 'z') {
+                digit = c - 'a' + 10;
+            } else if (c >= 'A' && c <= 'Z') {
+                digit = c - 'A' + 10;
+            }
+
+            if (digit < 0 || digit >= base) {
+                break;
+            }
+
+            has_digits = true;
+            uint64_t udigit = static_cast<uint64_t>(digit);
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && udigit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * ubase + udigit;
+                }
+            }
+            ++ptr;
+        }
     }
 
-    if (!has_digits) {
+    if (COMPAT_UNLIKELY(!has_digits)) {
         res.ec = std::errc::invalid_argument;
         res.ptr = first;
         return res;
     }
 
-    if (overflow) {
+    if (COMPAT_UNLIKELY(overflow)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
@@ -4142,7 +4240,7 @@ inline bool CaseInsensitiveEqual(const char* a, const char* b, std::size_t len) 
 template <typename FloatType>
 inline from_chars_result from_chars_float(const char* first, const char* last, FloatType& value) noexcept {
     from_chars_result res{first, std::errc{}};
-    if (first >= last) {
+    if (COMPAT_UNLIKELY(first >= last)) {
         res.ec = std::errc::invalid_argument;
         return res;
     }
@@ -4180,15 +4278,23 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
         return res;
     }
 
+    static const double kPow10Fast[23] = {
+        1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
+        1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,
+        1e20, 1e21, 1e22
+    };
+
     double mantissa = 0.0;
     int32_t frac_digits = 0;
     int32_t extra_exp = 0;
     bool has_digits = false;
 
-    while (ptr < last && *ptr >= '0' && *ptr <= '9') {
+    while (ptr < last) {
+        uint8_t digit = static_cast<uint8_t>(*ptr - '0');
+        if (digit > 9) break;
         has_digits = true;
         if (mantissa < 1e16) {
-            mantissa = mantissa * 10.0 + (*ptr - '0');
+            mantissa = mantissa * 10.0 + digit;
         } else {
             ++extra_exp;
         }
@@ -4197,17 +4303,19 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 
     if (ptr < last && *ptr == '.') {
         ++ptr;
-        while (ptr < last && *ptr >= '0' && *ptr <= '9') {
+        while (ptr < last) {
+            uint8_t digit = static_cast<uint8_t>(*ptr - '0');
+            if (digit > 9) break;
             has_digits = true;
             if (mantissa < 1e16) {
-                mantissa = mantissa * 10.0 + (*ptr - '0');
+                mantissa = mantissa * 10.0 + digit;
                 ++frac_digits;
             }
             ++ptr;
         }
     }
 
-    if (!has_digits) {
+    if (COMPAT_UNLIKELY(!has_digits)) {
         res.ec = std::errc::invalid_argument;
         res.ptr = first;
         return res;
@@ -4240,16 +4348,20 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 
     int32_t total_exp = exp_val + extra_exp - frac_digits;
 
-    if (total_exp > 308 && mantissa != 0.0) {
+    if (COMPAT_UNLIKELY(total_exp > 308 && mantissa != 0.0)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
     }
 
     double dval = mantissa;
-    if (total_exp > 0) {
+    if (total_exp >= 0 && total_exp <= 22) {
+        dval *= kPow10Fast[total_exp];
+    } else if (total_exp < 0 && total_exp >= -22) {
+        dval /= kPow10Fast[-total_exp];
+    } else if (total_exp > 22) {
         dval *= Pow10Positive(total_exp);
-    } else if (total_exp < 0) {
+    } else {
         if (total_exp < -324) {
             dval = 0.0;
         } else {
@@ -4258,7 +4370,7 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
     }
 
     // Overflow check for double
-    if (dval > 1.7976931348623157e+308 || dval < -1.7976931348623157e+308) {
+    if (COMPAT_UNLIKELY(dval > 1.7976931348623157e+308 || dval < -1.7976931348623157e+308)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
@@ -4266,7 +4378,7 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 
     // Overflow check for float
     if (std::is_same<FloatType, float>::value) {
-        if (dval > 3.4028234663852886e+38 || dval < -3.4028234663852886e+38) {
+        if (COMPAT_UNLIKELY(dval > 3.4028234663852886e+38 || dval < -3.4028234663852886e+38)) {
             res.ec = std::errc::result_out_of_range;
             res.ptr = ptr;
             return res;
@@ -4291,29 +4403,29 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 /// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename UIntType>
 inline compat::expected<UIntType, compat::string_view> ParseUnsigned(compat::string_view str) noexcept {
-    if (str.empty()) {
+    if (COMPAT_UNLIKELY(str.empty())) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
-    if (str[0] == '-') {
+    if (COMPAT_UNLIKELY(str[0] == '-')) {
         return compat::unexpected<compat::string_view>("Negative sign in unsigned integer");
     }
     const char* first = str.data();
     const char* last = str.data() + str.size();
-    if (*first == '+') {
+    if (COMPAT_UNLIKELY(*first == '+')) {
         ++first;
-        if (first == last) {
+        if (COMPAT_UNLIKELY(first == last)) {
             return compat::unexpected<compat::string_view>("Sign without digits");
         }
     }
     UIntType value{};
     from_chars_result res = from_chars_unsigned(first, last, value, 10);
-    if (res.ec == std::errc::invalid_argument) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::invalid_argument)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
-    if (res.ec == std::errc::result_out_of_range) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::result_out_of_range)) {
         return compat::unexpected<compat::string_view>("Integer overflow");
     }
-    if (res.ptr != last) {
+    if (COMPAT_UNLIKELY(res.ptr != last)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
     return value;
@@ -4327,26 +4439,26 @@ inline compat::expected<UIntType, compat::string_view> ParseUnsigned(compat::str
 /// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename IntType>
 inline compat::expected<IntType, compat::string_view> ParseSigned(compat::string_view str) noexcept {
-    if (str.empty()) {
+    if (COMPAT_UNLIKELY(str.empty())) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
     const char* first = str.data();
     const char* last = str.data() + str.size();
-    if (*first == '+') {
+    if (COMPAT_UNLIKELY(*first == '+')) {
         ++first;
-        if (first == last) {
+        if (COMPAT_UNLIKELY(first == last)) {
             return compat::unexpected<compat::string_view>("Sign without digits");
         }
     }
     IntType value{};
     from_chars_result res = from_chars_signed(first, last, value, 10);
-    if (res.ec == std::errc::invalid_argument) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::invalid_argument)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
-    if (res.ec == std::errc::result_out_of_range) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::result_out_of_range)) {
         return compat::unexpected<compat::string_view>("Integer overflow");
     }
-    if (res.ptr != last) {
+    if (COMPAT_UNLIKELY(res.ptr != last)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
     return value;
@@ -4360,20 +4472,20 @@ inline compat::expected<IntType, compat::string_view> ParseSigned(compat::string
 /// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename FloatType>
 inline compat::expected<FloatType, compat::string_view> ParseFloating(compat::string_view str) noexcept {
-    if (str.empty()) {
+    if (COMPAT_UNLIKELY(str.empty())) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
     const char* first = str.data();
     const char* last = str.data() + str.size();
     FloatType value{};
     from_chars_result res = from_chars_float(first, last, value);
-    if (res.ec == std::errc::invalid_argument) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::invalid_argument)) {
         return compat::unexpected<compat::string_view>("Invalid character in floating point number");
     }
-    if (res.ec == std::errc::result_out_of_range) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::result_out_of_range)) {
         return compat::unexpected<compat::string_view>("Floating point overflow");
     }
-    if (res.ptr != last) {
+    if (COMPAT_UNLIKELY(res.ptr != last)) {
         return compat::unexpected<compat::string_view>("Invalid character in floating point number");
     }
     return value;
@@ -4409,7 +4521,7 @@ struct Parser<T, typename std::enable_if<std::is_floating_point<T>::value>::type
 template <>
 struct Parser<bool> {
     static compat::expected<bool, compat::string_view> parse(compat::string_view str) noexcept {
-        if (str.empty()) {
+        if (COMPAT_UNLIKELY(str.empty())) {
             return compat::unexpected<compat::string_view>("Empty input string");
         }
         if (str == "true" || str == "True" || str == "1") {
@@ -4425,7 +4537,7 @@ struct Parser<bool> {
 template <>
 struct Parser<std::string> {
     static compat::expected<std::string, compat::string_view> parse(compat::string_view str) noexcept {
-        if (str.empty()) {
+        if (COMPAT_UNLIKELY(str.empty())) {
             return compat::unexpected<compat::string_view>("Empty input string");
         }
         return std::string(str.data(), str.size());
@@ -4435,7 +4547,7 @@ struct Parser<std::string> {
 template <>
 struct Parser<compat::string_view> {
     static compat::expected<compat::string_view, compat::string_view> parse(compat::string_view str) noexcept {
-        if (str.empty()) {
+        if (COMPAT_UNLIKELY(str.empty())) {
             return compat::unexpected<compat::string_view>("Empty input string");
         }
         return str;
@@ -4486,6 +4598,224 @@ struct formatter;
 namespace detail {
 
 /// <summary>
+/// Small-buffer-optimized stack buffer with fallback to heap allocation for formatted output.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity in bytes (default 512).</typeparam>
+template <std::size_t Capacity = 512>
+class stack_buffer {
+public:
+    /// <summary>
+    /// Constructs an empty stack_buffer.
+    /// </summary>
+    stack_buffer() noexcept : size_(0), heap_ptr_(nullptr), capacity_(Capacity) {}
+
+    /// <summary>
+    /// Destructor releasing heap allocation if buffer expanded beyond stack capacity.
+    /// </summary>
+    ~stack_buffer() {
+        if (heap_ptr_ != nullptr) {
+            delete[] heap_ptr_;
+        }
+    }
+
+    stack_buffer(const stack_buffer&) = delete;
+    stack_buffer& operator=(const stack_buffer&) = delete;
+
+    /// <summary>
+    /// Move constructor transferring heap buffer ownership or copying stack contents.
+    /// </summary>
+    /// <param name="other">Source buffer to move from.</param>
+    stack_buffer(stack_buffer&& other) noexcept
+        : size_(other.size_), heap_ptr_(other.heap_ptr_), capacity_(other.capacity_) {
+        if (other.heap_ptr_ == nullptr) {
+            std::memcpy(stack_buf_, other.stack_buf_, other.size_);
+        }
+        other.heap_ptr_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = Capacity;
+    }
+
+    /// <summary>
+    /// Move assignment operator transferring heap buffer ownership or copying stack contents.
+    /// </summary>
+    /// <param name="other">Source buffer to move from.</param>
+    /// <returns>Reference to this buffer.</returns>
+    stack_buffer& operator=(stack_buffer&& other) noexcept {
+        if (this != &other) {
+            if (heap_ptr_ != nullptr) {
+                delete[] heap_ptr_;
+            }
+            size_ = other.size_;
+            heap_ptr_ = other.heap_ptr_;
+            capacity_ = other.capacity_;
+            if (other.heap_ptr_ == nullptr) {
+                std::memcpy(stack_buf_, other.stack_buf_, other.size_);
+            }
+            other.heap_ptr_ = nullptr;
+            other.size_ = 0;
+            other.capacity_ = Capacity;
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Appends a single character to the buffer, growing capacity if needed.
+    /// </summary>
+    /// <param name="c">Character to append.</param>
+    COMPAT_ALWAYS_INLINE void push_back(char c) {
+        if (COMPAT_UNLIKELY(size_ >= capacity_)) {
+            grow(size_ + 1);
+        }
+        char* p = heap_ptr_ ? heap_ptr_ : stack_buf_;
+        p[size_++] = c;
+    }
+
+    /// <summary>
+    /// Appends a contiguous sequence of characters to the buffer.
+    /// </summary>
+    /// <param name="data">Pointer to character sequence.</param>
+    /// <param name="len">Number of characters to append.</param>
+    COMPAT_ALWAYS_INLINE void append(const char* data, std::size_t len) {
+        if (COMPAT_UNLIKELY(len == 0)) {
+            return;
+        }
+        if (COMPAT_UNLIKELY(size_ + len > capacity_)) {
+            grow(size_ + len);
+        }
+        char* p = heap_ptr_ ? heap_ptr_ : stack_buf_;
+        std::memcpy(p + size_, data, len);
+        size_ += len;
+    }
+
+    /// <summary>
+    /// Returns pointer to constant buffer data.
+    /// </summary>
+    /// <returns>Pointer to data.</returns>
+    COMPAT_ALWAYS_INLINE const char* data() const noexcept {
+        return heap_ptr_ ? heap_ptr_ : stack_buf_;
+    }
+
+    /// <summary>
+    /// Returns pointer to mutable buffer data.
+    /// </summary>
+    /// <returns>Pointer to data.</returns>
+    COMPAT_ALWAYS_INLINE char* data() noexcept {
+        return heap_ptr_ ? heap_ptr_ : stack_buf_;
+    }
+
+    /// <summary>
+    /// Returns the current number of characters in the buffer.
+    /// </summary>
+    /// <returns>Character count.</returns>
+    COMPAT_ALWAYS_INLINE std::size_t size() const noexcept {
+        return size_;
+    }
+
+    /// <summary>
+    /// Checks whether the buffer is empty.
+    /// </summary>
+    /// <returns>True if size is zero, false otherwise.</returns>
+    COMPAT_ALWAYS_INLINE bool empty() const noexcept {
+        return size_ == 0;
+    }
+
+    /// <summary>
+    /// Returns a string_view spanning the buffer contents.
+    /// </summary>
+    /// <returns>compat::string_view representing the buffer.</returns>
+    COMPAT_ALWAYS_INLINE compat::string_view view() const noexcept {
+        return compat::string_view(data(), size_);
+    }
+
+    /// <summary>
+    /// Constructs a std::string from the buffer contents.
+    /// </summary>
+    /// <returns>std::string copy.</returns>
+    std::string str() const {
+        return std::string(data(), size_);
+    }
+
+    /// <summary>
+    /// Clears buffer contents without deallocating heap storage.
+    /// </summary>
+    COMPAT_ALWAYS_INLINE void clear() noexcept {
+        size_ = 0;
+    }
+
+private:
+    void grow(std::size_t min_capacity) {
+        std::size_t new_cap = capacity_ * 2;
+        if (new_cap < min_capacity) {
+            new_cap = min_capacity;
+        }
+        char* new_ptr = new char[new_cap];
+        char* old_ptr = heap_ptr_ ? heap_ptr_ : stack_buf_;
+        std::memcpy(new_ptr, old_ptr, size_);
+        if (heap_ptr_ != nullptr) {
+            delete[] heap_ptr_;
+        }
+        heap_ptr_ = new_ptr;
+        capacity_ = new_cap;
+    }
+
+    char stack_buf_[Capacity];
+    std::size_t size_;
+    char* heap_ptr_;
+    std::size_t capacity_;
+};
+
+/// <summary>
+/// Output iterator adapter appending characters directly into a stack_buffer.
+/// </summary>
+/// <typeparam name="Buffer">Buffer type supporting push_back.</typeparam>
+template <typename Buffer>
+class buffer_appender {
+public:
+    using iterator_category = std::output_iterator_tag;
+    using value_type = void;
+    using difference_type = void;
+    using pointer = void;
+    using reference = void;
+
+    /// <summary>
+    /// Constructs a buffer_appender bound to the target buffer.
+    /// </summary>
+    /// <param name="buf">Target buffer reference.</param>
+    COMPAT_ALWAYS_INLINE explicit buffer_appender(Buffer& buf) noexcept : buf_(&buf) {}
+
+    /// <summary>
+    /// Appends a character to the bound buffer.
+    /// </summary>
+    /// <param name="c">Character to write.</param>
+    /// <returns>Reference to this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender& operator=(char c) {
+        buf_->push_back(c);
+        return *this;
+    }
+
+    /// <summary>
+    /// Dereference operator returning this iterator.
+    /// </summary>
+    /// <returns>Reference to this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender& operator*() noexcept { return *this; }
+
+    /// <summary>
+    /// Prefix increment operator.
+    /// </summary>
+    /// <returns>Reference to this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender& operator++() noexcept { return *this; }
+
+    /// <summary>
+    /// Postfix increment operator.
+    /// </summary>
+    /// <returns>Copy of this iterator.</returns>
+    COMPAT_ALWAYS_INLINE buffer_appender operator++(int) noexcept { return *this; }
+
+private:
+    Buffer* buf_;
+};
+
+/// <summary>
 /// Minimal basic_format_context for compatibility with std::formatter pattern.
 /// </summary>
 /// <typeparam name="OutputIt">Output iterator type.</typeparam>
@@ -4518,7 +4848,66 @@ private:
     OutputIt out_;
 };
 
-using format_context = basic_format_context<std::ostreambuf_iterator<char>, char>;
+using format_context = basic_format_context<buffer_appender<stack_buffer<512>>, char>;
+
+alignas(64) static const char DigitsLut[200] = {
+    '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9',
+    '1', '0', '1', '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9',
+    '2', '0', '2', '1', '2', '2', '2', '3', '2', '4', '2', '5', '2', '6', '2', '7', '2', '8', '2', '9',
+    '3', '0', '3', '1', '3', '2', '3', '3', '3', '4', '3', '5', '3', '6', '3', '7', '3', '8', '3', '9',
+    '4', '0', '4', '1', '4', '2', '4', '3', '4', '4', '4', '5', '4', '6', '4', '7', '4', '8', '4', '9',
+    '5', '0', '5', '1', '5', '2', '5', '3', '5', '4', '5', '5', '5', '6', '5', '7', '5', '8', '5', '9',
+    '6', '0', '6', '1', '6', '2', '6', '3', '6', '4', '6', '5', '6', '6', '6', '7', '6', '8', '6', '9',
+    '7', '0', '7', '1', '7', '2', '7', '3', '7', '4', '7', '5', '7', '6', '7', '7', '7', '8', '7', '9',
+    '8', '0', '8', '1', '8', '2', '8', '3', '8', '4', '8', '5', '8', '6', '8', '7', '8', '8', '8', '9',
+    '9', '0', '9', '1', '9', '2', '9', '3', '9', '4', '9', '5', '9', '6', '9', '7', '9', '8', '9', '9'
+};
+
+/// <summary>
+/// Formats an unsigned 64-bit integer into a buffer using Radix-100 table lookup from back to front.
+/// </summary>
+/// <param name="end_ptr">Pointer to end of destination buffer.</param>
+/// <param name="val">Unsigned 64-bit value to format.</param>
+/// <returns>Pointer to first character of formatted string.</returns>
+COMPAT_ALWAYS_INLINE char* FormatUIntToBuffer(char* end_ptr, uint64_t val) noexcept {
+    while (val >= 100) {
+        uint32_t rem = static_cast<uint32_t>(val % 100);
+        val /= 100;
+        end_ptr -= 2;
+        end_ptr[0] = DigitsLut[rem * 2];
+        end_ptr[1] = DigitsLut[rem * 2 + 1];
+    }
+    if (val >= 10) {
+        end_ptr -= 2;
+        end_ptr[0] = DigitsLut[val * 2];
+        end_ptr[1] = DigitsLut[val * 2 + 1];
+    } else {
+        *--end_ptr = static_cast<char>('0' + val);
+    }
+    return end_ptr;
+}
+
+/// <summary>
+/// Formats a signed 64-bit integer into a buffer using Radix-100 table lookup from back to front.
+/// </summary>
+/// <param name="end_ptr">Pointer to end of destination buffer.</param>
+/// <param name="val">Signed 64-bit value to format.</param>
+/// <returns>Pointer to first character of formatted string.</returns>
+COMPAT_ALWAYS_INLINE char* FormatIntToBuffer(char* end_ptr, int64_t val) noexcept {
+    uint64_t uval;
+    bool negative = false;
+    if (val < 0) {
+        negative = true;
+        uval = static_cast<uint64_t>(-(val + 1)) + 1;
+    } else {
+        uval = static_cast<uint64_t>(val);
+    }
+    char* p = FormatUIntToBuffer(end_ptr, uval);
+    if (negative) {
+        *--p = '-';
+    }
+    return p;
+}
 
 } // namespace detail
 
@@ -4621,10 +5010,14 @@ template <>
 struct formatter<const void*, char> {
     template <typename FormatContext>
     auto format(const void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        std::ostringstream ss;
-        ss << val;
-        std::string s = ss.str();
-        return formatter<std::string, char>{}.format(s, ctx);
+        char buf[32];
+        int len = std::snprintf(buf, sizeof(buf), "%p", val);
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
     }
 };
 
@@ -4639,31 +5032,75 @@ struct formatter<void*, char> {
     }
 };
 
-#define COMPAT_DEFINE_ARITHMETIC_FORMATTER(Type) \
-template <> \
-struct formatter<Type, char> { \
-    template <typename FormatContext> \
-    auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) { \
-        std::ostringstream ss; \
-        ss << val; \
-        std::string s = ss.str(); \
-        return formatter<std::string, char>{}.format(s, ctx); \
-    } \
+#define COMPAT_DEFINE_UINT_FORMATTER(Type) template <> struct formatter<Type, char> {     template <typename FormatContext>     auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) {         char buf[32];         char* end = buf + sizeof(buf);         char* start = detail::FormatUIntToBuffer(end, static_cast<uint64_t>(val));         auto it = ctx.out();         for (char* p = start; p < end; ++p) {             *it++ = *p;         }         ctx.advance_to(it);         return it;     } };
+
+#define COMPAT_DEFINE_SINT_FORMATTER(Type) template <> struct formatter<Type, char> {     template <typename FormatContext>     auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) {         char buf[32];         char* end = buf + sizeof(buf);         char* start = detail::FormatIntToBuffer(end, static_cast<int64_t>(val));         auto it = ctx.out();         for (char* p = start; p < end; ++p) {             *it++ = *p;         }         ctx.advance_to(it);         return it;     } };
+
+COMPAT_DEFINE_SINT_FORMATTER(short)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned short)
+COMPAT_DEFINE_SINT_FORMATTER(int)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned int)
+COMPAT_DEFINE_SINT_FORMATTER(long)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned long)
+COMPAT_DEFINE_SINT_FORMATTER(long long)
+COMPAT_DEFINE_UINT_FORMATTER(unsigned long long)
+
+#undef COMPAT_DEFINE_UINT_FORMATTER
+#undef COMPAT_DEFINE_SINT_FORMATTER
+
+/// <summary>
+/// Formatter specialization for float.
+/// </summary>
+template <>
+struct formatter<float, char> {
+    template <typename FormatContext>
+    auto format(float val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        char buf[64];
+        int len = std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(val));
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
 };
 
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(short)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned short)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(int)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned int)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(long long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(unsigned long long)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(float)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(double)
-COMPAT_DEFINE_ARITHMETIC_FORMATTER(long double)
+/// <summary>
+/// Formatter specialization for double.
+/// </summary>
+template <>
+struct formatter<double, char> {
+    template <typename FormatContext>
+    auto format(double val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        char buf[64];
+        int len = std::snprintf(buf, sizeof(buf), "%g", val);
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
 
-#undef COMPAT_DEFINE_ARITHMETIC_FORMATTER
+/// <summary>
+/// Formatter specialization for long double.
+/// </summary>
+template <>
+struct formatter<long double, char> {
+    template <typename FormatContext>
+    auto format(long double val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        char buf[64];
+        int len = std::snprintf(buf, sizeof(buf), "%Lg", val);
+        auto it = ctx.out();
+        for (int i = 0; i < len; ++i) {
+            *it++ = buf[i];
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
 
 /// <summary>
 /// Formatter specialization for signed char (printed as integer).
@@ -4719,25 +5156,20 @@ struct has_std_formatter<T, compat::detail::void_t<
 
 template <typename T>
 inline typename std::enable_if<has_std_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
     using FormatterType = typename format_arg_traits<T>::type;
     FormatterType formatted_arg = static_cast<FormatterType>(arg);
     std::string s = std::format("{}", formatted_arg);
-    os << s;
+    buf.append(s.data(), s.size());
 }
 
 template <typename T>
 inline typename std::enable_if<!has_std_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
-    os << arg;
-}
-
-inline void StreamFormatArg(std::ostream& os, signed char arg) {
-    os << static_cast<int32_t>(arg);
-}
-
-inline void StreamFormatArg(std::ostream& os, unsigned char arg) {
-    os << static_cast<uint32_t>(arg);
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
+    std::ostringstream oss;
+    oss << arg;
+    std::string s = oss.str();
+    buf.append(s.data(), s.size());
 }
 
 #else
@@ -4753,9 +5185,9 @@ struct has_compat_formatter<T, compat::detail::void_t<
 
 template <typename T>
 inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
-    std::ostreambuf_iterator<char> out_it(os);
-    format_context ctx(out_it);
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
+    buffer_appender<stack_buffer<512>> app(buf);
+    basic_format_context<buffer_appender<stack_buffer<512>>, char> ctx(app);
     using FormatterType = typename format_arg_traits<T>::type;
     formatter<FormatterType, char> fmt_obj;
     FormatterType formatted_arg = static_cast<FormatterType>(arg);
@@ -4764,19 +5196,154 @@ StreamFormatArg(std::ostream& os, const T& arg) {
 
 template <typename T>
 inline typename std::enable_if<!has_compat_formatter<T>::value, void>::type
-StreamFormatArg(std::ostream& os, const T& arg) {
-    os << arg;
-}
-
-inline void StreamFormatArg(std::ostream& os, signed char arg) {
-    os << static_cast<int32_t>(arg);
-}
-
-inline void StreamFormatArg(std::ostream& os, unsigned char arg) {
-    os << static_cast<uint32_t>(arg);
+FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
+    std::ostringstream oss;
+    oss << arg;
+    std::string s = oss.str();
+    buf.append(s.data(), s.size());
 }
 
 #endif
+
+// Fast-path overloads for common standard types to bypass std::format/format_context abstraction overhead
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::string& val) {
+    buf.append(val.data(), val.size());
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, compat::string_view val) {
+    buf.append(val.data(), val.size());
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char* val) {
+    if (val != nullptr) {
+        buf.append(val, std::strlen(val));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char* val) {
+    if (val != nullptr) {
+        buf.append(val, std::strlen(val));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char val) {
+    buf.push_back(val);
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, bool val) {
+    if (val) {
+        buf.append("true", 4);
+    } else {
+        buf.append("false", 5);
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, signed char arg) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(arg));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned char arg) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(arg));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, short val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned short val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, int val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned int val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, static_cast<uint64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatIntToBuffer(end, static_cast<int64_t>(val));
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned long long val) {
+    char sbuf[32];
+    char* end = sbuf + sizeof(sbuf);
+    char* start = FormatUIntToBuffer(end, val);
+    buf.append(start, static_cast<std::size_t>(end - start));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, float val) {
+    char sbuf[64];
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", static_cast<double>(val));
+    if (len > 0) {
+        buf.append(sbuf, static_cast<std::size_t>(len));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, double val) {
+    char sbuf[64];
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", val);
+    if (len > 0) {
+        buf.append(sbuf, static_cast<std::size_t>(len));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long double val) {
+    char sbuf[64];
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%Lg", val);
+    if (len > 0) {
+        buf.append(sbuf, static_cast<std::size_t>(len));
+    }
+}
+
+/// <summary>
+/// Formats an argument to an output stream via stack buffer to minimize stream operations.
+/// </summary>
+/// <typeparam name="T">Argument type.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="arg">Argument to format.</param>
+template <typename T>
+inline void StreamFormatArg(std::ostream& os, const T& arg) {
+    stack_buffer<512> buf;
+    FormatArgToBuffer(buf, arg);
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+}
 
 /// <summary>
 /// Counts the number of {} placeholders in a format string (skipping escaped {{ and }}).
@@ -4812,67 +5379,107 @@ inline std::size_t CountAndValidatePlaceholders(compat::string_view fmt) {
 }
 
 /// <summary>
-/// Base case for recursive template format string writer.
+/// Base case for recursive template format string writer into stack_buffer.
 /// </summary>
-/// <param name="os">Target output stream.</param>
+/// <param name="buf">Target stack buffer.</param>
 /// <param name="fmt">Format string view.</param>
-inline void WriteFormattedImpl(std::ostream& os, compat::string_view fmt) {
-    for (std::size_t i = 0; i < fmt.size(); ++i) {
+inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt) {
+    std::size_t i = 0;
+    std::size_t start = 0;
+    while (i < fmt.size()) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                os << '{';
-                ++i;
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('{');
+                i += 2;
+                start = i;
             } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
                 throw std::invalid_argument("Too few arguments for format string");
             } else {
-                os << fmt[i];
+                ++i;
             }
-        } else if (fmt[i] == '}' && i + 1 < fmt.size() && fmt[i + 1] == '}') {
-            os << '}';
-            ++i;
+        } else if (fmt[i] == '}') {
+            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('}');
+                i += 2;
+                start = i;
+            } else {
+                ++i;
+            }
         } else {
-            os << fmt[i];
+            ++i;
         }
+    }
+    if (i > start) {
+        buf.append(fmt.data() + start, i - start);
     }
 }
 
 /// <summary>
-/// Recursive template format string writer substituting {} placeholders with arguments.
+/// Recursive template format string writer substituting {} placeholders into stack_buffer.
 /// </summary>
+/// <typeparam name="First">First argument type.</typeparam>
+/// <typeparam name="Rest">Remaining argument types.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="first">First argument.</param>
+/// <param name="rest">Remaining arguments.</param>
 template <typename First, typename... Rest>
-inline void WriteFormattedImpl(std::ostream& os, compat::string_view fmt, const First& first, const Rest&... rest) {
-    for (std::size_t i = 0; i < fmt.size(); ++i) {
+inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt, const First& first, const Rest&... rest) {
+    std::size_t i = 0;
+    std::size_t start = 0;
+    while (i < fmt.size()) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                os << '{';
-                ++i;
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('{');
+                i += 2;
+                start = i;
             } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                StreamFormatArg(os, first);
-                WriteFormattedImpl(os, fmt.substr(i + 2), rest...);
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                FormatArgToBuffer(buf, first);
+                WriteFormattedBufferImpl(buf, fmt.substr(i + 2), rest...);
                 return;
             } else {
-                os << fmt[i];
+                ++i;
             }
-        } else if (fmt[i] == '}' && i + 1 < fmt.size() && fmt[i + 1] == '}') {
-            os << '}';
-            ++i;
+        } else if (fmt[i] == '}') {
+            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+                buf.push_back('}');
+                i += 2;
+                start = i;
+            } else {
+                ++i;
+            }
         } else {
-            os << fmt[i];
+            ++i;
         }
     }
     throw std::invalid_argument("Too many arguments for format string");
 }
 
 /// <summary>
-/// Validates placeholder count against argument count and writes formatted output to stream.
+/// Validates placeholder count against argument count and writes formatted output to stack buffer.
 /// </summary>
 /// <typeparam name="Args">Types of arguments.</typeparam>
-/// <param name="os">Target output stream.</param>
+/// <param name="buf">Target stack buffer.</param>
 /// <param name="fmt">Format string view.</param>
 /// <param name="args">Arguments to format.</param>
 /// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
 template <typename... Args>
-inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args&... args) {
+inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt, const Args&... args) {
     constexpr std::size_t num_args = sizeof...(Args);
     std::size_t num_placeholders = CountAndValidatePlaceholders(fmt);
     if (num_placeholders < num_args) {
@@ -4881,7 +5488,22 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args
     if (num_placeholders > num_args) {
         throw std::invalid_argument("Too few arguments for format string");
     }
-    WriteFormattedImpl(os, fmt, args...);
+    WriteFormattedBufferImpl(buf, fmt, args...);
+}
+
+/// <summary>
+/// Validates placeholder count against argument count and writes formatted output to stream via stack_buffer.
+/// </summary>
+/// <typeparam name="Args">Types of arguments.</typeparam>
+/// <param name="os">Target output stream.</param>
+/// <param name="fmt">Format string view.</param>
+/// <param name="args">Arguments to format.</param>
+/// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
+template <typename... Args>
+inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args&... args) {
+    stack_buffer<512> buf;
+    WriteFormattedBuffer(buf, fmt, args...);
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 }
 
 /// <summary>
@@ -4898,10 +5520,16 @@ inline void WriteStdoutUtf8(compat::string_view text) {
             if (!text.empty()) {
                 int wide_len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), NULL, 0);
                 if (wide_len > 0) {
-                    std::wstring wide_buf(static_cast<std::size_t>(wide_len), L'\0');
-                    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), &wide_buf[0], wide_len);
+                    wchar_t stack_wbuf[256];
+                    wchar_t* wptr = stack_wbuf;
+                    std::wstring heap_wbuf;
+                    if (static_cast<std::size_t>(wide_len) > 256) {
+                        heap_wbuf.resize(static_cast<std::size_t>(wide_len));
+                        wptr = &heap_wbuf[0];
+                    }
+                    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wptr, wide_len);
                     DWORD written = 0;
-                    WriteConsoleW(hConsole, wide_buf.data(), static_cast<DWORD>(wide_buf.size()), &written, NULL);
+                    WriteConsoleW(hConsole, wptr, static_cast<DWORD>(wide_len), &written, NULL);
                     return;
                 }
             } else {
@@ -4930,7 +5558,7 @@ namespace compat {
 namespace detail {
 
 /// <summary>
-/// Formats arguments into a std::string according to the format string.
+/// Formats arguments into a std::string using zero-heap-allocation stack_buffer.
 /// </summary>
 /// <typeparam name="Args">Types of arguments to format.</typeparam>
 /// <param name="fmt">Format string view containing {} placeholders.</param>
@@ -4938,9 +5566,9 @@ namespace detail {
 /// <returns>Formatted std::string.</returns>
 template <typename... Args>
 inline std::string FormatToString(compat::string_view fmt, const Args&... args) {
-    std::ostringstream oss;
-    WriteFormatted(oss, fmt, args...);
-    return oss.str();
+    stack_buffer<512> buf;
+    WriteFormattedBuffer(buf, fmt, args...);
+    return buf.str();
 }
 
 } // namespace detail
@@ -5054,7 +5682,7 @@ namespace compat {
 namespace compat {
 
 /// <summary>
-/// Writes formatted text to the specified output stream.
+/// Writes formatted text to the specified output stream using single-write buffered output.
 /// </summary>
 /// <typeparam name="Args">Types of arguments to format.</typeparam>
 /// <param name="os">Target output stream.</param>
@@ -5062,7 +5690,9 @@ namespace compat {
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void print(std::ostream& os, compat::string_view fmt, const Args&... args) {
-    detail::WriteFormatted(os, fmt, args...);
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 }
 
 /// <summary>
@@ -5073,13 +5703,13 @@ inline void print(std::ostream& os, compat::string_view fmt, const Args&... args
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void print(compat::string_view fmt, const Args&... args) {
-    std::ostringstream oss;
-    detail::WriteFormatted(oss, fmt, args...);
-    detail::WriteStdoutUtf8(oss.str());
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    detail::WriteStdoutUtf8(buf.view());
 }
 
 /// <summary>
-/// Writes formatted text followed by a newline to the specified output stream.
+/// Writes formatted text followed by a newline to the specified output stream using single-write buffered output.
 /// </summary>
 /// <typeparam name="Args">Types of arguments to format.</typeparam>
 /// <param name="os">Target output stream.</param>
@@ -5087,8 +5717,10 @@ inline void print(compat::string_view fmt, const Args&... args) {
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void println(std::ostream& os, compat::string_view fmt, const Args&... args) {
-    detail::WriteFormatted(os, fmt, args...);
-    os << '\n';
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    buf.push_back('\n');
+    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 }
 
 /// <summary>
@@ -5099,10 +5731,10 @@ inline void println(std::ostream& os, compat::string_view fmt, const Args&... ar
 /// <param name="args">Arguments to substitute.</param>
 template <typename... Args>
 inline void println(compat::string_view fmt, const Args&... args) {
-    std::ostringstream oss;
-    detail::WriteFormatted(oss, fmt, args...);
-    oss << '\n';
-    detail::WriteStdoutUtf8(oss.str());
+    detail::stack_buffer<512> buf;
+    detail::WriteFormattedBuffer(buf, fmt, args...);
+    buf.push_back('\n');
+    detail::WriteStdoutUtf8(buf.view());
 }
 
 /// <summary>

@@ -42,7 +42,7 @@ struct from_chars_result {
 template <typename UIntType>
 inline from_chars_result from_chars_unsigned(const char* first, const char* last, UIntType& value, int32_t base = 10) noexcept {
     from_chars_result res{first, std::errc{}};
-    if (base < 2 || base > 36 || first >= last) {
+    if (COMPAT_UNLIKELY(base < 2 || base > 36 || first >= last)) {
         res.ec = std::errc::invalid_argument;
         return res;
     }
@@ -57,40 +57,59 @@ inline from_chars_result from_chars_unsigned(const char* first, const char* last
     bool overflow = false;
     bool has_digits = false;
 
-    while (ptr < last) {
-        char c = *ptr;
-        int32_t digit = -1;
-        if (c >= '0' && c <= '9') {
-            digit = c - '0';
-        } else if (c >= 'a' && c <= 'z') {
-            digit = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'Z') {
-            digit = c - 'A' + 10;
-        }
-
-        if (digit < 0 || digit >= base) {
-            break;
-        }
-
-        has_digits = true;
-        uint64_t udigit = static_cast<uint64_t>(digit);
-        if (!overflow) {
-            if (result > limit_div || (result == limit_div && udigit > limit_mod)) {
-                overflow = true;
-            } else {
-                result = result * ubase + udigit;
+    if (COMPAT_LIKELY(base == 10)) {
+        while (ptr < last) {
+            uint8_t c = static_cast<uint8_t>(*ptr);
+            uint8_t digit = static_cast<uint8_t>(c - '0');
+            if (digit > 9) {
+                break;
             }
+            has_digits = true;
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && digit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * 10 + digit;
+                }
+            }
+            ++ptr;
         }
-        ++ptr;
+    } else {
+        while (ptr < last) {
+            char c = *ptr;
+            int32_t digit = -1;
+            if (c >= '0' && c <= '9') {
+                digit = c - '0';
+            } else if (c >= 'a' && c <= 'z') {
+                digit = c - 'a' + 10;
+            } else if (c >= 'A' && c <= 'Z') {
+                digit = c - 'A' + 10;
+            }
+
+            if (digit < 0 || digit >= base) {
+                break;
+            }
+
+            has_digits = true;
+            uint64_t udigit = static_cast<uint64_t>(digit);
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && udigit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * ubase + udigit;
+                }
+            }
+            ++ptr;
+        }
     }
 
-    if (!has_digits) {
+    if (COMPAT_UNLIKELY(!has_digits)) {
         res.ec = std::errc::invalid_argument;
         res.ptr = first;
         return res;
     }
 
-    if (overflow) {
+    if (COMPAT_UNLIKELY(overflow)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
@@ -114,7 +133,7 @@ inline from_chars_result from_chars_unsigned(const char* first, const char* last
 template <typename IntType>
 inline from_chars_result from_chars_signed(const char* first, const char* last, IntType& value, int32_t base = 10) noexcept {
     from_chars_result res{first, std::errc{}};
-    if (base < 2 || base > 36 || first >= last) {
+    if (COMPAT_UNLIKELY(base < 2 || base > 36 || first >= last)) {
         res.ec = std::errc::invalid_argument;
         return res;
     }
@@ -124,7 +143,7 @@ inline from_chars_result from_chars_signed(const char* first, const char* last, 
     if (*ptr == '-') {
         negative = true;
         ++ptr;
-        if (ptr >= last) {
+        if (COMPAT_UNLIKELY(ptr >= last)) {
             res.ec = std::errc::invalid_argument;
             res.ptr = first;
             return res;
@@ -143,40 +162,59 @@ inline from_chars_result from_chars_signed(const char* first, const char* last, 
     bool overflow = false;
     bool has_digits = false;
 
-    while (ptr < last) {
-        char c = *ptr;
-        int32_t digit = -1;
-        if (c >= '0' && c <= '9') {
-            digit = c - '0';
-        } else if (c >= 'a' && c <= 'z') {
-            digit = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'Z') {
-            digit = c - 'A' + 10;
-        }
-
-        if (digit < 0 || digit >= base) {
-            break;
-        }
-
-        has_digits = true;
-        uint64_t udigit = static_cast<uint64_t>(digit);
-        if (!overflow) {
-            if (result > limit_div || (result == limit_div && udigit > limit_mod)) {
-                overflow = true;
-            } else {
-                result = result * ubase + udigit;
+    if (COMPAT_LIKELY(base == 10)) {
+        while (ptr < last) {
+            uint8_t c = static_cast<uint8_t>(*ptr);
+            uint8_t digit = static_cast<uint8_t>(c - '0');
+            if (digit > 9) {
+                break;
             }
+            has_digits = true;
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && digit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * 10 + digit;
+                }
+            }
+            ++ptr;
         }
-        ++ptr;
+    } else {
+        while (ptr < last) {
+            char c = *ptr;
+            int32_t digit = -1;
+            if (c >= '0' && c <= '9') {
+                digit = c - '0';
+            } else if (c >= 'a' && c <= 'z') {
+                digit = c - 'a' + 10;
+            } else if (c >= 'A' && c <= 'Z') {
+                digit = c - 'A' + 10;
+            }
+
+            if (digit < 0 || digit >= base) {
+                break;
+            }
+
+            has_digits = true;
+            uint64_t udigit = static_cast<uint64_t>(digit);
+            if (COMPAT_LIKELY(!overflow)) {
+                if (COMPAT_UNLIKELY(result > limit_div || (result == limit_div && udigit > limit_mod))) {
+                    overflow = true;
+                } else {
+                    result = result * ubase + udigit;
+                }
+            }
+            ++ptr;
+        }
     }
 
-    if (!has_digits) {
+    if (COMPAT_UNLIKELY(!has_digits)) {
         res.ec = std::errc::invalid_argument;
         res.ptr = first;
         return res;
     }
 
-    if (overflow) {
+    if (COMPAT_UNLIKELY(overflow)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
@@ -244,7 +282,7 @@ inline bool CaseInsensitiveEqual(const char* a, const char* b, std::size_t len) 
 template <typename FloatType>
 inline from_chars_result from_chars_float(const char* first, const char* last, FloatType& value) noexcept {
     from_chars_result res{first, std::errc{}};
-    if (first >= last) {
+    if (COMPAT_UNLIKELY(first >= last)) {
         res.ec = std::errc::invalid_argument;
         return res;
     }
@@ -282,15 +320,23 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
         return res;
     }
 
+    static const double kPow10Fast[23] = {
+        1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
+        1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,
+        1e20, 1e21, 1e22
+    };
+
     double mantissa = 0.0;
     int32_t frac_digits = 0;
     int32_t extra_exp = 0;
     bool has_digits = false;
 
-    while (ptr < last && *ptr >= '0' && *ptr <= '9') {
+    while (ptr < last) {
+        uint8_t digit = static_cast<uint8_t>(*ptr - '0');
+        if (digit > 9) break;
         has_digits = true;
         if (mantissa < 1e16) {
-            mantissa = mantissa * 10.0 + (*ptr - '0');
+            mantissa = mantissa * 10.0 + digit;
         } else {
             ++extra_exp;
         }
@@ -299,17 +345,19 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 
     if (ptr < last && *ptr == '.') {
         ++ptr;
-        while (ptr < last && *ptr >= '0' && *ptr <= '9') {
+        while (ptr < last) {
+            uint8_t digit = static_cast<uint8_t>(*ptr - '0');
+            if (digit > 9) break;
             has_digits = true;
             if (mantissa < 1e16) {
-                mantissa = mantissa * 10.0 + (*ptr - '0');
+                mantissa = mantissa * 10.0 + digit;
                 ++frac_digits;
             }
             ++ptr;
         }
     }
 
-    if (!has_digits) {
+    if (COMPAT_UNLIKELY(!has_digits)) {
         res.ec = std::errc::invalid_argument;
         res.ptr = first;
         return res;
@@ -342,16 +390,20 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 
     int32_t total_exp = exp_val + extra_exp - frac_digits;
 
-    if (total_exp > 308 && mantissa != 0.0) {
+    if (COMPAT_UNLIKELY(total_exp > 308 && mantissa != 0.0)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
     }
 
     double dval = mantissa;
-    if (total_exp > 0) {
+    if (total_exp >= 0 && total_exp <= 22) {
+        dval *= kPow10Fast[total_exp];
+    } else if (total_exp < 0 && total_exp >= -22) {
+        dval /= kPow10Fast[-total_exp];
+    } else if (total_exp > 22) {
         dval *= Pow10Positive(total_exp);
-    } else if (total_exp < 0) {
+    } else {
         if (total_exp < -324) {
             dval = 0.0;
         } else {
@@ -360,7 +412,7 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
     }
 
     // Overflow check for double
-    if (dval > 1.7976931348623157e+308 || dval < -1.7976931348623157e+308) {
+    if (COMPAT_UNLIKELY(dval > 1.7976931348623157e+308 || dval < -1.7976931348623157e+308)) {
         res.ec = std::errc::result_out_of_range;
         res.ptr = ptr;
         return res;
@@ -368,7 +420,7 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 
     // Overflow check for float
     if (std::is_same<FloatType, float>::value) {
-        if (dval > 3.4028234663852886e+38 || dval < -3.4028234663852886e+38) {
+        if (COMPAT_UNLIKELY(dval > 3.4028234663852886e+38 || dval < -3.4028234663852886e+38)) {
             res.ec = std::errc::result_out_of_range;
             res.ptr = ptr;
             return res;
@@ -393,29 +445,29 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
 /// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename UIntType>
 inline compat::expected<UIntType, compat::string_view> ParseUnsigned(compat::string_view str) noexcept {
-    if (str.empty()) {
+    if (COMPAT_UNLIKELY(str.empty())) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
-    if (str[0] == '-') {
+    if (COMPAT_UNLIKELY(str[0] == '-')) {
         return compat::unexpected<compat::string_view>("Negative sign in unsigned integer");
     }
     const char* first = str.data();
     const char* last = str.data() + str.size();
-    if (*first == '+') {
+    if (COMPAT_UNLIKELY(*first == '+')) {
         ++first;
-        if (first == last) {
+        if (COMPAT_UNLIKELY(first == last)) {
             return compat::unexpected<compat::string_view>("Sign without digits");
         }
     }
     UIntType value{};
     from_chars_result res = from_chars_unsigned(first, last, value, 10);
-    if (res.ec == std::errc::invalid_argument) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::invalid_argument)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
-    if (res.ec == std::errc::result_out_of_range) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::result_out_of_range)) {
         return compat::unexpected<compat::string_view>("Integer overflow");
     }
-    if (res.ptr != last) {
+    if (COMPAT_UNLIKELY(res.ptr != last)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
     return value;
@@ -429,26 +481,26 @@ inline compat::expected<UIntType, compat::string_view> ParseUnsigned(compat::str
 /// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename IntType>
 inline compat::expected<IntType, compat::string_view> ParseSigned(compat::string_view str) noexcept {
-    if (str.empty()) {
+    if (COMPAT_UNLIKELY(str.empty())) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
     const char* first = str.data();
     const char* last = str.data() + str.size();
-    if (*first == '+') {
+    if (COMPAT_UNLIKELY(*first == '+')) {
         ++first;
-        if (first == last) {
+        if (COMPAT_UNLIKELY(first == last)) {
             return compat::unexpected<compat::string_view>("Sign without digits");
         }
     }
     IntType value{};
     from_chars_result res = from_chars_signed(first, last, value, 10);
-    if (res.ec == std::errc::invalid_argument) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::invalid_argument)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
-    if (res.ec == std::errc::result_out_of_range) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::result_out_of_range)) {
         return compat::unexpected<compat::string_view>("Integer overflow");
     }
-    if (res.ptr != last) {
+    if (COMPAT_UNLIKELY(res.ptr != last)) {
         return compat::unexpected<compat::string_view>("Invalid character in integer");
     }
     return value;
@@ -462,20 +514,20 @@ inline compat::expected<IntType, compat::string_view> ParseSigned(compat::string
 /// <returns>expected containing parsed value or error description string_view.</returns>
 template <typename FloatType>
 inline compat::expected<FloatType, compat::string_view> ParseFloating(compat::string_view str) noexcept {
-    if (str.empty()) {
+    if (COMPAT_UNLIKELY(str.empty())) {
         return compat::unexpected<compat::string_view>("Empty input string");
     }
     const char* first = str.data();
     const char* last = str.data() + str.size();
     FloatType value{};
     from_chars_result res = from_chars_float(first, last, value);
-    if (res.ec == std::errc::invalid_argument) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::invalid_argument)) {
         return compat::unexpected<compat::string_view>("Invalid character in floating point number");
     }
-    if (res.ec == std::errc::result_out_of_range) {
+    if (COMPAT_UNLIKELY(res.ec == std::errc::result_out_of_range)) {
         return compat::unexpected<compat::string_view>("Floating point overflow");
     }
-    if (res.ptr != last) {
+    if (COMPAT_UNLIKELY(res.ptr != last)) {
         return compat::unexpected<compat::string_view>("Invalid character in floating point number");
     }
     return value;
@@ -511,7 +563,7 @@ struct Parser<T, typename std::enable_if<std::is_floating_point<T>::value>::type
 template <>
 struct Parser<bool> {
     static compat::expected<bool, compat::string_view> parse(compat::string_view str) noexcept {
-        if (str.empty()) {
+        if (COMPAT_UNLIKELY(str.empty())) {
             return compat::unexpected<compat::string_view>("Empty input string");
         }
         if (str == "true" || str == "True" || str == "1") {
@@ -527,7 +579,7 @@ struct Parser<bool> {
 template <>
 struct Parser<std::string> {
     static compat::expected<std::string, compat::string_view> parse(compat::string_view str) noexcept {
-        if (str.empty()) {
+        if (COMPAT_UNLIKELY(str.empty())) {
             return compat::unexpected<compat::string_view>("Empty input string");
         }
         return std::string(str.data(), str.size());
@@ -537,7 +589,7 @@ struct Parser<std::string> {
 template <>
 struct Parser<compat::string_view> {
     static compat::expected<compat::string_view, compat::string_view> parse(compat::string_view str) noexcept {
-        if (str.empty()) {
+        if (COMPAT_UNLIKELY(str.empty())) {
             return compat::unexpected<compat::string_view>("Empty input string");
         }
         return str;
