@@ -1,4 +1,4 @@
-﻿# CPP-Compat（自研 C++ 標準庫向下相容層）
+# CPP-Compat（自研 C++ 標準庫向下相容層）
 
 [![CI Build](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml/badge.svg)](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml)
 [![Standard](https://img.shields.io/badge/C%2B%2B-11%20%7C%2014%20%7C%2017%20%7C%2020%20%7C%2023-blue.svg)](#)
@@ -261,6 +261,13 @@ ctest --test-dir build-mac --output-on-failure
 
 ---
 
+## 授權條款 (License)
+
+本專案採用 [MIT License](LICENSE) 授權。
+
+---
+
 ## 詳細架構說明
 
 請參閱 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
