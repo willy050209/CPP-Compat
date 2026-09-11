@@ -130,8 +130,8 @@ void run_test_print() {
     compat::println(stdout);
     compat::print(stderr, "   [FILE* stderr Test] notice = {}\n", "debug info");
 
-    // 12. 測試 nullptr 防護 (快速失敗)
-#if COMPAT_HAS_EXCEPTIONS
+    // 12. 測試 nullptr 防護 (自研 Fallback 快速失敗)
+#if !COMPAT_HAS_STD_PRINT && COMPAT_HAS_EXCEPTIONS
     TEST_ASSERT_THROWS(compat::print(static_cast<std::FILE*>(nullptr), "test"), std::invalid_argument);
     TEST_ASSERT_THROWS(compat::println(static_cast<std::FILE*>(nullptr), "test"), std::invalid_argument);
     TEST_ASSERT_THROWS(compat::println(static_cast<std::FILE*>(nullptr)), std::invalid_argument);
