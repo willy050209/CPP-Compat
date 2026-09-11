@@ -956,17 +956,27 @@ inline void WriteFormatted(std::ostream& os, compat::string_view fmt, const Args
 }
 
 /// <summary>
-/// Writes UTF-8 encoded string view to stdout, converting to UTF-16 via WriteConsoleW if attached to a Windows console.
+/// Writes UTF-8 encoded string view to specified FILE* stream, converting to UTF-16 via WriteConsoleW if attached to a Windows console.
 /// </summary>
+/// <param name="stream">Target FILE* stream.</param>
 /// <param name="text">UTF-8 encoded string view to write.</param>
-inline void WriteStdoutUtf8(compat::string_view text) {
+/// <exception cref="std::invalid_argument">Thrown if stream is nullptr.</exception>
+inline void WriteFileUtf8(std::FILE* stream, compat::string_view text) {
+    if (COMPAT_UNLIKELY(stream == nullptr)) {
+        COMPAT_THROW_OR_ABORT(std::invalid_argument("Target FILE* stream cannot be null"));
+        return;
+    }
+    if (text.empty()) {
+        return;
+    }
 #if defined(_WIN32)
-    int stdout_fd = _fileno(stdout);
-    if (stdout_fd >= 0 && _isatty(stdout_fd)) {
-        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-        DWORD mode = 0;
-        if (hConsole != INVALID_HANDLE_VALUE && hConsole != NULL && GetConsoleMode(hConsole, &mode)) {
-            if (!text.empty()) {
+    int fd = _fileno(stream);
+    if (fd >= 0 && _isatty(fd)) {
+        intptr_t osfh = _get_osfhandle(fd);
+        if (osfh != -1) {
+            HANDLE hConsole = reinterpret_cast<HANDLE>(osfh);
+            DWORD mode = 0;
+            if (hConsole != INVALID_HANDLE_VALUE && hConsole != NULL && GetConsoleMode(hConsole, &mode)) {
                 int wide_len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), NULL, 0);
                 if (wide_len > 0) {
                     wchar_t stack_wbuf[256];
@@ -981,16 +991,22 @@ inline void WriteStdoutUtf8(compat::string_view text) {
                     WriteConsoleW(hConsole, wptr, static_cast<DWORD>(wide_len), &written, NULL);
                     return;
                 }
-            } else {
-                return;
             }
         }
     }
 #endif
-    if (!text.empty()) {
-        std::fwrite(text.data(), 1, text.size(), stdout);
-        std::fflush(stdout);
+    std::fwrite(text.data(), 1, text.size(), stream);
+    if (stream == stdout || stream == stderr) {
+        std::fflush(stream);
     }
+}
+
+/// <summary>
+/// Writes UTF-8 encoded string view to stdout, converting to UTF-16 via WriteConsoleW if attached to a Windows console.
+/// </summary>
+/// <param name="text">UTF-8 encoded string view to write.</param>
+inline void WriteStdoutUtf8(compat::string_view text) {
+    WriteFileUtf8(stdout, text);
 }
 
 } // namespace detail

@@ -1,4 +1,4 @@
-﻿# 系統架構手冊 (ARCHITECTURE.md)
+# 系統架構手冊 (ARCHITECTURE.md)
 
 ## 1. 系統定位
 
@@ -141,16 +141,16 @@ compat::println("pos = {}", Point{3, 4});  // 輸出：pos = (3, 4)
 
 在原生模式（`COMPAT_HAS_STD_FORMAT=1`）中 `compat::formatter<T>` 等價別名至 `std::formatter<T>`。
 
-### 5.2 Windows UTF-8 終端輸出
+### 5.2 Windows UTF-8 終端與 FILE* 輸出
 
 ```
-Print.hpp stdout 路徑
-└── detail::WriteStdoutUtf8(const char* data, size_t len)
-    ├── Windows: _isatty() → GetConsoleMode() → MultiByteToWideChar() → WriteConsoleW()
-    └── 非 Windows / 非 tty: fwrite() + fflush(stdout)
+Print.hpp FILE* / stdout 路徑
+└── detail::WriteFileUtf8(FILE* stream, string_view text)
+    ├── Windows 控制台 (_isatty): _get_osfhandle() → MultiByteToWideChar() → WriteConsoleW()
+    └── 一般檔案 / 管線 / 非 Windows: fwrite() (+ stdout/stderr fflush)
 ```
 
-確保 UTF-8 中文、日文、Emoji 字元在 Windows 終端正確輸出，無需 `SetConsoleOutputCP(65001)`。
+確保 UTF-8 中文、日文、Emoji 字元在 Windows 終端正確輸出，無需 `SetConsoleOutputCP(65001)`；寫入磁碟檔案時維持二進位位元組流與高效能緩衝。
 
 ### 5.3 格式字串邊界驗證
 
