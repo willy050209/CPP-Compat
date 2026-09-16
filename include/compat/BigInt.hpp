@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // BigInt.hpp
 // Arbitrary-precision integer facade class for CPP-Compat.
@@ -14,6 +14,8 @@
 #include <functional>
 #include <type_traits>
 #include <stdexcept>
+#include <limits>
+#include <cstdlib>
 
 namespace compat {
 
@@ -46,30 +48,45 @@ namespace detail {
         inline bigint operator()() const;
 
         template <typename T>
-        friend bool operator==(const BigIntConstantProxy& p, const T& other);
+        friend bool operator==(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator==(const T& other, const BigIntConstantProxy& p);
+        friend bool operator==(const T& other, BigIntConstantProxy p);
 
         template <typename T>
-        friend bool operator!=(const BigIntConstantProxy& p, const T& other);
+        friend bool operator!=(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator!=(const T& other, const BigIntConstantProxy& p);
+        friend bool operator!=(const T& other, BigIntConstantProxy p);
     };
+
+    /// <summary>
+    /// BigInt 常數模板基底結構，確保在 C++11/C++14 header-only 環境下具備弱符號鏈結與外部定義。
+    /// </summary>
+    template <typename T = void>
+    struct BigIntConstants {
+        static constexpr BigIntConstantProxy zero{0};
+        static constexpr BigIntConstantProxy one{1};
+    };
+
+#if (COMPAT_CPLUSPLUS < COMPAT_CXX_17)
+    template <typename T>
+    constexpr BigIntConstantProxy BigIntConstants<T>::zero;
+    template <typename T>
+    constexpr BigIntConstantProxy BigIntConstants<T>::one;
+#endif
 
 } // namespace detail
 
 /// <summary>
 /// 任意精度整數類別，具備 128-bit Small Buffer Optimization (SBO) 與全套運算子重載。
 /// </summary>
-class bigint {
+class bigint : public detail::BigIntConstants<> {
 private:
     detail::BigIntStorage m_storage;
 
 public:
-    static constexpr detail::BigIntConstantProxy zero{0};
-    static constexpr detail::BigIntConstantProxy one{1};
+
 
     /// <summary>
     /// 預設建構子：初始化數值為 0。
@@ -820,22 +837,22 @@ namespace detail {
     }
 
     template <typename T>
-    inline bool operator==(const BigIntConstantProxy& p, const T& other) {
+    inline bool operator==(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, const BigIntConstantProxy& p) {
+    inline bool operator==(const T& other, BigIntConstantProxy p) {
         return other == bigint(p.value);
     }
 
     template <typename T>
-    inline bool operator!=(const BigIntConstantProxy& p, const T& other) {
+    inline bool operator!=(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, const BigIntConstantProxy& p) {
+    inline bool operator!=(const T& other, BigIntConstantProxy p) {
         return other != bigint(p.value);
     }
 

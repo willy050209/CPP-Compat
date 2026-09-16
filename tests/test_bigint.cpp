@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <compat/BigInt.hpp>
 #include <sstream>
 #include <string>
@@ -285,6 +285,24 @@ void run_test_bigint() {
         TEST_ASSERT(neg < 0);
     }
 
+    // 9.1 靜態常數與代理 (bigint::zero, bigint::one, bigint::zero(), bigint::one())
+    {
+        TEST_ASSERT(bigint::zero == 0);
+        TEST_ASSERT(bigint::zero() == 0);
+        TEST_ASSERT(bigint::one == 1);
+        TEST_ASSERT(bigint::one() == 1);
+
+        bigint b_z = bigint::zero;
+        bigint b_z_fn = bigint::zero();
+        TEST_ASSERT(b_z == b_z_fn);
+        TEST_ASSERT(b_z == 0);
+
+        bigint b_o = bigint::one;
+        bigint b_o_fn = bigint::one();
+        TEST_ASSERT(b_o == b_o_fn);
+        TEST_ASSERT(b_o == 1);
+    }
+
     // 10. 字串解析與例外拋出
     {
         bigint from_s1 = bigint::from_string("123456789012345678901234567890");
@@ -346,7 +364,9 @@ void run_test_bigint() {
         // Self assignment
 #if defined(__clang__)
 #pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wself-assign-overload"
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic ignored "-Wself-assign-overloaded"
+#pragma clang diagnostic ignored "-Wself-assign"
 #endif
         assigned = assigned;
         TEST_ASSERT(assigned == original);

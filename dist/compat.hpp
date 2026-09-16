@@ -6922,30 +6922,45 @@ namespace detail {
         inline bigint operator()() const;
 
         template <typename T>
-        friend bool operator==(const BigIntConstantProxy& p, const T& other);
+        friend bool operator==(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator==(const T& other, const BigIntConstantProxy& p);
+        friend bool operator==(const T& other, BigIntConstantProxy p);
 
         template <typename T>
-        friend bool operator!=(const BigIntConstantProxy& p, const T& other);
+        friend bool operator!=(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator!=(const T& other, const BigIntConstantProxy& p);
+        friend bool operator!=(const T& other, BigIntConstantProxy p);
     };
+
+    /// <summary>
+    /// BigInt 常數模板基底結構，確保在 C++11/C++14 header-only 環境下具備弱符號鏈結與外部定義。
+    /// </summary>
+    template <typename T = void>
+    struct BigIntConstants {
+        static constexpr BigIntConstantProxy zero{0};
+        static constexpr BigIntConstantProxy one{1};
+    };
+
+#if (COMPAT_CPLUSPLUS < COMPAT_CXX_17)
+    template <typename T>
+    constexpr BigIntConstantProxy BigIntConstants<T>::zero;
+    template <typename T>
+    constexpr BigIntConstantProxy BigIntConstants<T>::one;
+#endif
 
 } // namespace detail
 
 /// <summary>
 /// 任意精度整數類別，具備 128-bit Small Buffer Optimization (SBO) 與全套運算子重載。
 /// </summary>
-class bigint {
+class bigint : public detail::BigIntConstants<> {
 private:
     detail::BigIntStorage m_storage;
 
 public:
-    static constexpr detail::BigIntConstantProxy zero{0};
-    static constexpr detail::BigIntConstantProxy one{1};
+
 
     /// <summary>
     /// 預設建構子：初始化數值為 0。
@@ -7696,22 +7711,22 @@ namespace detail {
     }
 
     template <typename T>
-    inline bool operator==(const BigIntConstantProxy& p, const T& other) {
+    inline bool operator==(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, const BigIntConstantProxy& p) {
+    inline bool operator==(const T& other, BigIntConstantProxy p) {
         return other == bigint(p.value);
     }
 
     template <typename T>
-    inline bool operator!=(const BigIntConstantProxy& p, const T& other) {
+    inline bool operator!=(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, const BigIntConstantProxy& p) {
+    inline bool operator!=(const T& other, BigIntConstantProxy p) {
         return other != bigint(p.value);
     }
 
@@ -8799,7 +8814,7 @@ struct DecimalConstantProxy {
     /// <param name="other">比較目標</param>
     /// <returns>若相等回傳 true</returns>
     template <typename T>
-    friend bool operator==(const DecimalConstantProxy& p, const T& other);
+    friend bool operator==(DecimalConstantProxy p, const T& other);
 
     /// <summary>
     /// 常數代理相等比較運算子。
@@ -8809,7 +8824,7 @@ struct DecimalConstantProxy {
     /// <param name="p">常數代理物件</param>
     /// <returns>若相等回傳 true</returns>
     template <typename T>
-    friend bool operator==(const T& other, const DecimalConstantProxy& p);
+    friend bool operator==(const T& other, DecimalConstantProxy p);
 
     /// <summary>
     /// 常數代理不相等比較運算子。
@@ -8819,7 +8834,7 @@ struct DecimalConstantProxy {
     /// <param name="other">比較目標</param>
     /// <returns>若不相等回傳 true</returns>
     template <typename T>
-    friend bool operator!=(const DecimalConstantProxy& p, const T& other);
+    friend bool operator!=(DecimalConstantProxy p, const T& other);
 
     /// <summary>
     /// 常數代理不相等比較運算子。
@@ -8829,8 +8844,33 @@ struct DecimalConstantProxy {
     /// <param name="p">常數代理物件</param>
     /// <returns>若不相等回傳 true</returns>
     template <typename T>
-    friend bool operator!=(const T& other, const DecimalConstantProxy& p);
+    friend bool operator!=(const T& other, DecimalConstantProxy p);
 };
+
+/// <summary>
+/// 十進位常數模板基底結構，確保在 C++11/C++14 header-only 環境下具備弱符號鏈結與外部定義。
+/// </summary>
+template <typename T = void>
+struct DecimalConstants {
+    static constexpr DecimalConstantProxy zero{DecimalConstantKind::Zero};
+    static constexpr DecimalConstantProxy one{DecimalConstantKind::One};
+    static constexpr DecimalConstantProxy infinity{DecimalConstantKind::Infinity};
+    static constexpr DecimalConstantProxy nan{DecimalConstantKind::NaN};
+    static constexpr DecimalConstantProxy NaN{DecimalConstantKind::NaN};
+};
+
+#if (COMPAT_CPLUSPLUS < COMPAT_CXX_17)
+template <typename T>
+constexpr DecimalConstantProxy DecimalConstants<T>::zero;
+template <typename T>
+constexpr DecimalConstantProxy DecimalConstants<T>::one;
+template <typename T>
+constexpr DecimalConstantProxy DecimalConstants<T>::infinity;
+template <typename T>
+constexpr DecimalConstantProxy DecimalConstants<T>::nan;
+template <typename T>
+constexpr DecimalConstantProxy DecimalConstants<T>::NaN;
+#endif
 
 } // namespace detail
 
@@ -8838,7 +8878,7 @@ struct DecimalConstantProxy {
 /// 高精度任意精度十進位浮點數門面類別，基於 bigint 實現 128-bit SBO 特性。
 /// 支援 IEEE 754-2008 decimal128 標準（預設 34 位有效十進位數字）與銀行家捨入法 (Half-Even)。
 /// </summary>
-class decimal {
+class decimal : public detail::DecimalConstants<> {
 private:
     bigint m_unscaled{0};
     int64_t m_scale{0};
@@ -8848,11 +8888,7 @@ private:
     friend struct detail::DecimalConstantProxy;
 
 public:
-    static constexpr detail::DecimalConstantProxy zero{detail::DecimalConstantKind::Zero};
-    static constexpr detail::DecimalConstantProxy one{detail::DecimalConstantKind::One};
-    static constexpr detail::DecimalConstantProxy infinity{detail::DecimalConstantKind::Infinity};
-    static constexpr detail::DecimalConstantProxy nan{detail::DecimalConstantKind::NaN};
-    static constexpr detail::DecimalConstantProxy NaN{detail::DecimalConstantKind::NaN};
+
 
     /// <summary>
     /// 預設建構子：初始化為數值 0。
@@ -9723,22 +9759,22 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
     }
 
     template <typename T>
-    inline bool operator==(const DecimalConstantProxy& p, const T& other) {
+    inline bool operator==(DecimalConstantProxy p, const T& other) {
         return static_cast<decimal>(p) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, const DecimalConstantProxy& p) {
+    inline bool operator==(const T& other, DecimalConstantProxy p) {
         return other == static_cast<decimal>(p);
     }
 
     template <typename T>
-    inline bool operator!=(const DecimalConstantProxy& p, const T& other) {
+    inline bool operator!=(DecimalConstantProxy p, const T& other) {
         return static_cast<decimal>(p) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, const DecimalConstantProxy& p) {
+    inline bool operator!=(const T& other, DecimalConstantProxy p) {
         return other != static_cast<decimal>(p);
     }
 
