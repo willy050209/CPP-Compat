@@ -40,7 +40,10 @@
 | **格式化輸出** | `compat/Format.hpp` | `std::format` (C++20+) | 自研 `{}` 佔位符替換引擎 + `compat::formatter<T>` |
 | **終端列印** | `compat/Print.hpp` | `std::print`, `std::println` | 自研引擎 + Windows UTF-8 WriteConsoleW |
 | **型態解析** | `compat/Parse.hpp` | `compat::parse<T>` + `compat::from_chars` | 純函數無例外解析，零堆積、零 locale |
+| **任意精度整數** | `compat/BigInt.hpp` | `compat::bigint` (128-bit SBO) | 自研 128-bit SBO + Karatsuba/Knuth Algorithm D |
+| **十進位高精度浮點**| `compat/Decimal.hpp`| `compat::decimal` (SBO) | 自研 IEEE 754-2008 decimal128 + 銀行家捨入法 |
 | **總括標頭** | `compat/Compat.hpp` | 聚合所有模組 | 聚合所有模組 |
+
 
 ---
 
@@ -159,6 +162,39 @@ compat::from_chars("NaN", nullptr, nan_val);  // std::isnan(nan_val) == true
 const auto ok = CheckRange(50);
 if (!ok) compat::println("Error: {}", ok.error());
 ```
+
+### 高精度數值運算（BigInt 與 Decimal）
+
+```cpp
+#include <compat/BigInt.hpp>
+#include <compat/Decimal.hpp>
+#include <compat/Format.hpp>
+#include <compat/Print.hpp>
+
+// 1. 任意精度整數與 128-bit SBO (0 次 Heap 配置)
+compat::bigint a("123456789012345678901234567890");
+compat::bigint b = 42;
+auto c = a * b + 100;  // 自動轉型與雙向混合運算
+
+compat::println("BigInt c = {}", c);
+compat::println("BigInt one = {}, zero = {}", compat::bigint::one, compat::bigint::zero);
+
+// 2. 十進位高精度浮點數 (IEEE 754-2008 decimal128，預設 34 位有效數字)
+compat::decimal pi("3.1415926535897932384626433832795028841971");
+compat::decimal half = 0.5;
+auto rad = pi * half;
+
+// 3. 格式化輸出與銀行家捨入法
+compat::println("Pi 2位: {:.2f}", pi);        // 3.14
+compat::println("Pi 4位: {:.4f}", pi);        // 3.1416
+compat::println("Infinity: {}", compat::decimal::infinity);
+
+// 4. C 語言語意邏輯運算與容器 Hash
+if (c && !compat::decimal::zero) {
+    compat::println("非零即真！");
+}
+```
+
 
 ---
 

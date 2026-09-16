@@ -1,18 +1,3 @@
-﻿# 專案進度狀態看板 (STATE.md)
-
-## 當前進度狀態
-- [x] Phase 1: 需求釐清、技術調研與實作計畫核准 (Approved)
-- [x] Phase 2: 環境與基礎建設初始化 (`git init`, `.gitignore`, `RULES.md`, `ARCHITECTURE.md`, `STATE.md`, `logs/`)
-- [x] Phase 3: 子代理派發與 TDD 開發 (Subagent Delegation & TDD)
-  - [x] Worker 1 (Core Shim Developer): 核心相容層標頭與 Fallback 引擎實作
-  - [x] Worker 2 (Packaging Specialist): 單一標頭檔與 C++20 Module 自動導出腳本
-  - [x] Worker 3 (TDD & DevOps Specialist): 單元測試矩陣、CMake 與 GitHub Actions CI
-- [x] Phase 4: 成果審核、資安檢查 (Security Check) 與版本提交
-- [x] Phase 5: 專案總結與 Walkthrough 報告
-- [x] Benchmark Phase: 自研相容層 vs 標準庫效能基準測試
-  - [x] Bench-Worker 1: 基準測試框架與各模組對比實作
-  - [x] Bench-Worker 2: CMake 目標擴充、跨平台跑分與報告生成
-- [x] Refinement Phase: 全面標準化、邊界防護與雙軌 CI 矩陣
 # 專案進度狀態看板 (STATE.md)
 
 ## 當前進度狀態
@@ -37,6 +22,10 @@
 - [x] Optimization Phase: 自研相容層深度效能優化
   - [x] Worker 1: 實作 SBO 緩衝區、Radix-100 查表、memchr 向量化、Trivial 儲存基類與 Fast-path
   - [x] Bench-Worker 2: 重新跑分評測、驗證效能提升並更新 BENCHMARK_RESULTS.md
+- [x] BigInt & Decimal Phase: 擴充高精度數值型別
+  - [x] Worker B1 (BigInt & SBO Specialist): BigInt 儲存、128-bit SBO、算數/位元/邏輯運算子、自動轉型與 TDD
+  - [x] Worker B2 (Decimal Specialist): Decimal 儲存、IEEE 754-2008 34 位精度、Half-Even 捨入、Infinity/NaN 與 TDD
+  - [x] Worker B3 (Format, Hash & Packaging Specialist): `compat::formatter`、`std::hash`、`bundle_header.py` 與整合測試
 
 ## 子代理派發紀錄表
 
@@ -51,3 +40,6 @@
 | `77fb3cb7` | Worker R2: Format/Print Specialist | 實作 Formatter 擴充點、`WriteConsoleW` 與字串安全 | 已完成 (Done) |
 | `f9a5e434` | Worker R3: Config/Parse Specialist | 實作 `Config.hpp`、無例外、`std::hash` 與零配浮點解析 | 已完成 (Done) |
 | `452448d8` | Worker R4: Tooling & CI Specialist | 強化 `bundle_header.py`、`export_module.py` 與雙軌 CI 矩陣 | 已完成 (Done) |
+| `a8b95abc` | Worker B1: BigInt Specialist | 實作 `BigIntCore.hpp`、`BigInt.hpp` 與 `tests/test_bigint.cpp` | 已完成 (Done) |
+| `80bb6c78` | Worker B2: Decimal Specialist | 實作 `DecimalCore.hpp`、`Decimal.hpp` 與 `tests/test_decimal.cpp` | 已完成 (Done) |
+| `6bc645b0` | Worker B3: Packaging & Integration | 實作格式化、`std::hash`、單標頭打包與跨標準整合驗證 | 已完成 (Done) |

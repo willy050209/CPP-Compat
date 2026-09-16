@@ -247,3 +247,34 @@ namespace compat {
 | StringView op== mismatch | 4.55 ns | 3.20 ns | ✅ 提升 30%（std::memcmp SIMD） |
 
 效能回歸測試日誌：`logs/20260909_benchmark_regression_check.log`
+
+---
+
+## 11. BigInt 與 Decimal 高精度數值架構
+
+### 11.1 BigInt (compat::bigint)
+- **儲存層 (BigIntStorage)**：
+  - 128 位元 SBO（內建 2 個 64-bit limbs 緩衝區）。
+  - 當數值大小在 128 位元（約 $3.4 \times 10^{38}$）以內時，達成 **0 次動態記憶體配置 (0 Heap Allocations)**。
+  - 超出 128 位元時，透明升級至動態配置陣列。
+- **演算法核心 (BigIntCore)**：
+  - 加減法：多精度帶進位/借位整數運算。
+  - 乘法：基礎 Schoolbook 乘法與 Karatsuba 演算法。
+  - 除法與模運算：Knuth Algorithm D 長除法。
+  - 位元運算：`&`, `|`, `^`, `~`, `<<`, `>>`。
+- **型別互通與邏輯運算**：
+  - 自動轉型：支援所有有號/無號整數型別雙向隱式建構與對稱運算。
+  - 邏輯運算：符合 C 語言非 0 為 true、0 為 false 語意；提供 `explicit operator bool()` 保持短路求值特性，並重載 `operator!`、`operator&&`、`operator||`。
+
+### 11.2 Decimal (compat::decimal)
+- **儲存層 (DecimalStorage)**：
+  - 數值結構：未縮放整數 `m_unscaled` (`compat::bigint`) + 縮放因子 `m_scale` (`int64_t`) + 特殊旗標（`m_is_nan`, `m_is_infinity`）。
+  - 得益於 `m_unscaled` 的 SBO 機制，38 位十進位有效數字以內的小數運算同樣具備零堆疊配置優勢。
+- **演算法核心 (DecimalCore)**：
+  - 精度標準：預設對齊 IEEE 754-2008 decimal128（34 位有效十進位數字）。
+  - 捨入模式：除不盡或超出目標精度時，採用銀行家捨入法 (Half-Even Rounding)。
+  - 科學記號解析：支援 `1.23e-10`、`inf`、`-infinity`、`nan` 等標準輸入解析。
+- **整合生態**：
+  - 格式化：特化 `compat::formatter<bigint>` 與 `compat::formatter<decimal>`，支援 `{:.2f}` 等精度格式化。
+  - 雜湊：特化 `std::hash<compat::bigint>` 與 `std::hash<compat::decimal>`。
+

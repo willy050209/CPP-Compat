@@ -299,6 +299,49 @@ private:
 
 using format_context = basic_format_context<buffer_appender<stack_buffer<512>>, char>;
 
+/// <summary>
+/// Minimal basic_format_parse_context for compatibility with std::formatter pattern.
+/// </summary>
+/// <typeparam name="CharT">Character type.</typeparam>
+template <typename CharT = char>
+class basic_format_parse_context {
+public:
+    using char_type = CharT;
+    using const_iterator = const CharT*;
+    using iterator = const CharT*;
+
+    /// <summary>
+    /// Constructs a basic_format_parse_context with the given format string_view.
+    /// </summary>
+    /// <param name="fmt">Format string_view.</param>
+    constexpr explicit basic_format_parse_context(compat::string_view fmt) noexcept
+        : begin_(fmt.data()), end_(fmt.data() + fmt.size()) {}
+
+    /// <summary>
+    /// Returns iterator to the beginning of the format specification.
+    /// </summary>
+    /// <returns>Iterator to beginning.</returns>
+    constexpr const_iterator begin() const noexcept { return begin_; }
+
+    /// <summary>
+    /// Returns iterator to the end of the format specification.
+    /// </summary>
+    /// <returns>Iterator to end.</returns>
+    constexpr const_iterator end() const noexcept { return end_; }
+
+    /// <summary>
+    /// Advances iterator to the given position.
+    /// </summary>
+    /// <param name="it">New iterator position.</param>
+    void advance_to(const_iterator it) noexcept { begin_ = it; }
+
+private:
+    const_iterator begin_;
+    const_iterator end_;
+};
+
+using format_parse_context = basic_format_parse_context<char>;
+
 alignas(64) static const char DigitsLut[200] = {
     '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9',
     '1', '0', '1', '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9',
@@ -621,6 +664,27 @@ FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
     buf.append(s.data(), s.size());
 }
 
+template <typename T>
+inline typename std::enable_if<has_std_formatter<T>::value, void>::type
+FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view spec) {
+    using FormatterType = typename format_arg_traits<T>::type;
+    FormatterType formatted_arg = static_cast<FormatterType>(arg);
+    std::string s;
+    if (spec.empty()) {
+        s = std::format("{}", formatted_arg);
+    } else {
+        std::string fmt_str = "{" + std::string(spec.data(), spec.size()) + "}";
+        s = std::vformat(fmt_str, std::make_format_args(formatted_arg));
+    }
+    buf.append(s.data(), s.size());
+}
+
+template <typename T>
+inline typename std::enable_if<!has_std_formatter<T>::value, void>::type
+FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view /*spec*/) {
+    FormatArgToBuffer(buf, arg);
+}
+
 #else
 
 template <typename T, typename = void>
@@ -631,6 +695,24 @@ struct has_compat_formatter<T, compat::detail::void_t<
     decltype(std::declval<formatter<typename format_arg_traits<T>::type, char>>()
         .format(std::declval<const typename format_arg_traits<T>::type&>(), std::declval<format_context&>()))
 >> : std::true_type {};
+
+template <typename F, typename PC, typename = void>
+struct has_parse_member : std::false_type {};
+
+template <typename F, typename PC>
+struct has_parse_member<F, PC, compat::detail::void_t<
+    decltype(std::declval<F&>().parse(std::declval<PC&>()))
+>> : std::true_type {};
+
+template <typename F, typename PC>
+inline typename std::enable_if<has_parse_member<F, PC>::value, void>::type
+CallFormatterParse(F& fmt_obj, PC& pctx) {
+    fmt_obj.parse(pctx);
+}
+
+template <typename F, typename PC>
+inline typename std::enable_if<!has_parse_member<F, PC>::value, void>::type
+CallFormatterParse(F&, PC&) {}
 
 template <typename T>
 inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
@@ -650,6 +732,34 @@ FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
     oss << arg;
     std::string s = oss.str();
     buf.append(s.data(), s.size());
+}
+
+template <typename T>
+inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
+FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view spec) {
+    buffer_appender<stack_buffer<512>> app(buf);
+    basic_format_context<buffer_appender<stack_buffer<512>>, char> ctx(app);
+    using FormatterType = typename format_arg_traits<T>::type;
+    formatter<FormatterType, char> fmt_obj;
+    if (!spec.empty()) {
+        format_parse_context pctx(spec);
+        CallFormatterParse(fmt_obj, pctx);
+    }
+    FormatterType formatted_arg = static_cast<FormatterType>(arg);
+    fmt_obj.format(formatted_arg, ctx);
+}
+
+template <typename T>
+inline typename std::enable_if<!has_compat_formatter<T>::value, void>::type
+FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        std::ostringstream oss;
+        oss << arg;
+        std::string s = oss.str();
+        buf.append(s.data(), s.size());
+    }
 }
 
 #endif
@@ -808,11 +918,19 @@ inline std::size_t CountAndValidatePlaceholders(compat::string_view fmt) {
         if (fmt[i] == '{') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
                 i += 2;
-            } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                ++count;
-                i += 2;
             } else {
-                throw std::invalid_argument("Unmatched '{' in format string");
+                std::size_t close = i + 1;
+                while (close < fmt.size() && fmt[close] != '}') {
+                    if (fmt[close] == '{') {
+                        throw std::invalid_argument("Unmatched '{' in format string");
+                    }
+                    ++close;
+                }
+                if (close >= fmt.size()) {
+                    throw std::invalid_argument("Unmatched '{' in format string");
+                }
+                ++count;
+                i = close + 1;
             }
         } else if (fmt[i] == '}') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
@@ -844,10 +962,16 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
                 buf.push_back('{');
                 i += 2;
                 start = i;
-            } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                throw std::invalid_argument("Too few arguments for format string");
             } else {
-                ++i;
+                std::size_t close = i + 1;
+                while (close < fmt.size() && fmt[close] != '}') {
+                    ++close;
+                }
+                if (close < fmt.size()) {
+                    throw std::invalid_argument("Too few arguments for format string");
+                } else {
+                    ++i;
+                }
             }
         } else if (fmt[i] == '}') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
@@ -891,15 +1015,22 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
                 buf.push_back('{');
                 i += 2;
                 start = i;
-            } else if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                if (i > start) {
-                    buf.append(fmt.data() + start, i - start);
-                }
-                FormatArgToBuffer(buf, first);
-                WriteFormattedBufferImpl(buf, fmt.substr(i + 2), rest...);
-                return;
             } else {
-                ++i;
+                std::size_t close = i + 1;
+                while (close < fmt.size() && fmt[close] != '}') {
+                    ++close;
+                }
+                if (close < fmt.size()) {
+                    if (i > start) {
+                        buf.append(fmt.data() + start, i - start);
+                    }
+                    compat::string_view spec = (close > i + 1) ? fmt.substr(i + 1, close - (i + 1)) : compat::string_view{};
+                    FormatArgToBufferWithSpec(buf, first, spec);
+                    WriteFormattedBufferImpl(buf, fmt.substr(close + 1), rest...);
+                    return;
+                } else {
+                    ++i;
+                }
             }
         } else if (fmt[i] == '}') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
