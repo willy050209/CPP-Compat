@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // Master include header for compat library.
 // Zero external dependencies, downward compatible from C++23 to C++11.
@@ -11,3 +11,5 @@
 #include "Parse.hpp"
 #include "BigInt.hpp"
 #include "Decimal.hpp"
+#include "CMath.hpp"
+#include "Bitset.hpp"

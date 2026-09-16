@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // BigInt.hpp
 // Arbitrary-precision integer facade class for CPP-Compat.
@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <limits>
 #include <cstdlib>
+#include <bitset>
 
 namespace compat {
 
@@ -280,6 +281,40 @@ public:
     }
 
     /// <summary>
+    /// 自 std::bitset 建構非負任意精度整數（按無符號二進位數解析）。
+    /// </summary>
+    /// <typeparam name="N">來源位元寬度</typeparam>
+    /// <param name="bs">來源 bitset 物件</param>
+    template <size_t N>
+    bigint(const std::bitset<N>& bs) {
+        if (N == 0) {
+            return;
+        }
+        size_t limb_cnt = (N + 63) / 64;
+        m_storage.resize(limb_cnt, 0);
+        bool any_bit = false;
+        for (size_t w = 0; w < limb_cnt; ++w) {
+            uint64_t val = 0;
+            size_t bits_in_limb = (w == limb_cnt - 1) ? (N - w * 64) : 64;
+            for (size_t b = 0; b < bits_in_limb; ++b) {
+                if (bs.test(w * 64 + b)) {
+                    val |= (static_cast<uint64_t>(1) << b);
+                    any_bit = true;
+                }
+            }
+            m_storage.m_data[w] = val;
+        }
+        if (any_bit) {
+            m_storage.m_sign = 1;
+            m_storage.normalize();
+        } else {
+            m_storage.m_size = 0;
+            m_storage.m_sign = 0;
+            m_storage.shrink_to_sbo_if_possible();
+        }
+    }
+
+    /// <summary>
     /// 靜態輔助方法：自字串解析 bigint。
     /// </summary>
     /// <param name="sv">十進位字串視圖</param>
@@ -288,6 +323,66 @@ public:
     static bigint from_string(compat::string_view sv) {
         bigint res;
         detail::BigIntCore::from_string(res.m_storage, sv);
+        return res;
+    }
+
+    /// <summary>
+    /// 靜態輔助方法：自二進位字串解析 bigint（支援正負符號與可選 "0b"/"0B" 前綴）。
+    /// </summary>
+    /// <param name="sv">二進位字串視圖</param>
+    /// <returns>解析完成之 bigint 物件</returns>
+    /// <exception cref="std::invalid_argument">字串為空或包含無效二進位字元時拋出</exception>
+    static bigint from_binary_string(compat::string_view sv) {
+        if (sv.empty()) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("empty binary string"));
+        }
+        size_t idx = 0;
+        int8_t sign = 1;
+        if (sv[0] == '-') {
+            sign = -1;
+            ++idx;
+        } else if (sv[0] == '+') {
+            ++idx;
+        }
+        if (idx == sv.size()) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("no binary digits in string"));
+        }
+        if (idx + 1 < sv.size() && sv[idx] == '0' && (sv[idx + 1] == 'b' || sv[idx + 1] == 'B')) {
+            idx += 2;
+        }
+        if (idx == sv.size()) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("no binary digits after prefix"));
+        }
+        // 驗證字元合法性
+        for (size_t i = idx; i < sv.size(); ++i) {
+            if (sv[i] != '0' && sv[i] != '1') {
+                COMPAT_THROW_OR_ABORT(std::invalid_argument("invalid character in binary string"));
+            }
+        }
+        // 跳過前導 0
+        while (idx < sv.size() && sv[idx] == '0') {
+            ++idx;
+        }
+        if (idx == sv.size()) {
+            return bigint(0);
+        }
+        size_t num_bits = sv.size() - idx;
+        size_t limb_cnt = (num_bits + 63) / 64;
+        bigint res;
+        res.m_storage.resize(limb_cnt, 0);
+        for (size_t w = 0; w < limb_cnt; ++w) {
+            uint64_t limb_val = 0;
+            size_t bits_in_limb = (w == limb_cnt - 1) ? (num_bits - w * 64) : 64;
+            for (size_t b = 0; b < bits_in_limb; ++b) {
+                size_t char_pos = sv.size() - 1 - (w * 64 + b);
+                if (sv[char_pos] == '1') {
+                    limb_val |= (static_cast<uint64_t>(1) << b);
+                }
+            }
+            res.m_storage.m_data[w] = limb_val;
+        }
+        res.m_storage.m_sign = sign;
+        res.m_storage.normalize();
         return res;
     }
 
@@ -423,6 +518,78 @@ public:
     /// <returns>十進位字串</returns>
     COMPAT_NODISCARD std::string to_string() const {
         return detail::BigIntCore::to_string(m_storage);
+    }
+
+    /// <summary>
+    /// 轉換為指定位元寬度之 std::bitset，負數時採用標準二補數表示法。
+    /// </summary>
+    /// <typeparam name="N">目標位元寬度</typeparam>
+    /// <returns>對應之 std::bitset 物件</returns>
+    template <size_t N>
+    std::bitset<N> to_bitset() const {
+        std::bitset<N> bs;
+        if (N == 0) {
+            return bs;
+        }
+        size_t limb_cnt = (N + 63) / 64;
+        if (m_storage.m_sign >= 0) {
+            for (size_t w = 0; w < limb_cnt; ++w) {
+                uint64_t val = (w < m_storage.m_size) ? m_storage.m_data[w] : 0ULL;
+                size_t bits_in_limb = (w == limb_cnt - 1) ? (N - w * 64) : 64;
+                for (size_t b = 0; b < bits_in_limb; ++b) {
+                    if ((val >> b) & 1ULL) {
+                        bs.set(w * 64 + b);
+                    }
+                }
+            }
+        } else {
+            // 負數二補數計算：~magnitude + 1
+            uint64_t carry = 1;
+            for (size_t w = 0; w < limb_cnt; ++w) {
+                uint64_t mag_w = (w < m_storage.m_size) ? m_storage.m_data[w] : 0ULL;
+                uint64_t inv_w = ~mag_w;
+                uint64_t val = inv_w + carry;
+                carry = (val < inv_w) ? 1 : 0;
+                size_t bits_in_limb = (w == limb_cnt - 1) ? (N - w * 64) : 64;
+                for (size_t b = 0; b < bits_in_limb; ++b) {
+                    if ((val >> b) & 1ULL) {
+                        bs.set(w * 64 + b);
+                    }
+                }
+            }
+        }
+        return bs;
+    }
+
+    /// <summary>
+    /// 轉換為二進位字串表示（負數具有 '-' 前綴，零為 "0"）。
+    /// </summary>
+    /// <returns>二進位字串</returns>
+    COMPAT_NODISCARD std::string to_binary_string() const {
+        if (m_storage.m_sign == 0 || m_storage.m_size == 0) {
+            return "0";
+        }
+        size_t high_limb_idx = m_storage.m_size - 1;
+        uint64_t high_val = m_storage.m_data[high_limb_idx];
+        int leading_zeros = detail::BigIntCore::clz64(high_val);
+        int bits_in_high = 64 - leading_zeros;
+        size_t total_bits = high_limb_idx * 64 + static_cast<size_t>(bits_in_high);
+
+        std::string result;
+        result.reserve((m_storage.m_sign < 0 ? 1 : 0) + total_bits);
+        if (m_storage.m_sign < 0) {
+            result.push_back('-');
+        }
+        for (int b = bits_in_high - 1; b >= 0; --b) {
+            result.push_back(((high_val >> b) & 1ULL) ? '1' : '0');
+        }
+        for (size_t i = high_limb_idx; i > 0; --i) {
+            uint64_t val = m_storage.m_data[i - 1];
+            for (int b = 63; b >= 0; --b) {
+                result.push_back(((val >> b) & 1ULL) ? '1' : '0');
+            }
+        }
+        return result;
     }
 
     /// <summary>

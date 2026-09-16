@@ -42,6 +42,8 @@
 | **型態解析** | `compat/Parse.hpp` | `compat::parse<T>` + `compat::from_chars` | 純函數無例外解析，零堆積、零 locale |
 | **任意精度整數** | `compat/BigInt.hpp` | `compat::bigint` (128-bit SBO) | 自研 128-bit SBO + Karatsuba/Knuth Algorithm D |
 | **十進位高精度浮點**| `compat/Decimal.hpp`| `compat::decimal` (SBO) | 自研 IEEE 754-2008 decimal128 + 銀行家捨入法 |
+| **數學函式庫擴充** | `compat/CMath.hpp` | `compat::*` + `std::*` 雙命名空間 | 開方、三角、指數對數、捨入取模、分類函式 |
+| **位元集合互轉** | `compat/Bitset.hpp` | `std::bitset<N>` 雙向二補數轉換 | 支援任意 $N$ 位元、二進位字串編解碼 |
 | **總括標頭** | `compat/Compat.hpp` | 聚合所有模組 | 聚合所有模組 |
 
 
@@ -193,7 +195,26 @@ compat::println("Infinity: {}", compat::decimal::infinity);
 if (c && !compat::decimal::zero) {
     compat::println("非零即真！");
 }
+
+// 5. <cmath> 數學函式庫支援（支援 ADL 與 std:: 呼叫）
+compat::decimal sqrt2 = std::sqrt(compat::decimal(2));
+compat::println("sqrt(2) = {}", sqrt2);
+
+compat::bigint isqrt100 = compat::sqrt(compat::bigint(100)); // 整數平方根 10
+compat::println("isqrt(100) = {}", isqrt100);
+
+compat::decimal sin_pi = compat::sin(pi);
+compat::println("sin(pi) = {}", sin_pi);
+
+// 6. <bitset> 二進位雙向轉換與二補數支援
+compat::bigint num(-42);
+auto bs16 = num.to_bitset<16>(); // 二補數 16 位元
+compat::println("-42 的二補數 (16-bit): {}", bs16.to_string());
+
+compat::bigint restored(bs16);   // 從 bitset 轉回非負 bigint (65494)
+compat::println("restored = {}, binary string = {}", restored, num.to_binary_string());
 ```
+
 
 
 ---

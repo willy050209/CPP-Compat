@@ -26,6 +26,9 @@
   - [x] Worker B1 (BigInt & SBO Specialist): BigInt 儲存、128-bit SBO、算數/位元/邏輯運算子、自動轉型與 TDD
   - [x] Worker B2 (Decimal Specialist): Decimal 儲存、IEEE 754-2008 34 位精度、Half-Even 捨入、Infinity/NaN 與 TDD
   - [x] Worker B3 (Format, Hash & Packaging Specialist): `compat::formatter`、`std::hash`、`bundle_header.py` 與整合測試
+- [x] CMath & Bitset Extension Phase: 擴充 `<cmath>` 與 `<bitset>` 支援
+  - [x] Worker M1 (CMath Specialist): `CMath.hpp` 高精度數學函式、compat 與 std 雙重命名空間重載與單元測試
+  - [x] Worker M2 (Bitset Specialist): `Bitset.hpp`、任意 $N$ 位元 `std::bitset<N>` 雙向二補數轉換、二進位字串解析與單元測試
 
 ## 子代理派發紀錄表
 
@@ -43,3 +46,5 @@
 | `a8b95abc` | Worker B1: BigInt Specialist | 實作 `BigIntCore.hpp`、`BigInt.hpp` 與 `tests/test_bigint.cpp` | 已完成 (Done) |
 | `80bb6c78` | Worker B2: Decimal Specialist | 實作 `DecimalCore.hpp`、`Decimal.hpp` 與 `tests/test_decimal.cpp` | 已完成 (Done) |
 | `6bc645b0` | Worker B3: Packaging & Integration | 實作格式化、`std::hash`、單標頭打包與跨標準整合驗證 | 已完成 (Done) |
+| `ec7b0637` | Worker M1: CMath Specialist | 實作 `CMath.hpp` 與 `tests/test_cmath.cpp` | 已完成 (Done) |
+| `7db1e4f4` | Worker M2: Bitset Specialist | 實作 `Bitset.hpp` 與 `tests/test_bitset.cpp` | 已完成 (Done) |

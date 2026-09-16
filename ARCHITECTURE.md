@@ -278,3 +278,29 @@ namespace compat {
   - 格式化：特化 `compat::formatter<bigint>` 與 `compat::formatter<decimal>`，支援 `{:.2f}` 等精度格式化。
   - 雜湊：特化 `std::hash<compat::bigint>` 與 `std::hash<compat::decimal>`。
 
+---
+
+## 12. CMath 與 Bitset 擴充架構
+
+### 12.1 <cmath> 數學擴充 (compat/CMath.hpp)
+- **多精度數學演算法**：
+  - 開方：`isqrt`（整數二分法/牛頓法，回傳 `bigint` 最大整數根）；`sqrt(decimal)`（牛頓-拉弗森法二次收斂至 34 位有效十進位數字）。
+  - 捨入：`floor`、`ceil`、`round`（Half-away-from-zero）、`trunc`、`fmod`、`remainder`。
+  - 指數與對數：`exp`（Range Reduction 模 $\ln 2$ 後泰勒展開）、`log`、`log10`、`log2`（Halley 迭代法）。
+  - 三角幾何：`sin`、`cos`、`tan`（Range Reduction 模 $2\pi$ 後泰勒展開）、`hypot(x, y)`。
+  - 數值分類：`isnan`、`isinf`、`isfinite`、`signbit`、`copysign`。
+- **雙命名空間重載策略**：
+  - 於 `namespace compat` 提供所有重載，完全支援 Argument-Dependent Lookup (ADL) 與 `compat::` 呼叫。
+  - 於 `namespace std` 提供對應重載，相容使用者直接呼叫 `std::sqrt(d)` 或泛型數值演算。
+
+### 12.2 <bitset> 位元轉換 (compat/Bitset.hpp)
+- **任意長度映射**：
+  - `bigint(const std::bitset<N>&)` 樣板建構子，按 64-bit limbs 批次建構。
+  - `b.to_bitset<N>()` 樣板成員函式與 `compat::to_bitset<N>(b)` 獨立輔助函式。
+- **二補數 (Two's Complement) 語意**：
+  - 正數：按位元直接映射。
+  - 負數：嚴格依循二補數語意，將 $|b|$ 取反加一後符號延伸至 $N$ 位元截斷。
+- **二進位字串解析**：
+  - `to_binary_string()` 與 `from_binary_string()` 支援二進位字串快速往返轉換。
+
+
