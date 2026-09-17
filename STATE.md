@@ -22,13 +22,11 @@
 - [x] Optimization Phase: 自研相容層深度效能優化
   - [x] Worker 1: 實作 SBO 緩衝區、Radix-100 查表、memchr 向量化、Trivial 儲存基類與 Fast-path
   - [x] Bench-Worker 2: 重新跑分評測、驗證效能提升並更新 BENCHMARK_RESULTS.md
-- [x] BigInt & Decimal Phase: 擴充高精度數值型別
-  - [x] Worker B1 (BigInt & SBO Specialist): BigInt 儲存、128-bit SBO、算數/位元/邏輯運算子、自動轉型與 TDD
-  - [x] Worker B2 (Decimal Specialist): Decimal 儲存、IEEE 754-2008 34 位精度、Half-Even 捨入、Infinity/NaN 與 TDD
-  - [x] Worker B3 (Format, Hash & Packaging Specialist): `compat::formatter`、`std::hash`、`bundle_header.py` 與整合測試
-- [x] CMath & Bitset Extension Phase: 擴充 `<cmath>` 與 `<bitset>` 支援
-  - [x] Worker M1 (CMath Specialist): `CMath.hpp` 高精度數學函式、compat 與 std 雙重命名空間重載與單元測試
-  - [x] Worker M2 (Bitset Specialist): `Bitset.hpp`、任意 $N$ 位元 `std::bitset<N>` 雙向二補數轉換、二進位字串解析與單元測試
+- [x] Extraction Phase: BigInt 與 Decimal 獨立模組化
+  - [x] 將 BigInt 與 Bitset 獨立遷移至 `CPP-BigInt` 專案（建立獨立 Git、CMake、`numeric::bigint` 與測試套件）
+  - [x] 將 Decimal 與 CMath 獨立遷移至 `CPP-Decimal` 專案（建立獨立 Git、CMake、`numeric::decimal` 與測試套件）
+  - [x] 清理 `CPP-Compat` 移除數值擴充檔案，重新生成 `dist/compat.hpp` 與 `dist/compat.ixx`，回歸現代 C++ 標準庫向下相容層純粹定位
+
 
 ## 子代理派發紀錄表
 

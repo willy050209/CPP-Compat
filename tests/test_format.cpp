@@ -1,11 +1,9 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <compat/Format.hpp>
-#include <compat/BigInt.hpp>
-#include <compat/Decimal.hpp>
 #include <string>
 #include <cstdint>
 #include <stdexcept>
-#include <unordered_set>
+
 
 #if COMPAT_HAS_STD_FORMAT
 #  include <format>
@@ -113,81 +111,6 @@ void run_test_format() {
 #  endif
 #endif
 
-    // 10. compat::bigint 格式化輸出
-    std::string s_bi1 = compat::format("val: {}", compat::bigint(123456789));
-    TEST_ASSERT(s_bi1 == "val: 123456789");
-
-    std::string s_bi2 = compat::format("negative: {}", compat::bigint(-987654321));
-    TEST_ASSERT(s_bi2 == "negative: -987654321");
-
-    std::string s_bi3 = compat::format("zero: {}", compat::bigint(0));
-    TEST_ASSERT(s_bi3 == "zero: 0");
-
-    std::string s_bi4 = compat::format("large: {}", compat::bigint("123456789012345678901234567890"));
-    TEST_ASSERT(s_bi4 == "large: 123456789012345678901234567890");
-
-    // 11. compat::decimal 格式化輸出 ({}, {:.Nf}, {:.N})
-    std::string s_dec1 = compat::format("pi: {:.2f}", compat::decimal("3.14159"));
-    TEST_ASSERT(s_dec1 == "pi: 3.14");
-
-    std::string s_dec2 = compat::format("pi: {:.4f}", compat::decimal("3.14159"));
-    TEST_ASSERT(s_dec2 == "pi: 3.1416");
-
-    std::string s_dec3 = compat::format("val: {:.2f}", compat::decimal("123.456"));
-    TEST_ASSERT(s_dec3 == "val: 123.46");
-
-    std::string s_dec4 = compat::format("val: {:.2}", compat::decimal("123.456"));
-    TEST_ASSERT(s_dec4 == "val: 123.46");
-
-    std::string s_dec5 = compat::format("pad: {:.2f}", compat::decimal("123.4"));
-    TEST_ASSERT(s_dec5 == "pad: 123.40");
-
-    std::string s_dec6 = compat::format("zero: {:.3f}", compat::decimal("0"));
-    TEST_ASSERT(s_dec6 == "zero: 0.000");
-
-    std::string s_dec7 = compat::format("default: {}", compat::decimal("42.5"));
-    TEST_ASSERT(s_dec7 == "default: 42.5");
-
-    // 12. std::hash<compat::bigint> 與 std::unordered_set<compat::bigint>
-    {
-        std::unordered_set<compat::bigint> bi_set;
-        bi_set.insert(compat::bigint(123456789));
-        bi_set.insert(compat::bigint(-42));
-        bi_set.insert(compat::bigint(0));
-        bi_set.insert(compat::bigint("123456789012345678901234567890"));
-
-        TEST_ASSERT(bi_set.count(compat::bigint(123456789)) == 1);
-        TEST_ASSERT(bi_set.count(compat::bigint(-42)) == 1);
-        TEST_ASSERT(bi_set.count(compat::bigint(0)) == 1);
-        TEST_ASSERT(bi_set.count(compat::bigint("123456789012345678901234567890")) == 1);
-        TEST_ASSERT(bi_set.count(compat::bigint(999)) == 0);
-
-        // 重複插入等值鍵不應增加大小
-        size_t orig_size = bi_set.size();
-        bi_set.insert(compat::bigint(123456789));
-        TEST_ASSERT(bi_set.size() == orig_size);
-    }
-
-    // 13. std::hash<compat::decimal> 與 std::unordered_set<compat::decimal>
-    {
-        std::unordered_set<compat::decimal> dec_set;
-        dec_set.insert(compat::decimal("1.0"));
-        dec_set.insert(compat::decimal("3.14159"));
-        dec_set.insert(compat::decimal("0"));
-        dec_set.insert(compat::decimal("-42.5"));
-
-        // 驗證規格化後等值鍵（如 1.0 與 1.00、0 與 0.000）正確命中
-        TEST_ASSERT(dec_set.count(compat::decimal("1.00")) == 1);
-        TEST_ASSERT(dec_set.count(compat::decimal("1")) == 1);
-        TEST_ASSERT(dec_set.count(compat::decimal("0.000")) == 1);
-        TEST_ASSERT(dec_set.count(compat::decimal("-42.500")) == 1);
-        TEST_ASSERT(dec_set.count(compat::decimal("99.9")) == 0);
-
-        // 等值鍵插入驗證去重
-        size_t orig_dec_size = dec_set.size();
-        dec_set.insert(compat::decimal("1.0000"));
-        TEST_ASSERT(dec_set.size() == orig_dec_size);
-    }
-
     std::cout << "[PASS] test_format passed." << std::endl;
 }
+

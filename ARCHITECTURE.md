@@ -250,57 +250,7 @@ namespace compat {
 
 ---
 
-## 11. BigInt 與 Decimal 高精度數值架構
 
-### 11.1 BigInt (compat::bigint)
-- **儲存層 (BigIntStorage)**：
-  - 128 位元 SBO（內建 2 個 64-bit limbs 緩衝區）。
-  - 當數值大小在 128 位元（約 $3.4 \times 10^{38}$）以內時，達成 **0 次動態記憶體配置 (0 Heap Allocations)**。
-  - 超出 128 位元時，透明升級至動態配置陣列。
-- **演算法核心 (BigIntCore)**：
-  - 加減法：多精度帶進位/借位整數運算。
-  - 乘法：基礎 Schoolbook 乘法與 Karatsuba 演算法。
-  - 除法與模運算：Knuth Algorithm D 長除法。
-  - 位元運算：`&`, `|`, `^`, `~`, `<<`, `>>`。
-- **型別互通與邏輯運算**：
-  - 自動轉型：支援所有有號/無號整數型別雙向隱式建構與對稱運算。
-  - 邏輯運算：符合 C 語言非 0 為 true、0 為 false 語意；提供 `explicit operator bool()` 保持短路求值特性，並重載 `operator!`、`operator&&`、`operator||`。
 
-### 11.2 Decimal (compat::decimal)
-- **儲存層 (DecimalStorage)**：
-  - 數值結構：未縮放整數 `m_unscaled` (`compat::bigint`) + 縮放因子 `m_scale` (`int64_t`) + 特殊旗標（`m_is_nan`, `m_is_infinity`）。
-  - 得益於 `m_unscaled` 的 SBO 機制，38 位十進位有效數字以內的小數運算同樣具備零堆疊配置優勢。
-- **演算法核心 (DecimalCore)**：
-  - 精度標準：預設對齊 IEEE 754-2008 decimal128（34 位有效十進位數字）。
-  - 捨入模式：除不盡或超出目標精度時，採用銀行家捨入法 (Half-Even Rounding)。
-  - 科學記號解析：支援 `1.23e-10`、`inf`、`-infinity`、`nan` 等標準輸入解析。
-- **整合生態**：
-  - 格式化：特化 `compat::formatter<bigint>` 與 `compat::formatter<decimal>`，支援 `{:.2f}` 等精度格式化。
-  - 雜湊：特化 `std::hash<compat::bigint>` 與 `std::hash<compat::decimal>`。
-
----
-
-## 12. CMath 與 Bitset 擴充架構
-
-### 12.1 <cmath> 數學擴充 (compat/CMath.hpp)
-- **多精度數學演算法**：
-  - 開方：`isqrt`（整數二分法/牛頓法，回傳 `bigint` 最大整數根）；`sqrt(decimal)`（牛頓-拉弗森法二次收斂至 34 位有效十進位數字）。
-  - 捨入：`floor`、`ceil`、`round`（Half-away-from-zero）、`trunc`、`fmod`、`remainder`。
-  - 指數與對數：`exp`（Range Reduction 模 $\ln 2$ 後泰勒展開）、`log`、`log10`、`log2`（Halley 迭代法）。
-  - 三角幾何：`sin`、`cos`、`tan`（Range Reduction 模 $2\pi$ 後泰勒展開）、`hypot(x, y)`。
-  - 數值分類：`isnan`、`isinf`、`isfinite`、`signbit`、`copysign`。
-- **雙命名空間重載策略**：
-  - 於 `namespace compat` 提供所有重載，完全支援 Argument-Dependent Lookup (ADL) 與 `compat::` 呼叫。
-  - 於 `namespace std` 提供對應重載，相容使用者直接呼叫 `std::sqrt(d)` 或泛型數值演算。
-
-### 12.2 <bitset> 位元轉換 (compat/Bitset.hpp)
-- **任意長度映射**：
-  - `bigint(const std::bitset<N>&)` 樣板建構子，按 64-bit limbs 批次建構。
-  - `b.to_bitset<N>()` 樣板成員函式與 `compat::to_bitset<N>(b)` 獨立輔助函式。
-- **二補數 (Two's Complement) 語意**：
-  - 正數：按位元直接映射。
-  - 負數：嚴格依循二補數語意，將 $|b|$ 取反加一後符號延伸至 $N$ 位元截斷。
-- **二進位字串解析**：
-  - `to_binary_string()` 與 `from_binary_string()` 支援二進位字串快速往返轉換。
 
 

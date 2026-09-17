@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <iostream>
 
 void run_test_expected();
@@ -6,11 +6,6 @@ void run_test_format();
 void run_test_parse();
 void run_test_print();
 void run_test_string_view();
-void run_test_bigint();
-void run_test_decimal();
-void run_test_cmath();
-void run_test_bitset();
-void run_test_constexpr();
 
 /// <summary>
 /// 單元測試套件整合進入點。
@@ -26,11 +21,7 @@ int main() {
     run_test_format();
     run_test_print();
     run_test_parse();
-    run_test_bigint();
-    run_test_decimal();
-    run_test_cmath();
-    run_test_bitset();
-    run_test_constexpr();
+
 
     TestStats& stats = GetGlobalTestStats();
     std::cout << "========================================" << std::endl;
