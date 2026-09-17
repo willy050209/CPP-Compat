@@ -40,25 +40,25 @@ namespace detail {
         /// 隱式轉換至 bigint。
         /// </summary>
         /// <returns>對應之 bigint 實例</returns>
-        inline operator bigint() const;
+        COMPAT_CONSTEXPR_20 operator bigint() const;
 
         /// <summary>
         /// 函式呼叫運算子，傳回對應之 bigint。
         /// </summary>
         /// <returns>對應之 bigint 實例</returns>
-        inline bigint operator()() const;
+        COMPAT_CONSTEXPR_20 bigint operator()() const;
 
         template <typename T>
-        friend bool operator==(BigIntConstantProxy p, const T& other);
+        friend COMPAT_CONSTEXPR_20 bool operator==(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator==(const T& other, BigIntConstantProxy p);
+        friend COMPAT_CONSTEXPR_20 bool operator==(const T& other, BigIntConstantProxy p);
 
         template <typename T>
-        friend bool operator!=(BigIntConstantProxy p, const T& other);
+        friend COMPAT_CONSTEXPR_20 bool operator!=(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator!=(const T& other, BigIntConstantProxy p);
+        friend COMPAT_CONSTEXPR_20 bool operator!=(const T& other, BigIntConstantProxy p);
     };
 
     /// <summary>
@@ -129,14 +129,14 @@ public:
     /// 自內部 BigIntStorage 建立 bigint。
     /// </summary>
     /// <param name="storage">來源儲存層物件</param>
-    explicit bigint(detail::BigIntStorage storage) noexcept
+    explicit COMPAT_CONSTEXPR_20 bigint(detail::BigIntStorage storage) noexcept
         : m_storage(std::move(storage)) {}
 
     /// <summary>
     /// 自布林值建構：true 為 1，false 為 0。
     /// </summary>
     /// <param name="b">布林值</param>
-    bigint(bool b) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(bool b) noexcept {
         m_storage.set_uint64(b ? 1 : 0, b ? 1 : 0);
     }
 
@@ -144,7 +144,7 @@ public:
     /// 自 8 位元有符號整數建構。
     /// </summary>
     /// <param name="v">8 位元整數</param>
-    bigint(int8_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int8_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -156,7 +156,7 @@ public:
     /// 自 16 位元有符號整數建構。
     /// </summary>
     /// <param name="v">16 位元整數</param>
-    bigint(int16_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int16_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -168,7 +168,7 @@ public:
     /// 自 32 位元有符號整數建構。
     /// </summary>
     /// <param name="v">32 位元整數</param>
-    bigint(int32_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int32_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -180,7 +180,7 @@ public:
     /// 自 64 位元有符號整數建構。
     /// </summary>
     /// <param name="v">64 位元整數</param>
-    bigint(int64_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int64_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -192,7 +192,7 @@ public:
     /// 自 8 位元無符號整數建構。
     /// </summary>
     /// <param name="v">8 位元無符號整數</param>
-    bigint(uint8_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint8_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -200,7 +200,7 @@ public:
     /// 自 16 位元無符號整數建構。
     /// </summary>
     /// <param name="v">16 位元無符號整數</param>
-    bigint(uint16_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint16_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -208,7 +208,7 @@ public:
     /// 自 32 位元無符號整數建構。
     /// </summary>
     /// <param name="v">32 位元無符號整數</param>
-    bigint(uint32_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint32_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -216,7 +216,7 @@ public:
     /// 自 64 位元無符號整數建構。
     /// </summary>
     /// <param name="v">64 位元無符號整數</param>
-    bigint(uint64_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint64_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -236,7 +236,7 @@ public:
         !std::is_same<T, uint16_t>::value &&
         !std::is_same<T, uint32_t>::value &&
         !std::is_same<T, uint64_t>::value, int>::type = 0>
-    bigint(T v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(T v) noexcept {
         if (std::is_signed<T>::value) {
             int64_t val = static_cast<int64_t>(v);
             if (val < 0) {
@@ -255,7 +255,7 @@ public:
     /// </summary>
     /// <param name="sv">十進位字串視圖</param>
     /// <exception cref="std::invalid_argument">字串無效時拋出</exception>
-    explicit bigint(compat::string_view sv) {
+    explicit COMPAT_CONSTEXPR_20 bigint(compat::string_view sv) {
         detail::BigIntCore::from_string(m_storage, sv);
     }
 
@@ -264,7 +264,7 @@ public:
     /// </summary>
     /// <param name="s">字串指標</param>
     /// <exception cref="std::invalid_argument">指標為 null 或格式不合法時拋出</exception>
-    explicit bigint(const char* s) {
+    explicit COMPAT_CONSTEXPR_20 bigint(const char* s) {
         if (s == nullptr) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("null string pointer"));
         }
@@ -281,15 +281,19 @@ public:
     }
 
     /// <summary>
+    /// 自 std::bitset 建構非負任意精度整數（N == 0 之特化處理）。
+    /// </summary>
+    /// <typeparam name="N">來源位元寬度</typeparam>
+    template <size_t N, typename std::enable_if<(N == 0), int>::type = 0>
+    bigint(const std::bitset<N>&) {}
+
+    /// <summary>
     /// 自 std::bitset 建構非負任意精度整數（按無符號二進位數解析）。
     /// </summary>
     /// <typeparam name="N">來源位元寬度</typeparam>
     /// <param name="bs">來源 bitset 物件</param>
-    template <size_t N>
+    template <size_t N, typename std::enable_if<(N > 0), int>::type = 0>
     bigint(const std::bitset<N>& bs) {
-        if (N == 0) {
-            return;
-        }
         size_t limb_cnt = (N + 63) / 64;
         m_storage.resize(limb_cnt, 0);
         bool any_bit = false;
@@ -320,7 +324,7 @@ public:
     /// <param name="sv">十進位字串視圖</param>
     /// <returns>解析完成之 bigint 物件</returns>
     /// <exception cref="std::invalid_argument">字串為空或包含無效字元時拋出</exception>
-    static bigint from_string(compat::string_view sv) {
+    static COMPAT_CONSTEXPR_20 bigint from_string(compat::string_view sv) {
         bigint res;
         detail::BigIntCore::from_string(res.m_storage, sv);
         return res;
@@ -390,7 +394,7 @@ public:
     /// 查詢是否正在使用 128-bit SBO 內建緩衝區（無堆積配置）。
     /// </summary>
     /// <returns>若使用 SBO 回傳 true，否則回傳 false</returns>
-    COMPAT_NODISCARD bool is_sbo() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_sbo() const noexcept {
         return m_storage.is_sbo();
     }
 
@@ -398,15 +402,23 @@ public:
     /// 查詢是否為小數值（SBO 模式之別名）。
     /// </summary>
     /// <returns>若為 SBO 儲存回傳 true</returns>
-    COMPAT_NODISCARD bool is_small() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_small() const noexcept {
         return m_storage.is_sbo();
+    }
+
+    /// <summary>
+    /// 查詢數值是否為 0。
+    /// </summary>
+    /// <returns>若為零回傳 true</returns>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_zero() const noexcept {
+        return m_storage.m_size == 0 || (m_storage.m_size == 1 && m_storage.m_data[0] == 0);
     }
 
     /// <summary>
     /// 取得數值符號。
     /// </summary>
     /// <returns>負數為 -1，零為 0，正數為 1</returns>
-    COMPAT_NODISCARD int8_t sign() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 int8_t sign() const noexcept {
         return m_storage.m_sign;
     }
 
@@ -414,7 +426,7 @@ public:
     /// 取得有效 64-bit limbs 數量。
     /// </summary>
     /// <returns>limbs 數量</returns>
-    COMPAT_NODISCARD size_t limb_count() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 size_t limb_count() const noexcept {
         return m_storage.m_size;
     }
 
@@ -422,7 +434,7 @@ public:
     /// 取得內部儲存層之 limbs 唯讀指標。
     /// </summary>
     /// <returns>唯讀 uint64_t 指標</returns>
-    COMPAT_NODISCARD const uint64_t* limbs() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 const uint64_t* limbs() const noexcept {
         return m_storage.m_data;
     }
 
@@ -430,7 +442,7 @@ public:
     /// 取得儲存層物件之內部非 const 參考。
     /// </summary>
     /// <returns>儲存層物件參考</returns>
-    detail::BigIntStorage& storage() noexcept {
+    COMPAT_CONSTEXPR_20 detail::BigIntStorage& storage() noexcept {
         return m_storage;
     }
 
@@ -438,7 +450,7 @@ public:
     /// 取得儲存層物件之內部 const 參考。
     /// </summary>
     /// <returns>儲存層物件 const 參考</returns>
-    const detail::BigIntStorage& storage() const noexcept {
+    COMPAT_CONSTEXPR_20 const detail::BigIntStorage& storage() const noexcept {
         return m_storage;
     }
 
@@ -446,7 +458,7 @@ public:
     /// 明確轉型為布林值（符合 C 語言非 0 為 true、0 為 false）。
     /// </summary>
     /// <returns>非零時回傳 true，零時回傳 false</returns>
-    explicit operator bool() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator bool() const noexcept {
         return m_storage.m_sign != 0;
     }
 
@@ -454,7 +466,7 @@ public:
     /// 邏輯非運算子。
     /// </summary>
     /// <returns>若值為 0 回傳 true，否則回傳 false</returns>
-    bool operator!() const noexcept {
+    COMPAT_CONSTEXPR_20 bool operator!() const noexcept {
         return m_storage.m_sign == 0;
     }
 
@@ -462,7 +474,7 @@ public:
     /// 明確轉型為 64 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int64_t 數值</returns>
-    explicit operator int64_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator int64_t() const noexcept {
         if (m_storage.m_size == 0) return 0;
         uint64_t mag = m_storage.m_data[0];
         if (m_storage.m_sign < 0) {
@@ -475,7 +487,7 @@ public:
     /// 明確轉型為 64 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint64_t 數值</returns>
-    explicit operator uint64_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator uint64_t() const noexcept {
         if (m_storage.m_size == 0) return 0;
         return m_storage.m_data[0];
     }
@@ -484,7 +496,7 @@ public:
     /// 明確轉型為 32 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int32_t 數值</returns>
-    explicit operator int32_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator int32_t() const noexcept {
         return static_cast<int32_t>(static_cast<int64_t>(*this));
     }
 
@@ -492,7 +504,7 @@ public:
     /// 明確轉型為 32 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint32_t 數值</returns>
-    explicit operator uint32_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator uint32_t() const noexcept {
         return static_cast<uint32_t>(static_cast<uint64_t>(*this));
     }
 
@@ -596,7 +608,7 @@ public:
     /// 一元正號運算子。
     /// </summary>
     /// <returns>自身之副本</returns>
-    bigint operator+() const {
+    COMPAT_CONSTEXPR_20 bigint operator+() const {
         return *this;
     }
 
@@ -604,7 +616,7 @@ public:
     /// 一元負號運算子。
     /// </summary>
     /// <returns>正負號反轉後之結果</returns>
-    bigint operator-() const {
+    COMPAT_CONSTEXPR_20 bigint operator-() const {
         bigint res = *this;
         res.m_storage.m_sign = -res.m_storage.m_sign;
         return res;
@@ -614,7 +626,7 @@ public:
     /// 前置遞增運算子：++a。
     /// </summary>
     /// <returns>遞增後之自身參考</returns>
-    bigint& operator++() {
+    COMPAT_CONSTEXPR_20 bigint& operator++() {
         *this += 1;
         return *this;
     }
@@ -623,7 +635,7 @@ public:
     /// 後置遞增運算子：a++。
     /// </summary>
     /// <returns>遞增前之舊值</returns>
-    bigint operator++(int) {
+    COMPAT_CONSTEXPR_20 bigint operator++(int) {
         bigint tmp = *this;
         *this += 1;
         return tmp;
@@ -633,7 +645,7 @@ public:
     /// 前置遞減運算子：--a。
     /// </summary>
     /// <returns>遞減後之自身參考</returns>
-    bigint& operator--() {
+    COMPAT_CONSTEXPR_20 bigint& operator--() {
         *this -= 1;
         return *this;
     }
@@ -642,7 +654,7 @@ public:
     /// 後置遞減運算子：a--。
     /// </summary>
     /// <returns>遞減前之舊值</returns>
-    bigint operator--(int) {
+    COMPAT_CONSTEXPR_20 bigint operator--(int) {
         bigint tmp = *this;
         *this -= 1;
         return tmp;
@@ -652,7 +664,7 @@ public:
     /// 位元非運算子：~a = -a - 1。
     /// </summary>
     /// <returns>反轉後之數值</returns>
-    bigint operator~() const {
+    COMPAT_CONSTEXPR_20 bigint operator~() const {
         bigint res;
         detail::BigIntCore::bitwise_not(res.m_storage, m_storage);
         return res;
@@ -663,7 +675,7 @@ public:
     /// </summary>
     /// <param name="rhs">加數</param>
     /// <returns>自身參考</returns>
-    bigint& operator+=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator+=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::add_signed(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -675,7 +687,7 @@ public:
     /// </summary>
     /// <param name="rhs">減數</param>
     /// <returns>自身參考</returns>
-    bigint& operator-=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator-=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::sub_signed(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -687,7 +699,7 @@ public:
     /// </summary>
     /// <param name="rhs">乘數</param>
     /// <returns>自身參考</returns>
-    bigint& operator*=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator*=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::mul_signed(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -700,7 +712,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    bigint& operator/=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator/=(const bigint& rhs) {
         detail::BigIntStorage q, r;
         detail::BigIntCore::div_mod_signed(q, r, m_storage, rhs.m_storage);
         m_storage = std::move(q);
@@ -713,7 +725,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    bigint& operator%=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator%=(const bigint& rhs) {
         detail::BigIntStorage q, r;
         detail::BigIntCore::div_mod_signed(q, r, m_storage, rhs.m_storage);
         m_storage = std::move(r);
@@ -725,7 +737,7 @@ public:
     /// </summary>
     /// <param name="rhs">運算元</param>
     /// <returns>自身參考</returns>
-    bigint& operator&=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator&=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::bitwise_and(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -737,7 +749,7 @@ public:
     /// </summary>
     /// <param name="rhs">運算元</param>
     /// <returns>自身參考</returns>
-    bigint& operator|=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator|=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::bitwise_or(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -749,7 +761,7 @@ public:
     /// </summary>
     /// <param name="rhs">運算元</param>
     /// <returns>自身參考</returns>
-    bigint& operator^=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator^=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::bitwise_xor(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -764,7 +776,7 @@ public:
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">位移為負數時拋出</exception>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    bigint& operator<<=(T shift) {
+    COMPAT_CONSTEXPR_20 bigint& operator<<=(T shift) {
         if (shift < 0) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("negative bit shift"));
         }
@@ -782,7 +794,7 @@ public:
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">位移為負數時拋出</exception>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    bigint& operator>>=(T shift) {
+    COMPAT_CONSTEXPR_20 bigint& operator>>=(T shift) {
         if (shift < 0) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("negative bit shift"));
         }
@@ -798,7 +810,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>加法結果</returns>
-    friend bigint operator+(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator+(bigint lhs, const bigint& rhs) {
         lhs += rhs;
         return lhs;
     }
@@ -809,7 +821,7 @@ public:
     /// <param name="lhs">被減數</param>
     /// <param name="rhs">減數</param>
     /// <returns>減法結果</returns>
-    friend bigint operator-(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator-(bigint lhs, const bigint& rhs) {
         lhs -= rhs;
         return lhs;
     }
@@ -820,7 +832,7 @@ public:
     /// <param name="lhs">乘數</param>
     /// <param name="rhs">乘數</param>
     /// <returns>乘法結果</returns>
-    friend bigint operator*(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator*(bigint lhs, const bigint& rhs) {
         lhs *= rhs;
         return lhs;
     }
@@ -832,7 +844,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>商</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    friend bigint operator/(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator/(bigint lhs, const bigint& rhs) {
         lhs /= rhs;
         return lhs;
     }
@@ -844,7 +856,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>餘數</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    friend bigint operator%(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator%(bigint lhs, const bigint& rhs) {
         lhs %= rhs;
         return lhs;
     }
@@ -855,7 +867,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>運算結果</returns>
-    friend bigint operator&(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator&(bigint lhs, const bigint& rhs) {
         lhs &= rhs;
         return lhs;
     }
@@ -866,7 +878,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>運算結果</returns>
-    friend bigint operator|(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator|(bigint lhs, const bigint& rhs) {
         lhs |= rhs;
         return lhs;
     }
@@ -877,7 +889,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>運算結果</returns>
-    friend bigint operator^(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator^(bigint lhs, const bigint& rhs) {
         lhs ^= rhs;
         return lhs;
     }
@@ -890,7 +902,7 @@ public:
     /// <param name="shift">位移位元數</param>
     /// <returns>位移結果</returns>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    friend bigint operator<<(bigint lhs, T shift) {
+    friend COMPAT_CONSTEXPR_20 bigint operator<<(bigint lhs, T shift) {
         lhs <<= shift;
         return lhs;
     }
@@ -903,7 +915,7 @@ public:
     /// <param name="shift">位移位元數</param>
     /// <returns>位移結果</returns>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    friend bigint operator>>(bigint lhs, T shift) {
+    friend COMPAT_CONSTEXPR_20 bigint operator>>(bigint lhs, T shift) {
         lhs >>= shift;
         return lhs;
     }
@@ -914,11 +926,14 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若數值相等回傳 true</returns>
-    friend bool operator==(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator==(const bigint& lhs, const bigint& rhs) noexcept {
         if (lhs.m_storage.m_sign != rhs.m_storage.m_sign) return false;
         if (lhs.m_storage.m_size != rhs.m_storage.m_size) return false;
         if (lhs.m_storage.m_size == 0) return true;
-        return std::memcmp(lhs.m_storage.m_data, rhs.m_storage.m_data, lhs.m_storage.m_size * sizeof(uint64_t)) == 0;
+        for (size_t i = 0; i < lhs.m_storage.m_size; ++i) {
+            if (lhs.m_storage.m_data[i] != rhs.m_storage.m_data[i]) return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -927,7 +942,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若數值不相等回傳 true</returns>
-    friend bool operator!=(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator!=(const bigint& lhs, const bigint& rhs) noexcept {
         return !(lhs == rhs);
     }
 
@@ -937,7 +952,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt; rhs 回傳 true</returns>
-    friend bool operator<(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<(const bigint& lhs, const bigint& rhs) noexcept {
         if (lhs.m_storage.m_sign < rhs.m_storage.m_sign) return true;
         if (lhs.m_storage.m_sign > rhs.m_storage.m_sign) return false;
         if (lhs.m_storage.m_sign == 0) return false;
@@ -957,7 +972,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt;= rhs 回傳 true</returns>
-    friend bool operator<=(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<=(const bigint& lhs, const bigint& rhs) noexcept {
         return !(rhs < lhs);
     }
 
@@ -967,7 +982,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt; rhs 回傳 true</returns>
-    friend bool operator>(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>(const bigint& lhs, const bigint& rhs) noexcept {
         return rhs < lhs;
     }
 
@@ -977,7 +992,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt;= rhs 回傳 true</returns>
-    friend bool operator>=(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>=(const bigint& lhs, const bigint& rhs) noexcept {
         return !(lhs < rhs);
     }
 
@@ -995,31 +1010,31 @@ public:
 
 namespace detail {
 
-    inline BigIntConstantProxy::operator bigint() const {
+    COMPAT_CONSTEXPR_20 BigIntConstantProxy::operator bigint() const {
         return bigint(value);
     }
 
-    inline bigint BigIntConstantProxy::operator()() const {
+    COMPAT_CONSTEXPR_20 bigint BigIntConstantProxy::operator()() const {
         return bigint(value);
     }
 
     template <typename T>
-    inline bool operator==(BigIntConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 bool operator==(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, BigIntConstantProxy p) {
+    COMPAT_CONSTEXPR_20 bool operator==(const T& other, BigIntConstantProxy p) {
         return other == bigint(p.value);
     }
 
     template <typename T>
-    inline bool operator!=(BigIntConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 bool operator!=(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, BigIntConstantProxy p) {
+    COMPAT_CONSTEXPR_20 bool operator!=(const T& other, BigIntConstantProxy p) {
         return other != bigint(p.value);
     }
 
@@ -1031,7 +1046,7 @@ namespace detail {
 /// <param name="lhs">左運算元</param>
 /// <param name="rhs">右運算元</param>
 /// <returns>邏輯及結果</returns>
-inline bool operator&&(const bigint& lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator&&(const bigint& lhs, const bigint& rhs) noexcept {
     return static_cast<bool>(lhs) && static_cast<bool>(rhs);
 }
 
@@ -1041,7 +1056,7 @@ inline bool operator&&(const bigint& lhs, const bigint& rhs) noexcept {
 /// <param name="lhs">左運算元</param>
 /// <param name="rhs">右運算元</param>
 /// <returns>邏輯或結果</returns>
-inline bool operator||(const bigint& lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator||(const bigint& lhs, const bigint& rhs) noexcept {
     return static_cast<bool>(lhs) || static_cast<bool>(rhs);
 }
 
@@ -1053,7 +1068,7 @@ inline bool operator||(const bigint& lhs, const bigint& rhs) noexcept {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(const bigint& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator&&(const bigint& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) && (rhs != 0);
 }
 
@@ -1065,7 +1080,7 @@ inline bool operator&&(const bigint& lhs, T rhs) noexcept {
 /// <param name="rhs">右 bigint</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(T lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator&&(T lhs, const bigint& rhs) noexcept {
     return (lhs != 0) && static_cast<bool>(rhs);
 }
 
@@ -1077,7 +1092,7 @@ inline bool operator&&(T lhs, const bigint& rhs) noexcept {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(const bigint& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator||(const bigint& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) || (rhs != 0);
 }
 
@@ -1089,7 +1104,7 @@ inline bool operator||(const bigint& lhs, T rhs) noexcept {
 /// <param name="rhs">右 bigint</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(T lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator||(T lhs, const bigint& rhs) noexcept {
     return (lhs != 0) || static_cast<bool>(rhs);
 }
 

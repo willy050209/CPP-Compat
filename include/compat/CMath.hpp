@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // CMath.hpp
 // High-precision mathematical functions for BigInt and Decimal in CPP-Compat.
@@ -17,6 +17,47 @@ namespace compat {
 
 namespace detail {
 
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+    /// <summary>
+    /// 取得高精度圓周率 Pi 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 Pi 之 decimal 物件</returns>
+    constexpr decimal cmath_pi() {
+        return decimal("3.1415926535897932384626433832795029");
+    }
+
+    /// <summary>
+    /// 取得高精度 2*Pi 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 2*Pi 之 decimal 物件</returns>
+    constexpr decimal cmath_two_pi() {
+        return decimal("6.2831853071795864769252867665590058");
+    }
+
+    /// <summary>
+    /// 取得高精度 Pi/2 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 Pi/2 之 decimal 物件</returns>
+    constexpr decimal cmath_pi_over_2() {
+        return decimal("1.5707963267948966192313216916397514");
+    }
+
+    /// <summary>
+    /// 取得高精度 ln(2) 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 ln(2) 之 decimal 物件</returns>
+    constexpr decimal cmath_ln2() {
+        return decimal("0.69314718055994530941723212145817657");
+    }
+
+    /// <summary>
+    /// 取得高精度 ln(10) 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 ln(10) 之 decimal 物件</returns>
+    constexpr decimal cmath_ln10() {
+        return decimal("2.3025850929940456840179914546843642");
+    }
+#else
     /// <summary>
     /// 取得高精度圓周率 Pi 常數（50 位有效數字）。
     /// </summary>
@@ -61,7 +102,7 @@ namespace detail {
         static const decimal val("2.30258509299404568401799145468436420760110148862877");
         return val;
     }
-
+#endif
 } // namespace detail
 
 // ============================================================================
@@ -73,7 +114,7 @@ namespace detail {
 /// </summary>
 /// <param name="x">輸入整數</param>
 /// <returns>絕對值結果</returns>
-COMPAT_NODISCARD inline bigint abs(const bigint& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bigint abs(const bigint& x) noexcept {
     return (x.sign() < 0) ? -x : x;
 }
 
@@ -272,7 +313,7 @@ COMPAT_NODISCARD inline bigint pow(const bigint& base, const bigint& exp) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為 NaN 回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool isnan(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool isnan(const decimal& x) noexcept {
     return x.is_nan();
 }
 
@@ -281,7 +322,7 @@ COMPAT_NODISCARD inline bool isnan(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為無窮大回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool isinf(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool isinf(const decimal& x) noexcept {
     return x.is_infinite();
 }
 
@@ -290,7 +331,7 @@ COMPAT_NODISCARD inline bool isinf(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若非 NaN 且非無窮大回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool isfinite(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool isfinite(const decimal& x) noexcept {
     return x.is_finite();
 }
 
@@ -299,7 +340,7 @@ COMPAT_NODISCARD inline bool isfinite(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為負數回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool signbit(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool signbit(const decimal& x) noexcept {
     return x.sign() < 0 || x.unscaled().sign() < 0;
 }
 
@@ -309,7 +350,7 @@ COMPAT_NODISCARD inline bool signbit(const decimal& x) noexcept {
 /// <param name="mag">數值大小</param>
 /// <param name="sgn">符號來源</param>
 /// <returns>調整符號後之數值</returns>
-COMPAT_NODISCARD inline decimal copysign(const decimal& mag, const decimal& sgn) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal copysign(const decimal& mag, const decimal& sgn) noexcept {
     if (mag.is_nan()) {
         return mag;
     }
@@ -326,7 +367,7 @@ COMPAT_NODISCARD inline decimal copysign(const decimal& mag, const decimal& sgn)
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>絕對值結果</returns>
-COMPAT_NODISCARD inline decimal abs(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal abs(const decimal& x) noexcept {
     if (x.is_nan()) {
         return x;
     }
@@ -348,7 +389,7 @@ COMPAT_NODISCARD inline decimal abs(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向下取整後之整數</returns>
-COMPAT_NODISCARD inline decimal floor(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal floor(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -374,7 +415,7 @@ COMPAT_NODISCARD inline decimal floor(const decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向上取整後之整數</returns>
-COMPAT_NODISCARD inline decimal ceil(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal ceil(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -400,7 +441,7 @@ COMPAT_NODISCARD inline decimal ceil(const decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>截斷後之整數</returns>
-COMPAT_NODISCARD inline decimal trunc(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal trunc(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -419,7 +460,7 @@ COMPAT_NODISCARD inline decimal trunc(const decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>四捨五入後之整數</returns>
-COMPAT_NODISCARD inline decimal round(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal round(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -1099,7 +1140,7 @@ namespace std {
 /// </summary>
 /// <param name="x">輸入整數</param>
 /// <returns>絕對值結果</returns>
-inline compat::bigint abs(const compat::bigint& x) noexcept {
+COMPAT_CONSTEXPR_20 inline compat::bigint abs(const compat::bigint& x) noexcept {
     return compat::abs(x);
 }
 
@@ -1166,7 +1207,7 @@ inline compat::bigint pow(const compat::bigint& base, const compat::bigint& exp)
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為 NaN 回傳 true</returns>
-inline bool isnan(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool isnan(const compat::decimal& x) noexcept {
     return compat::isnan(x);
 }
 
@@ -1175,7 +1216,7 @@ inline bool isnan(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為無窮大回傳 true</returns>
-inline bool isinf(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool isinf(const compat::decimal& x) noexcept {
     return compat::isinf(x);
 }
 
@@ -1184,7 +1225,7 @@ inline bool isinf(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為有限值回傳 true</returns>
-inline bool isfinite(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool isfinite(const compat::decimal& x) noexcept {
     return compat::isfinite(x);
 }
 
@@ -1193,7 +1234,7 @@ inline bool isfinite(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為負回傳 true</returns>
-inline bool signbit(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool signbit(const compat::decimal& x) noexcept {
     return compat::signbit(x);
 }
 
@@ -1203,7 +1244,7 @@ inline bool signbit(const compat::decimal& x) noexcept {
 /// <param name="mag">大小</param>
 /// <param name="sgn">符號</param>
 /// <returns>調整後之數值</returns>
-inline compat::decimal copysign(const compat::decimal& mag, const compat::decimal& sgn) noexcept {
+COMPAT_CONSTEXPR_20 inline compat::decimal copysign(const compat::decimal& mag, const compat::decimal& sgn) noexcept {
     return compat::copysign(mag, sgn);
 }
 
@@ -1212,7 +1253,7 @@ inline compat::decimal copysign(const compat::decimal& mag, const compat::decima
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>絕對值結果</returns>
-inline compat::decimal abs(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline compat::decimal abs(const compat::decimal& x) noexcept {
     return compat::abs(x);
 }
 
@@ -1221,7 +1262,7 @@ inline compat::decimal abs(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向下取整結果</returns>
-inline compat::decimal floor(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal floor(const compat::decimal& x) {
     return compat::floor(x);
 }
 
@@ -1230,7 +1271,7 @@ inline compat::decimal floor(const compat::decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向上取整結果</returns>
-inline compat::decimal ceil(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal ceil(const compat::decimal& x) {
     return compat::ceil(x);
 }
 
@@ -1239,7 +1280,7 @@ inline compat::decimal ceil(const compat::decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>朝零捨入結果</returns>
-inline compat::decimal trunc(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal trunc(const compat::decimal& x) {
     return compat::trunc(x);
 }
 
@@ -1248,7 +1289,7 @@ inline compat::decimal trunc(const compat::decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>四捨五入結果</returns>
-inline compat::decimal round(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal round(const compat::decimal& x) {
     return compat::round(x);
 }
 

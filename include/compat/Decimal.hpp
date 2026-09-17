@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Decimal.hpp
 // High-precision decimal floating-point facade class for CPP-Compat.
@@ -56,19 +56,19 @@ struct DecimalConstantProxy {
     /// 隱式轉換至 decimal 實例。
     /// </summary>
     /// <returns>對應之 decimal 物件</returns>
-    inline operator decimal() const;
+    COMPAT_CONSTEXPR_20 operator decimal() const;
 
     /// <summary>
     /// 函式呼叫運算子，回傳對應之 decimal 實例。
     /// </summary>
     /// <returns>對應之 decimal 物件</returns>
-    inline decimal operator()() const;
+    COMPAT_CONSTEXPR_20 decimal operator()() const;
 
     /// <summary>
     /// 一元負號運算子（支援 -decimal::infinity）。
     /// </summary>
     /// <returns>反轉正負號後之 decimal 物件</returns>
-    inline decimal operator-() const;
+    COMPAT_CONSTEXPR_20 decimal operator-() const;
 
     /// <summary>
     /// 常數代理相等比較運算子。
@@ -78,7 +78,7 @@ struct DecimalConstantProxy {
     /// <param name="other">比較目標</param>
     /// <returns>若相等回傳 true</returns>
     template <typename T>
-    friend bool operator==(DecimalConstantProxy p, const T& other);
+    friend COMPAT_CONSTEXPR_20 bool operator==(DecimalConstantProxy p, const T& other);
 
     /// <summary>
     /// 常數代理相等比較運算子。
@@ -88,7 +88,7 @@ struct DecimalConstantProxy {
     /// <param name="p">常數代理物件</param>
     /// <returns>若相等回傳 true</returns>
     template <typename T>
-    friend bool operator==(const T& other, DecimalConstantProxy p);
+    friend COMPAT_CONSTEXPR_20 bool operator==(const T& other, DecimalConstantProxy p);
 
     /// <summary>
     /// 常數代理不相等比較運算子。
@@ -98,7 +98,7 @@ struct DecimalConstantProxy {
     /// <param name="other">比較目標</param>
     /// <returns>若不相等回傳 true</returns>
     template <typename T>
-    friend bool operator!=(DecimalConstantProxy p, const T& other);
+    friend COMPAT_CONSTEXPR_20 bool operator!=(DecimalConstantProxy p, const T& other);
 
     /// <summary>
     /// 常數代理不相等比較運算子。
@@ -108,7 +108,7 @@ struct DecimalConstantProxy {
     /// <param name="p">常數代理物件</param>
     /// <returns>若不相等回傳 true</returns>
     template <typename T>
-    friend bool operator!=(const T& other, DecimalConstantProxy p);
+    friend COMPAT_CONSTEXPR_20 bool operator!=(const T& other, DecimalConstantProxy p);
 };
 
 /// <summary>
@@ -157,45 +157,45 @@ public:
     /// <summary>
     /// 預設建構子：初始化為數值 0。
     /// </summary>
-    decimal() noexcept = default;
+    COMPAT_CONSTEXPR_20 decimal() noexcept = default;
 
     /// <summary>
     /// 複製建構子。
     /// </summary>
     /// <param name="other">來源 decimal</param>
-    decimal(const decimal& other) = default;
+    COMPAT_CONSTEXPR_20 decimal(const decimal& other) = default;
 
     /// <summary>
     /// 移動建構子。
     /// </summary>
     /// <param name="other">來源 decimal（右值）</param>
-    decimal(decimal&& other) noexcept = default;
+    COMPAT_CONSTEXPR_20 decimal(decimal&& other) noexcept = default;
 
     /// <summary>
     /// 複製賦值運算子。
     /// </summary>
     /// <param name="other">來源 decimal</param>
     /// <returns>自身參考</returns>
-    decimal& operator=(const decimal& other) = default;
+    COMPAT_CONSTEXPR_20 decimal& operator=(const decimal& other) = default;
 
     /// <summary>
     /// 移動賦值運算子。
     /// </summary>
     /// <param name="other">來源 decimal（右值）</param>
     /// <returns>自身參考</returns>
-    decimal& operator=(decimal&& other) noexcept = default;
+    COMPAT_CONSTEXPR_20 decimal& operator=(decimal&& other) noexcept = default;
 
     /// <summary>
     /// 解構子。
     /// </summary>
-    ~decimal() = default;
+    COMPAT_CONSTEXPR_20 ~decimal() = default;
 
     /// <summary>
     /// 自未縮放整數與縮放位數建構十進位數。
     /// </summary>
     /// <param name="unscaled">未縮放整數</param>
     /// <param name="scale">小數縮放位數（數值為 unscaled * 10^-scale）</param>
-    decimal(bigint unscaled, int64_t scale)
+    COMPAT_CONSTEXPR_20 decimal(bigint unscaled, int64_t scale)
         : m_unscaled(std::move(unscaled)), m_scale(scale), m_is_infinity(false), m_is_nan(false) {
         detail::DecimalCore::normalize(m_unscaled, m_scale, false, false);
     }
@@ -204,77 +204,77 @@ public:
     /// 自 compat::bigint 隱式建構（scale 為 0）。
     /// </summary>
     /// <param name="val">來源 bigint 整數</param>
-    decimal(const bigint& val)
+    COMPAT_CONSTEXPR_20 decimal(const bigint& val)
         : m_unscaled(val), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 compat::bigint 右值隱式建構（scale 為 0）。
     /// </summary>
     /// <param name="val">來源 bigint 右值</param>
-    decimal(bigint&& val) noexcept
+    COMPAT_CONSTEXPR_20 decimal(bigint&& val) noexcept
         : m_unscaled(std::move(val)), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自布林值建構：true 為 1，false 為 0。
     /// </summary>
     /// <param name="b">布林值</param>
-    decimal(bool b) noexcept
+    COMPAT_CONSTEXPR_20 decimal(bool b) noexcept
         : m_unscaled(b ? 1 : 0), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 8 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">8 位元整數</param>
-    decimal(int8_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int8_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 16 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">16 位元整數</param>
-    decimal(int16_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int16_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 32 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">32 位元整數</param>
-    decimal(int32_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int32_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 64 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">64 位元整數</param>
-    decimal(int64_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int64_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 8 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">8 位元無符號整數</param>
-    decimal(uint8_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint8_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 16 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">16 位元無符號整數</param>
-    decimal(uint16_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint16_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 32 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">32 位元無符號整數</param>
-    decimal(uint32_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint32_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 64 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">64 位元無符號整數</param>
-    decimal(uint64_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint64_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
@@ -293,7 +293,7 @@ public:
         !std::is_same<T, uint16_t>::value &&
         !std::is_same<T, uint32_t>::value &&
         !std::is_same<T, uint64_t>::value, int>::type = 0>
-    decimal(T v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(T v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
@@ -325,7 +325,7 @@ public:
     /// </summary>
     /// <param name="sv">十進位字串視圖</param>
     /// <exception cref="std::invalid_argument">字串無效時拋出</exception>
-    explicit decimal(compat::string_view sv) {
+    explicit COMPAT_CONSTEXPR_20 decimal(compat::string_view sv) {
         detail::DecimalCore::from_string(m_unscaled, m_scale, m_is_infinity, m_is_nan, sv);
     }
 
@@ -334,7 +334,7 @@ public:
     /// </summary>
     /// <param name="s">字串指標</param>
     /// <exception cref="std::invalid_argument">指標為 null 或格式不合法時拋出</exception>
-    explicit decimal(const char* s) {
+    explicit COMPAT_CONSTEXPR_20 decimal(const char* s) {
         if (s == nullptr) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("null string pointer"));
         }
@@ -356,7 +356,7 @@ public:
     /// <param name="sv">十進位字串視圖</param>
     /// <returns>解析完成之 decimal 物件</returns>
     /// <exception cref="std::invalid_argument">字串為空或包含無效字元時拋出</exception>
-    static decimal from_string(compat::string_view sv) {
+    COMPAT_CONSTEXPR_20 static decimal from_string(compat::string_view sv) {
         decimal res;
         detail::DecimalCore::from_string(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan, sv);
         return res;
@@ -366,7 +366,7 @@ public:
     /// 查詢是否正在使用 128-bit SBO 緩衝區（未配置堆積記憶體）。
     /// </summary>
     /// <returns>若符合 SBO 回傳 true，否則回傳 false</returns>
-    COMPAT_NODISCARD bool is_sbo() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_sbo() const noexcept {
         return m_unscaled.is_sbo();
     }
 
@@ -374,7 +374,7 @@ public:
     /// 查詢是否為小數值（SBO 模式之別名）。
     /// </summary>
     /// <returns>若為 SBO 儲存回傳 true</returns>
-    COMPAT_NODISCARD bool is_small() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_small() const noexcept {
         return m_unscaled.is_sbo();
     }
 
@@ -382,7 +382,7 @@ public:
     /// 查詢是否為 NaN。
     /// </summary>
     /// <returns>若為 NaN 回傳 true</returns>
-    COMPAT_NODISCARD bool is_nan() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_nan() const noexcept {
         return m_is_nan;
     }
 
@@ -390,7 +390,7 @@ public:
     /// 查詢是否為無窮大（包含正負無窮大）。
     /// </summary>
     /// <returns>若為無窮大回傳 true</returns>
-    COMPAT_NODISCARD bool is_infinite() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_infinite() const noexcept {
         return m_is_infinity;
     }
 
@@ -398,7 +398,7 @@ public:
     /// 查詢是否為無窮大（別名）。
     /// </summary>
     /// <returns>若為無窮大回傳 true</returns>
-    COMPAT_NODISCARD bool is_infinity() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_infinity() const noexcept {
         return m_is_infinity;
     }
 
@@ -406,7 +406,7 @@ public:
     /// 查詢是否為有限數值。
     /// </summary>
     /// <returns>非 NaN 且非無窮大時回傳 true</returns>
-    COMPAT_NODISCARD bool is_finite() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_finite() const noexcept {
         return !m_is_nan && !m_is_infinity;
     }
 
@@ -414,7 +414,7 @@ public:
     /// 查詢數值是否為 0。
     /// </summary>
     /// <returns>若為零回傳 true</returns>
-    COMPAT_NODISCARD bool is_zero() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_zero() const noexcept {
         return !m_is_nan && !m_is_infinity && m_unscaled == 0;
     }
 
@@ -422,7 +422,7 @@ public:
     /// 取得數值符號。
     /// </summary>
     /// <returns>正數或正無窮回傳 1，負數或負無窮回傳 -1，零或 NaN 回傳 0</returns>
-    COMPAT_NODISCARD int8_t sign() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 int8_t sign() const noexcept {
         if (m_is_nan) {
             return 0;
         }
@@ -436,7 +436,7 @@ public:
     /// 取得未縮放整數之 const 參考。
     /// </summary>
     /// <returns>bigint 參考</returns>
-    COMPAT_NODISCARD const bigint& unscaled() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 const bigint& unscaled() const noexcept {
         return m_unscaled;
     }
 
@@ -444,7 +444,7 @@ public:
     /// 取得小數縮放位數。
     /// </summary>
     /// <returns>scale 數值</returns>
-    COMPAT_NODISCARD int64_t scale() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 int64_t scale() const noexcept {
         return m_scale;
     }
 
@@ -452,7 +452,7 @@ public:
     /// 明確轉型為布林值（非 0 且非 NaN 為 true，0 或 NaN 為 false）。
     /// </summary>
     /// <returns>布林值</returns>
-    explicit operator bool() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator bool() const noexcept {
         if (m_is_nan) {
             return false;
         }
@@ -466,7 +466,7 @@ public:
     /// 邏輯非運算子。
     /// </summary>
     /// <returns>若數值為 0 或 NaN 回傳 true，否則回傳 false</returns>
-    bool operator!() const noexcept {
+    COMPAT_CONSTEXPR_20 bool operator!() const noexcept {
         return !static_cast<bool>(*this);
     }
 
@@ -475,7 +475,7 @@ public:
     /// </summary>
     /// <returns>bigint 整數</returns>
     /// <exception cref="std::domain_error">數值為 NaN 或無窮大時拋出</exception>
-    explicit operator bigint() const {
+    explicit COMPAT_CONSTEXPR_20 operator bigint() const {
         if (m_is_nan || m_is_infinity) {
             COMPAT_THROW_OR_ABORT(std::domain_error("cannot convert special value to bigint"));
         }
@@ -492,7 +492,7 @@ public:
     /// 明確轉型為 64 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int64_t 數值</returns>
-    explicit operator int64_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int64_t() const {
         return static_cast<int64_t>(static_cast<bigint>(*this));
     }
 
@@ -500,7 +500,7 @@ public:
     /// 明確轉型為 64 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint64_t 數值</returns>
-    explicit operator uint64_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint64_t() const {
         return static_cast<uint64_t>(static_cast<bigint>(*this));
     }
 
@@ -508,7 +508,7 @@ public:
     /// 明確轉型為 32 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int32_t 數值</returns>
-    explicit operator int32_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int32_t() const {
         return static_cast<int32_t>(static_cast<bigint>(*this));
     }
 
@@ -516,7 +516,7 @@ public:
     /// 明確轉型為 32 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint32_t 數值</returns>
-    explicit operator uint32_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint32_t() const {
         return static_cast<uint32_t>(static_cast<bigint>(*this));
     }
 
@@ -524,7 +524,7 @@ public:
     /// 明確轉型為 16 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int16_t 數值</returns>
-    explicit operator int16_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int16_t() const {
         return static_cast<int16_t>(static_cast<int32_t>(static_cast<bigint>(*this)));
     }
 
@@ -532,7 +532,7 @@ public:
     /// 明確轉型為 16 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint16_t 數值</returns>
-    explicit operator uint16_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint16_t() const {
         return static_cast<uint16_t>(static_cast<uint32_t>(static_cast<bigint>(*this)));
     }
 
@@ -540,7 +540,7 @@ public:
     /// 明確轉型為 8 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int8_t 數值</returns>
-    explicit operator int8_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int8_t() const {
         return static_cast<int8_t>(static_cast<int32_t>(static_cast<bigint>(*this)));
     }
 
@@ -548,7 +548,7 @@ public:
     /// 明確轉型為 8 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint8_t 數值</returns>
-    explicit operator uint8_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint8_t() const {
         return static_cast<uint8_t>(static_cast<uint32_t>(static_cast<bigint>(*this)));
     }
 
@@ -604,7 +604,13 @@ public:
     /// <param name="other">除數</param>
     /// <param name="precision">有效十進位數字精度（預設為 34 位）</param>
     /// <returns>除法結果</returns>
-    COMPAT_NODISCARD decimal divide(const decimal& other, int32_t precision = 34) const {
+    /// <summary>
+    /// 依指定精度執行除法運算。
+    /// </summary>
+    /// <param name="other">除數</param>
+    /// <param name="precision">有效十進位數字精度（預設為 34 位）</param>
+    /// <returns>除法結果</returns>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 decimal divide(const decimal& other, int32_t precision = 34) const {
         decimal res;
         detail::DecimalCore::div(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -618,7 +624,7 @@ public:
     /// </summary>
     /// <param name="decimal_places">目標小數位數（預設為 0，捨入至整數）</param>
     /// <returns>捨入後之 decimal 物件</returns>
-    COMPAT_NODISCARD decimal round(int64_t decimal_places = 0) const {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 decimal round(int64_t decimal_places = 0) const {
         if (m_is_nan || m_is_infinity) {
             return *this;
         }
@@ -631,7 +637,7 @@ public:
     /// 一元正號運算子。
     /// </summary>
     /// <returns>自身副本</returns>
-    decimal operator+() const {
+    COMPAT_CONSTEXPR_20 decimal operator+() const {
         return *this;
     }
 
@@ -639,7 +645,7 @@ public:
     /// 一元負號運算子。
     /// </summary>
     /// <returns>正負號反轉後之結果</returns>
-    decimal operator-() const {
+    COMPAT_CONSTEXPR_20 decimal operator-() const {
         if (m_is_nan) {
             return *this;
         }
@@ -652,7 +658,7 @@ public:
     /// 前置遞增運算子：++d。
     /// </summary>
     /// <returns>遞增後之自身參考</returns>
-    decimal& operator++() {
+    COMPAT_CONSTEXPR_20 decimal& operator++() {
         *this += 1;
         return *this;
     }
@@ -661,7 +667,7 @@ public:
     /// 後置遞增運算子：d++。
     /// </summary>
     /// <returns>遞增前之舊值</returns>
-    decimal operator++(int) {
+    COMPAT_CONSTEXPR_20 decimal operator++(int) {
         decimal tmp = *this;
         *this += 1;
         return tmp;
@@ -671,7 +677,7 @@ public:
     /// 前置遞減運算子：--d。
     /// </summary>
     /// <returns>遞減後之自身參考</returns>
-    decimal& operator--() {
+    COMPAT_CONSTEXPR_20 decimal& operator--() {
         *this -= 1;
         return *this;
     }
@@ -680,7 +686,7 @@ public:
     /// 後置遞減運算子：d--。
     /// </summary>
     /// <returns>遞減前之舊值</returns>
-    decimal operator--(int) {
+    COMPAT_CONSTEXPR_20 decimal operator--(int) {
         decimal tmp = *this;
         *this -= 1;
         return tmp;
@@ -691,7 +697,7 @@ public:
     /// </summary>
     /// <param name="rhs">加數</param>
     /// <returns>自身參考</returns>
-    decimal& operator+=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator+=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::add(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -705,7 +711,7 @@ public:
     /// </summary>
     /// <param name="rhs">減數</param>
     /// <returns>自身參考</returns>
-    decimal& operator-=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator-=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::sub(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -719,7 +725,7 @@ public:
     /// </summary>
     /// <param name="rhs">乘數</param>
     /// <returns>自身參考</returns>
-    decimal& operator*=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator*=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::mul(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -733,7 +739,7 @@ public:
     /// </summary>
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
-    decimal& operator/=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator/=(const decimal& rhs) {
         *this = divide(rhs, 34);
         return *this;
     }
@@ -743,7 +749,7 @@ public:
     /// </summary>
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
-    decimal& operator%=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator%=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::mod(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -758,7 +764,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>加法結果</returns>
-    friend decimal operator+(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator+(decimal lhs, const decimal& rhs) {
         lhs += rhs;
         return lhs;
     }
@@ -769,7 +775,7 @@ public:
     /// <param name="lhs">被減數</param>
     /// <param name="rhs">減數</param>
     /// <returns>減法結果</returns>
-    friend decimal operator-(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator-(decimal lhs, const decimal& rhs) {
         lhs -= rhs;
         return lhs;
     }
@@ -780,7 +786,7 @@ public:
     /// <param name="lhs">乘數</param>
     /// <param name="rhs">乘數</param>
     /// <returns>乘法結果</returns>
-    friend decimal operator*(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator*(decimal lhs, const decimal& rhs) {
         lhs *= rhs;
         return lhs;
     }
@@ -791,7 +797,7 @@ public:
     /// <param name="lhs">被除數</param>
     /// <param name="rhs">除數</param>
     /// <returns>商</returns>
-    friend decimal operator/(const decimal& lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator/(const decimal& lhs, const decimal& rhs) {
         return lhs.divide(rhs, 34);
     }
 
@@ -801,7 +807,7 @@ public:
     /// <param name="lhs">被除數</param>
     /// <param name="rhs">除數</param>
     /// <returns>餘數</returns>
-    friend decimal operator%(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator%(decimal lhs, const decimal& rhs) {
         lhs %= rhs;
         return lhs;
     }
@@ -812,7 +818,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若相等回傳 true</returns>
-    friend bool operator==(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator==(const decimal& lhs, const decimal& rhs) noexcept {
         return detail::DecimalCore::compare(lhs.m_unscaled, lhs.m_scale, lhs.m_is_infinity, lhs.m_is_nan,
                                             rhs.m_unscaled, rhs.m_scale, rhs.m_is_infinity, rhs.m_is_nan) == 0;
     }
@@ -823,7 +829,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若不相等回傳 true</returns>
-    friend bool operator!=(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator!=(const decimal& lhs, const decimal& rhs) noexcept {
         if (lhs.m_is_nan || rhs.m_is_nan) {
             return true;
         }
@@ -836,7 +842,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt; rhs 回傳 true</returns>
-    friend bool operator<(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<(const decimal& lhs, const decimal& rhs) noexcept {
         return detail::DecimalCore::compare(lhs.m_unscaled, lhs.m_scale, lhs.m_is_infinity, lhs.m_is_nan,
                                             rhs.m_unscaled, rhs.m_scale, rhs.m_is_infinity, rhs.m_is_nan) == -1;
     }
@@ -847,7 +853,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt;= rhs 回傳 true</returns>
-    friend bool operator<=(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<=(const decimal& lhs, const decimal& rhs) noexcept {
         if (lhs.m_is_nan || rhs.m_is_nan) {
             return false;
         }
@@ -862,7 +868,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt; rhs 回傳 true</returns>
-    friend bool operator>(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>(const decimal& lhs, const decimal& rhs) noexcept {
         return rhs < lhs;
     }
 
@@ -872,7 +878,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt;= rhs 回傳 true</returns>
-    friend bool operator>=(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>=(const decimal& lhs, const decimal& rhs) noexcept {
         return rhs <= lhs;
     }
 
@@ -883,7 +889,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>偏序比較結果 std::partial_ordering</returns>
-    friend std::partial_ordering operator<=>(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 std::partial_ordering operator<=>(const decimal& lhs, const decimal& rhs) noexcept {
         if (lhs.m_is_nan || rhs.m_is_nan) {
             return std::partial_ordering::unordered;
         }
@@ -901,7 +907,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>邏輯及結果</returns>
-    friend bool operator&&(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator&&(const decimal& lhs, const decimal& rhs) noexcept {
         return static_cast<bool>(lhs) && static_cast<bool>(rhs);
     }
 
@@ -911,7 +917,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>邏輯或結果</returns>
-    friend bool operator||(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator||(const decimal& lhs, const decimal& rhs) noexcept {
         return static_cast<bool>(lhs) || static_cast<bool>(rhs);
     }
 
@@ -992,7 +998,7 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
     return res;
 }
 
-    inline DecimalConstantProxy::operator decimal() const {
+    COMPAT_CONSTEXPR_20 inline DecimalConstantProxy::operator decimal() const {
         switch (kind) {
             case DecimalConstantKind::Zero:
                 return decimal(0);
@@ -1014,31 +1020,31 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
         }
     }
 
-    inline decimal DecimalConstantProxy::operator()() const {
+    COMPAT_CONSTEXPR_20 inline decimal DecimalConstantProxy::operator()() const {
         return static_cast<decimal>(*this);
     }
 
-    inline decimal DecimalConstantProxy::operator-() const {
+    COMPAT_CONSTEXPR_20 inline decimal DecimalConstantProxy::operator-() const {
         return -static_cast<decimal>(*this);
     }
 
     template <typename T>
-    inline bool operator==(DecimalConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 inline bool operator==(DecimalConstantProxy p, const T& other) {
         return static_cast<decimal>(p) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, DecimalConstantProxy p) {
+    COMPAT_CONSTEXPR_20 inline bool operator==(const T& other, DecimalConstantProxy p) {
         return other == static_cast<decimal>(p);
     }
 
     template <typename T>
-    inline bool operator!=(DecimalConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 inline bool operator!=(DecimalConstantProxy p, const T& other) {
         return static_cast<decimal>(p) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, DecimalConstantProxy p) {
+    COMPAT_CONSTEXPR_20 inline bool operator!=(const T& other, DecimalConstantProxy p) {
         return other != static_cast<decimal>(p);
     }
 
@@ -1052,7 +1058,7 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(const decimal& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator&&(const decimal& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) && (rhs != 0);
 }
 
@@ -1064,7 +1070,7 @@ inline bool operator&&(const decimal& lhs, T rhs) noexcept {
 /// <param name="rhs">右 decimal</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(T lhs, const decimal& rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator&&(T lhs, const decimal& rhs) noexcept {
     return (lhs != 0) && static_cast<bool>(rhs);
 }
 
@@ -1076,7 +1082,7 @@ inline bool operator&&(T lhs, const decimal& rhs) noexcept {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(const decimal& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator||(const decimal& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) || (rhs != 0);
 }
 
@@ -1088,7 +1094,7 @@ inline bool operator||(const decimal& lhs, T rhs) noexcept {
 /// <param name="rhs">右 decimal</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(T lhs, const decimal& rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator||(T lhs, const decimal& rhs) noexcept {
     return (lhs != 0) || static_cast<bool>(rhs);
 }
 

@@ -29,8 +29,8 @@ public:
     /// </summary>
     /// <param name="exp">次方數</param>
     /// <returns>10^exp 之 bigint 數值</returns>
-    static bigint power_of_10(size_t exp) {
-        static const uint64_t POW10_TABLE[20] = {
+    static COMPAT_CONSTEXPR_20 bigint power_of_10(size_t exp) {
+        constexpr uint64_t pow10_table[20] = {
             1ULL,
             10ULL,
             100ULL,
@@ -54,7 +54,7 @@ public:
         };
 
         if (exp < 20) {
-            return bigint(POW10_TABLE[exp]);
+            return bigint(pow10_table[exp]);
         }
 
         // 二元快速冪演算法
@@ -80,7 +80,7 @@ public:
     /// <param name="scale">小數縮放位數參考</param>
     /// <param name="is_nan">是否為 NaN</param>
     /// <param name="is_infinity">是否為無窮大</param>
-    static void normalize(bigint& unscaled, int64_t& scale, bool is_nan, bool is_infinity) {
+    static COMPAT_CONSTEXPR_20 void normalize(bigint& unscaled, int64_t& scale, bool is_nan, bool is_infinity) {
         if (is_nan || is_infinity) {
             return;
         }
@@ -107,6 +107,24 @@ public:
     }
 
     /// <summary>
+    /// 不區分大小寫之 string_view 比對輔助函式。
+    /// </summary>
+    /// <param name="a">字串視圖 a</param>
+    /// <param name="b">字串視圖 b</param>
+    /// <returns>若相等回傳 true</returns>
+    static COMPAT_CONSTEXPR_20 bool iequals(compat::string_view a, compat::string_view b) noexcept {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            char ca = a[i];
+            char cb = b[i];
+            if (ca >= 'A' && ca <= 'Z') ca = static_cast<char>(ca + ('a' - 'A'));
+            if (cb >= 'A' && cb <= 'Z') cb = static_cast<char>(cb + ('a' - 'A'));
+            if (ca != cb) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// 自字串視圖解析十進位浮點數值。
     /// </summary>
     /// <param name="unscaled">輸出之未縮放整數</param>
@@ -115,7 +133,7 @@ public:
     /// <param name="is_nan">輸出之 NaN 標記</param>
     /// <param name="sv">輸入字串視圖</param>
     /// <exception cref="std::invalid_argument">字串為空或格式不合法時拋出</exception>
-    static void from_string(bigint& unscaled, int64_t& scale, bool& is_infinity, bool& is_nan, compat::string_view sv) {
+    static COMPAT_CONSTEXPR_20 void from_string(bigint& unscaled, int64_t& scale, bool& is_infinity, bool& is_nan, compat::string_view sv) {
         // 去除前後空白
         size_t start = 0;
         size_t end = sv.size();
@@ -132,33 +150,22 @@ public:
 
         compat::string_view trimmed(sv.data() + start, end - start);
 
-        // 轉換為全小寫副本以比對特殊字串
-        std::string lower_str;
-        lower_str.reserve(trimmed.size());
-        for (size_t i = 0; i < trimmed.size(); ++i) {
-            char c = trimmed[i];
-            if (c >= 'A' && c <= 'Z') {
-                c = static_cast<char>(c + ('a' - 'A'));
-            }
-            lower_str.push_back(c);
-        }
-
         // 特殊常數比對
-        if (lower_str == "nan" || lower_str == "+nan" || lower_str == "-nan") {
+        if (iequals(trimmed, "nan") || iequals(trimmed, "+nan") || iequals(trimmed, "-nan")) {
             is_nan = true;
             is_infinity = false;
             unscaled = 0;
             scale = 0;
             return;
         }
-        if (lower_str == "inf" || lower_str == "+inf" || lower_str == "infinity" || lower_str == "+infinity") {
+        if (iequals(trimmed, "inf") || iequals(trimmed, "+inf") || iequals(trimmed, "infinity") || iequals(trimmed, "+infinity")) {
             is_nan = false;
             is_infinity = true;
             unscaled = 1;
             scale = 0;
             return;
         }
-        if (lower_str == "-inf" || lower_str == "-infinity") {
+        if (iequals(trimmed, "-inf") || iequals(trimmed, "-infinity")) {
             is_nan = false;
             is_infinity = true;
             unscaled = -1;
@@ -182,8 +189,7 @@ public:
             COMPAT_THROW_OR_ABORT(std::invalid_argument("expected digits after sign"));
         }
 
-        std::string digits;
-        digits.reserve(len);
+        size_t mantissa_start = idx;
         bool has_dot = false;
         int64_t frac_digits = 0;
         bool has_any_digit = false;
@@ -191,7 +197,6 @@ public:
         while (idx < len && trimmed[idx] != 'e' && trimmed[idx] != 'E') {
             char c = trimmed[idx];
             if (c >= '0' && c <= '9') {
-                digits.push_back(c);
                 has_any_digit = true;
                 if (has_dot) {
                     frac_digits++;
@@ -210,6 +215,8 @@ public:
         if (!has_any_digit) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("no digits found in mantissa"));
         }
+
+        size_t mantissa_end = idx;
 
         int64_t exp_val = 0;
         if (idx < len && (trimmed[idx] == 'e' || trimmed[idx] == 'E')) {
@@ -255,13 +262,35 @@ public:
             COMPAT_THROW_OR_ABORT(std::invalid_argument("unexpected trailing characters in decimal string"));
         }
 
+        // 解析 mantissa 數字為 bigint，跳過小數點（零堆積配置分塊解析）
+        BigIntStorage cur;
+        size_t m_idx = mantissa_start;
+        while (m_idx < mantissa_end) {
+            uint64_t chunk_val = 0;
+            uint64_t mult = 1;
+            size_t digits_in_chunk = 0;
+            while (m_idx < mantissa_end && digits_in_chunk < 19) {
+                char c = trimmed[m_idx++];
+                if (c == '.') continue;
+                chunk_val = chunk_val * 10 + static_cast<uint64_t>(c - '0');
+                mult *= 10;
+                digits_in_chunk++;
+            }
+            if (digits_in_chunk > 0) {
+                BigIntStorage mult_st, chunk_st, prod;
+                mult_st.set_uint64(mult, 1);
+                chunk_st.set_uint64(chunk_val, 1);
+                BigIntCore::mul_signed(prod, cur, mult_st);
+                BigIntCore::add_signed(cur, prod, chunk_st);
+            }
+        }
+        cur.m_sign = sign;
+        cur.normalize();
+        unscaled = bigint(std::move(cur));
+
         scale = frac_digits - exp_val;
         is_nan = false;
         is_infinity = false;
-        unscaled = bigint(digits);
-        if (sign < 0) {
-            unscaled = -unscaled;
-        }
 
         normalize(unscaled, scale, false, false);
     }
@@ -383,7 +412,7 @@ public:
     /// <param name="b_s">運算元 B 小數縮放位數</param>
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
-    static void add(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void add(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan) {
@@ -458,7 +487,7 @@ public:
     /// <param name="b_s">運算元 B 小數縮放位數</param>
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
-    static void sub(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void sub(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         add(r_u, r_s, r_inf, r_nan, a_u, a_s, a_inf, a_nan, -b_u, b_s, b_inf, b_nan);
@@ -479,7 +508,7 @@ public:
     /// <param name="b_s">運算元 B 小數縮放位數</param>
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
-    static void mul(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void mul(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan) {
@@ -515,6 +544,26 @@ public:
     }
 
     /// <summary>
+    /// 計算 bigint 十進位位數，支援編譯期 constexpr 運算。
+    /// </summary>
+    /// <param name="x">輸入整數</param>
+    /// <returns>十進位有效位數</returns>
+    static COMPAT_CONSTEXPR_20 size_t count_digits(bigint x) {
+        if (x == 0) return 1;
+        if (x < 0) x = -x;
+        size_t cnt = 0;
+        while (x >= 100000000ULL) {
+            x /= 100000000ULL;
+            cnt += 8;
+        }
+        while (x > 0) {
+            x /= 10;
+            cnt += 1;
+        }
+        return cnt;
+    }
+
+    /// <summary>
     /// 執行除法運算，支援指定精度與銀行家捨入法 (Banker's Rounding / Half-Even)。
     /// </summary>
     /// <param name="r_u">結果未縮放整數</param>
@@ -530,7 +579,7 @@ public:
     /// <param name="b_inf">除數無窮大標記</param>
     /// <param name="b_nan">除數 NaN 標記</param>
     /// <param name="precision">有效十進位數字精度（預設為 34 位）</param>
-    static void div(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void div(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan,
                     int32_t precision = 34) {
@@ -607,8 +656,8 @@ public:
             ub = -ub;
         }
 
-        size_t da = ua.to_string().size();
-        size_t db = ub.to_string().size();
+        size_t da = count_digits(ua);
+        size_t db = count_digits(ub);
 
         // 擴增被除數位數以滿足目標精度及捨入判斷
         int64_t K = static_cast<int64_t>(precision) - (static_cast<int64_t>(da) - static_cast<int64_t>(db)) + 5;
@@ -624,8 +673,7 @@ public:
         bigint Q = num / ub;
         bigint R = num % ub;
 
-        std::string q_str = Q.to_string();
-        size_t dq = q_str.size();
+        size_t dq = count_digits(Q);
         int64_t current_scale = a_s - b_s + K;
 
         // 若商位數大於期望有效數字 precision，執行銀行家捨入
@@ -654,7 +702,7 @@ public:
             if (round_up) {
                 q_drop += 1;
                 // 若進位造成位數增加（如 999 -> 1000），調整位移
-                if (q_drop.to_string().size() > static_cast<size_t>(precision)) {
+                if (count_digits(q_drop) > static_cast<size_t>(precision)) {
                     q_drop /= 10;
                     L++;
                 }
@@ -685,7 +733,7 @@ public:
     /// <param name="b_s">除數小數縮放位數</param>
     /// <param name="b_inf">除數無窮大標記</param>
     /// <param name="b_nan">除數 NaN 標記</param>
-    static void mod(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    COMPAT_CONSTEXPR_20 static void mod(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan || a_inf || b_u == 0) {
@@ -727,7 +775,7 @@ public:
     /// <param name="unscaled">未縮放整數參考</param>
     /// <param name="scale">小數縮放位數參考</param>
     /// <param name="decimal_places">目標小數位數</param>
-    static void round_half_even(bigint& unscaled, int64_t& scale, int64_t decimal_places) {
+    COMPAT_CONSTEXPR_20 static void round_half_even(bigint& unscaled, int64_t& scale, int64_t decimal_places) {
         if (scale <= decimal_places) {
             return;
         }
@@ -766,7 +814,7 @@ public:
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
     /// <returns>小於傳回 -1，等於傳回 0，大於傳回 1，若含 NaN 傳回 -2（無序）</returns>
-    static int compare(const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
+    COMPAT_CONSTEXPR_20 static int compare(const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                        const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan) {
             return -2; // 無序 (unordered)

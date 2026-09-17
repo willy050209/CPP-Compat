@@ -135,6 +135,14 @@ export module compat;
 #  define COMPAT_CONSTEXPR_14 inline
 #endif
 
+// Constexpr support for C++20+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+#  define COMPAT_CONSTEXPR_20 constexpr
+#else
+#  define COMPAT_CONSTEXPR_20 inline
+#endif
+
+
 // ABI tagging and inline namespace support for fallback implementations
 #ifndef COMPAT_ABI_TAG
 #  define COMPAT_ABI_TAG abi_v1
@@ -4018,15 +4026,38 @@ public:
     int8_t m_sign;
 
     /// <summary>
+    /// 拷貝指定數量之 limbs，支援編譯期 constexpr 運算。
+    /// </summary>
+    /// <param name="dst">目的端記憶體指標</param>
+    /// <param name="src">來源端記憶體指標</param>
+    /// <param name="count">拷貝 limbs 數量</param>
+    static COMPAT_CONSTEXPR_20 void copy_limbs(uint64_t* dst, const uint64_t* src, size_t count) noexcept {
+        for (size_t i = 0; i < count; ++i) {
+            dst[i] = src[i];
+        }
+    }
+
+    /// <summary>
+    /// 將指定數量之 limbs 清零，支援編譯期 constexpr 運算。
+    /// </summary>
+    /// <param name="dst">目的端記憶體指標</param>
+    /// <param name="count">清零 limbs 數量</param>
+    static COMPAT_CONSTEXPR_20 void zero_limbs(uint64_t* dst, size_t count) noexcept {
+        for (size_t i = 0; i < count; ++i) {
+            dst[i] = 0;
+        }
+    }
+
+    /// <summary>
     /// 預設建構子：初始化為零值，使用 SBO 緩衝區。
     /// </summary>
-    BigIntStorage() noexcept
+    COMPAT_CONSTEXPR_20 BigIntStorage() noexcept
         : m_sbo{0, 0}, m_data(m_sbo), m_size(0), m_capacity(SBO_CAPACITY), m_sign(0) {}
 
     /// <summary>
     /// 解構子：若已配置堆積記憶體則進行釋放。
     /// </summary>
-    ~BigIntStorage() noexcept {
+    COMPAT_CONSTEXPR_20 ~BigIntStorage() noexcept {
         if (!is_sbo() && m_data != nullptr) {
             delete[] m_data;
             m_data = nullptr;
@@ -4037,7 +4068,7 @@ public:
     /// 複製建構子：深拷貝另一儲存物件之 limbs。
     /// </summary>
     /// <param name="other">來源儲存物件</param>
-    BigIntStorage(const BigIntStorage& other)
+    COMPAT_CONSTEXPR_20 BigIntStorage(const BigIntStorage& other)
         : m_sbo{0, 0}, m_size(other.m_size), m_capacity(SBO_CAPACITY), m_sign(other.m_sign) {
         if (other.is_sbo()) {
             m_sbo[0] = other.m_sbo[0];
@@ -4047,7 +4078,7 @@ public:
         } else {
             m_capacity = other.m_capacity;
             m_data = new uint64_t[m_capacity];
-            std::memcpy(m_data, other.m_data, m_size * sizeof(uint64_t));
+            copy_limbs(m_data, other.m_data, m_size);
         }
     }
 
@@ -4055,7 +4086,7 @@ public:
     /// 移動建構子：轉移堆積緩衝區擁有權，或拷貝 SBO 內容。
     /// </summary>
     /// <param name="other">來源儲存物件（右值）</param>
-    BigIntStorage(BigIntStorage&& other) noexcept
+    COMPAT_CONSTEXPR_20 BigIntStorage(BigIntStorage&& other) noexcept
         : m_sbo{0, 0}, m_size(other.m_size), m_capacity(SBO_CAPACITY), m_sign(other.m_sign) {
         if (other.is_sbo()) {
             m_sbo[0] = other.m_sbo[0];
@@ -4079,7 +4110,7 @@ public:
     /// </summary>
     /// <param name="other">來源儲存物件</param>
     /// <returns>自身參考</returns>
-    BigIntStorage& operator=(const BigIntStorage& other) {
+    COMPAT_CONSTEXPR_20 BigIntStorage& operator=(const BigIntStorage& other) {
         if (this != &other) {
             if (other.is_sbo()) {
                 if (!is_sbo()) {
@@ -4097,7 +4128,7 @@ public:
                     m_capacity = other.m_capacity;
                     m_data = new uint64_t[m_capacity];
                 }
-                std::memcpy(m_data, other.m_data, other.m_size * sizeof(uint64_t));
+                copy_limbs(m_data, other.m_data, other.m_size);
             }
             m_size = other.m_size;
             m_sign = other.m_sign;
@@ -4110,7 +4141,7 @@ public:
     /// </summary>
     /// <param name="other">來源儲存物件（右值）</param>
     /// <returns>自身參考</returns>
-    BigIntStorage& operator=(BigIntStorage&& other) noexcept {
+    COMPAT_CONSTEXPR_20 BigIntStorage& operator=(BigIntStorage&& other) noexcept {
         if (this != &other) {
             if (!is_sbo()) {
                 delete[] m_data;
@@ -4140,7 +4171,7 @@ public:
     /// 檢查當前是否使用 SBO 內建緩衝區儲存。
     /// </summary>
     /// <returns>若使用 SBO 則回傳 true，堆積配置則回傳 false</returns>
-    COMPAT_NODISCARD bool is_sbo() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_sbo() const noexcept {
         return m_data == m_sbo;
     }
 
@@ -4148,11 +4179,11 @@ public:
     /// 預留緩衝區容量。
     /// </summary>
     /// <param name="new_cap">目標容量大小（limbs）</param>
-    void reserve(size_t new_cap) {
+    COMPAT_CONSTEXPR_20 void reserve(size_t new_cap) {
         if (new_cap <= m_capacity) return;
         uint64_t* new_data = new uint64_t[new_cap];
         if (m_size > 0) {
-            std::memcpy(new_data, m_data, m_size * sizeof(uint64_t));
+            copy_limbs(new_data, m_data, m_size);
         }
         if (!is_sbo()) {
             delete[] m_data;
@@ -4166,14 +4197,16 @@ public:
     /// </summary>
     /// <param name="new_size">目標大小</param>
     /// <param name="init_val">新擴充元素之初始值</param>
-    void resize(size_t new_size, uint64_t init_val = 0) {
+    COMPAT_CONSTEXPR_20 void resize(size_t new_size, uint64_t init_val = 0) {
         if (new_size > m_capacity) {
             size_t next_cap = m_capacity * 2;
             if (next_cap < new_size) next_cap = new_size;
             reserve(next_cap);
         }
         if (new_size > m_size) {
-            std::fill(m_data + m_size, m_data + new_size, init_val);
+            for (size_t i = m_size; i < new_size; ++i) {
+                m_data[i] = init_val;
+            }
         }
         m_size = new_size;
     }
@@ -4181,7 +4214,7 @@ public:
     /// <summary>
     /// 規範化 limbs 陣列，移除高位無效之 0 limbs 並調整正負符號；若長度落回 SBO 則縮回 SBO。
     /// </summary>
-    void normalize() noexcept {
+    COMPAT_CONSTEXPR_20 void normalize() noexcept {
         while (m_size > 0 && m_data[m_size - 1] == 0) {
             --m_size;
         }
@@ -4194,7 +4227,7 @@ public:
     /// <summary>
     /// 當 limbs 數量小於等於 SBO 容量且當前為堆積配置時，縮回 SBO。
     /// </summary>
-    void shrink_to_sbo_if_possible() noexcept {
+    COMPAT_CONSTEXPR_20 void shrink_to_sbo_if_possible() noexcept {
         if (!is_sbo() && m_size <= SBO_CAPACITY) {
             uint64_t* old_data = m_data;
             m_sbo[0] = (m_size > 0) ? old_data[0] : 0;
@@ -4210,7 +4243,7 @@ public:
     /// </summary>
     /// <param name="val">數值</param>
     /// <param name="sign">符號 (-1, 0, 1)</param>
-    void set_uint64(uint64_t val, int8_t sign) noexcept {
+    COMPAT_CONSTEXPR_20 void set_uint64(uint64_t val, int8_t sign) noexcept {
         if (!is_sbo()) {
             delete[] m_data;
             m_data = m_sbo;
@@ -4242,7 +4275,20 @@ public:
     /// </summary>
     /// <param name="x">目標 64 位元整數</param>
     /// <returns>前導 0 數量 (0~64)</returns>
-    static int clz64(uint64_t x) noexcept {
+    static COMPAT_CONSTEXPR_20 int clz64(uint64_t x) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+        if (std::is_constant_evaluated()) {
+            if (x == 0) return 64;
+            int n = 0;
+            if ((x >> 32) == 0) { n += 32; x <<= 32; }
+            if ((x >> 48) == 0) { n += 16; x <<= 16; }
+            if ((x >> 56) == 0) { n += 8;  x <<= 8;  }
+            if ((x >> 60) == 0) { n += 4;  x <<= 4;  }
+            if ((x >> 62) == 0) { n += 2;  x <<= 2;  }
+            if ((x >> 63) == 0) { n += 1; }
+            return n;
+        }
+#endif
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
         unsigned long idx;
         if (_BitScanReverse64(&idx, x)) {
@@ -4271,7 +4317,22 @@ public:
     /// <param name="b">乘數 b</param>
     /// <param name="hi">輸出高 64 位進位參考</param>
     /// <returns>乘積之低 64 位元</returns>
-    static uint64_t mul64_wide(uint64_t a, uint64_t b, uint64_t& hi) noexcept {
+    static COMPAT_CONSTEXPR_20 uint64_t mul64_wide(uint64_t a, uint64_t b, uint64_t& hi) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+        if (std::is_constant_evaluated()) {
+            uint64_t a_lo = static_cast<uint32_t>(a);
+            uint64_t a_hi = a >> 32;
+            uint64_t b_lo = static_cast<uint32_t>(b);
+            uint64_t b_hi = b >> 32;
+            uint64_t p0 = a_lo * b_lo;
+            uint64_t p1 = a_lo * b_hi;
+            uint64_t p2 = a_hi * b_lo;
+            uint64_t p3 = a_hi * b_hi;
+            uint64_t mid = p1 + static_cast<uint32_t>(p0 >> 32) + static_cast<uint32_t>(p2);
+            hi = p3 + (p1 >> 32) + (p2 >> 32) + (mid >> 32);
+            return (mid << 32) | static_cast<uint32_t>(p0);
+        }
+#endif
 #if defined(__SIZEOF_INT128__)
         unsigned __int128 prod = static_cast<unsigned __int128>(a) * b;
         hi = static_cast<uint64_t>(prod >> 64);
@@ -4301,7 +4362,22 @@ public:
     /// <param name="d">除數</param>
     /// <param name="rem">輸出餘數參考</param>
     /// <returns>商之 64 位元數值</returns>
-    static uint64_t div128_64(uint64_t hi, uint64_t lo, uint64_t d, uint64_t& rem) noexcept {
+    static COMPAT_CONSTEXPR_20 uint64_t div128_64(uint64_t hi, uint64_t lo, uint64_t d, uint64_t& rem) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+        if (std::is_constant_evaluated()) {
+            uint64_t q = 0;
+            uint64_t r = hi;
+            for (int i = 63; i >= 0; --i) {
+                r = (r << 1) | ((lo >> i) & 1);
+                if (r >= d) {
+                    r -= d;
+                    q |= (1ULL << i);
+                }
+            }
+            rem = r;
+            return q;
+        }
+#endif
 #if defined(__SIZEOF_INT128__)
         unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         rem = static_cast<uint64_t>(n % d);
@@ -4331,7 +4407,7 @@ public:
     /// <param name="b">陣列 b</param>
     /// <param name="b_len">陣列 b 長度</param>
     /// <returns>若 a &gt; b 回傳 1，a &lt; b 回傳 -1，相等回傳 0</returns>
-    static int compare_unsigned(const uint64_t* a, size_t a_len, const uint64_t* b, size_t b_len) noexcept {
+    static COMPAT_CONSTEXPR_20 int compare_unsigned(const uint64_t* a, size_t a_len, const uint64_t* b, size_t b_len) noexcept {
         if (a_len > b_len) return 1;
         if (a_len < b_len) return -1;
         for (size_t i = a_len; i > 0; --i) {
@@ -4347,7 +4423,7 @@ public:
     /// <param name="res">輸出結果儲存物件</param>
     /// <param name="a">加數 a</param>
     /// <param name="b">加數 b</param>
-    static void add_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void add_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         size_t max_len = (a.m_size > b.m_size) ? a.m_size : b.m_size;
         res.resize(max_len + 1, 0);
         uint64_t carry = 0;
@@ -4372,7 +4448,7 @@ public:
     /// <param name="res">輸出結果儲存物件</param>
     /// <param name="a">被減數 a</param>
     /// <param name="b">減數 b</param>
-    static void sub_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void sub_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         res.resize(a.m_size, 0);
         uint64_t borrow = 0;
         for (size_t i = 0; i < a.m_size; ++i) {
@@ -4395,7 +4471,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void add_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void add_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0) {
             res = b;
             return;
@@ -4428,7 +4504,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">被減數 a</param>
     /// <param name="b">減數 b</param>
-    static void sub_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void sub_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (b.m_sign == 0) {
             res = a;
             return;
@@ -4449,7 +4525,7 @@ public:
     /// <param name="res">輸出乘積儲存物件</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_schoolbook(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_schoolbook(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_size == 0 || b.m_size == 0) {
             res.m_size = 0;
             res.m_sign = 0;
@@ -4484,7 +4560,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_karatsuba(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_karatsuba(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         size_t n = (a.m_size > b.m_size) ? a.m_size : b.m_size;
         if (n < KARATSUBA_THRESHOLD || a.m_size == 0 || b.m_size == 0) {
             mul_schoolbook(res, a, b);
@@ -4497,27 +4573,27 @@ public:
         size_t b0_len = (b.m_size < k) ? b.m_size : k;
 
         a0.resize(a0_len);
-        if (a0_len > 0) std::memcpy(a0.m_data, a.m_data, a0_len * sizeof(uint64_t));
+        if (a0_len > 0) BigIntStorage::copy_limbs(a0.m_data, a.m_data, a0_len);
         a0.m_sign = 1;
         a0.normalize();
 
         if (a.m_size > k) {
             size_t a1_len = a.m_size - k;
             a1.resize(a1_len);
-            std::memcpy(a1.m_data, a.m_data + k, a1_len * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(a1.m_data, a.m_data + k, a1_len);
             a1.m_sign = 1;
             a1.normalize();
         }
 
         b0.resize(b0_len);
-        if (b0_len > 0) std::memcpy(b0.m_data, b.m_data, b0_len * sizeof(uint64_t));
+        if (b0_len > 0) BigIntStorage::copy_limbs(b0.m_data, b.m_data, b0_len);
         b0.m_sign = 1;
         b0.normalize();
 
         if (b.m_size > k) {
             size_t b1_len = b.m_size - k;
             b1.resize(b1_len);
-            std::memcpy(b1.m_data, b.m_data + k, b1_len * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(b1.m_data, b.m_data + k, b1_len);
             b1.m_sign = 1;
             b1.normalize();
         }
@@ -4554,7 +4630,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_core(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_core(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_size < KARATSUBA_THRESHOLD || b.m_size < KARATSUBA_THRESHOLD) {
             mul_schoolbook(res, a, b);
         } else {
@@ -4568,7 +4644,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0 || b.m_sign == 0) {
             res.m_size = 0;
             res.m_sign = 0;
@@ -4587,7 +4663,7 @@ public:
     /// <param name="u">被除數</param>
     /// <param name="v">除數</param>
     /// <exception cref="std::invalid_argument">當除數為 0 時拋出</exception>
-    static void div_mod_core(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
+    static COMPAT_CONSTEXPR_20 void div_mod_core(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
         if (v.m_size == 0) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("division by zero"));
         }
@@ -4752,7 +4828,7 @@ public:
     /// <param name="r">輸出餘數</param>
     /// <param name="u">被除數</param>
     /// <param name="v">除數</param>
-    static void div_mod_signed(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
+    static COMPAT_CONSTEXPR_20 void div_mod_signed(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
         div_mod_core(q, r, u, v);
         if (q.m_size > 0) {
             q.m_sign = static_cast<int8_t>(u.m_sign * v.m_sign);
@@ -4768,15 +4844,15 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">輸入數值</param>
     /// <param name="limbs">移動 limbs 數量</param>
-    static void shift_left_limbs(BigIntStorage& res, const BigIntStorage& a, size_t limbs) {
+    static COMPAT_CONSTEXPR_20 void shift_left_limbs(BigIntStorage& res, const BigIntStorage& a, size_t limbs) {
         if (a.m_size == 0) {
             res.m_size = 0;
             res.m_sign = 0;
             return;
         }
         res.resize(a.m_size + limbs, 0);
-        std::memcpy(res.m_data + limbs, a.m_data, a.m_size * sizeof(uint64_t));
-        std::memset(res.m_data, 0, limbs * sizeof(uint64_t));
+        BigIntStorage::copy_limbs(res.m_data + limbs, a.m_data, a.m_size);
+        BigIntStorage::zero_limbs(res.m_data, limbs);
         res.m_sign = a.m_sign;
         res.normalize();
     }
@@ -4787,7 +4863,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元</param>
     /// <param name="shift">位移位元數</param>
-    static void shift_left(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
+    static COMPAT_CONSTEXPR_20 void shift_left(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
         if (shift == 0 || a.m_size == 0) {
             res = a;
             return;
@@ -4798,13 +4874,13 @@ public:
         res.resize(new_size, 0);
 
         if (bit_shift == 0) {
-            std::memcpy(res.m_data + limb_shift, a.m_data, a.m_size * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(res.m_data + limb_shift, a.m_data, a.m_size);
             if (limb_shift > 0) {
-                std::memset(res.m_data, 0, limb_shift * sizeof(uint64_t));
+                BigIntStorage::zero_limbs(res.m_data, limb_shift);
             }
         } else {
             if (limb_shift > 0) {
-                std::memset(res.m_data, 0, limb_shift * sizeof(uint64_t));
+                BigIntStorage::zero_limbs(res.m_data, limb_shift);
             }
             uint64_t carry = 0;
             for (size_t i = 0; i < a.m_size; ++i) {
@@ -4824,7 +4900,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元</param>
     /// <param name="shift">位移位元數</param>
-    static void shift_right(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
+    static COMPAT_CONSTEXPR_20 void shift_right(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
         if (shift == 0 || a.m_size == 0) {
             res = a;
             return;
@@ -4855,7 +4931,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元</param>
     /// <param name="shift">位移位元數</param>
-    static void shift_right_positive(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
+    static COMPAT_CONSTEXPR_20 void shift_right_positive(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
         size_t limb_shift = shift / 64;
         size_t bit_shift = shift % 64;
         if (limb_shift >= a.m_size) {
@@ -4867,7 +4943,7 @@ public:
         res.resize(new_size, 0);
 
         if (bit_shift == 0) {
-            std::memcpy(res.m_data, a.m_data + limb_shift, new_size * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(res.m_data, a.m_data + limb_shift, new_size);
         } else {
             for (size_t i = 0; i < new_size; ++i) {
                 uint64_t cur = a.m_data[i + limb_shift];
@@ -4884,7 +4960,7 @@ public:
     /// </summary>
     /// <param name="res">輸出結果</param>
     /// <param name="a">輸入數值</param>
-    static void bitwise_not(BigIntStorage& res, const BigIntStorage& a) {
+    static COMPAT_CONSTEXPR_20 void bitwise_not(BigIntStorage& res, const BigIntStorage& a) {
         BigIntStorage one_st; one_st.set_uint64(1, 1);
         BigIntStorage tmp;
         add_signed(tmp, a, one_st);
@@ -4899,7 +4975,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void bitwise_and(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void bitwise_and(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0 || b.m_sign == 0) {
             res.m_size = 0;
             res.m_sign = 0;
@@ -4946,7 +5022,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void bitwise_or(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void bitwise_or(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0) { res = b; return; }
         if (b.m_sign == 0) { res = a; return; }
         if (a.m_sign > 0 && b.m_sign > 0) {
@@ -4975,7 +5051,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void bitwise_xor(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void bitwise_xor(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0) { res = b; return; }
         if (b.m_sign == 0) { res = a; return; }
         if (a.m_sign > 0 && b.m_sign > 0) {
@@ -5015,7 +5091,7 @@ public:
     /// <param name="res">輸出儲存物件</param>
     /// <param name="sv">輸入字串視圖</param>
     /// <exception cref="std::invalid_argument">當字串為空或包含非數字字元時拋出</exception>
-    static void from_string(BigIntStorage& res, compat::string_view sv) {
+    static COMPAT_CONSTEXPR_20 void from_string(BigIntStorage& res, compat::string_view sv) {
         if (sv.empty()) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("empty bigint string"));
         }
@@ -6926,25 +7002,25 @@ namespace detail {
         /// 隱式轉換至 bigint。
         /// </summary>
         /// <returns>對應之 bigint 實例</returns>
-        inline operator bigint() const;
+        COMPAT_CONSTEXPR_20 operator bigint() const;
 
         /// <summary>
         /// 函式呼叫運算子，傳回對應之 bigint。
         /// </summary>
         /// <returns>對應之 bigint 實例</returns>
-        inline bigint operator()() const;
+        COMPAT_CONSTEXPR_20 bigint operator()() const;
 
         template <typename T>
-        friend bool operator==(BigIntConstantProxy p, const T& other);
+        friend COMPAT_CONSTEXPR_20 bool operator==(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator==(const T& other, BigIntConstantProxy p);
+        friend COMPAT_CONSTEXPR_20 bool operator==(const T& other, BigIntConstantProxy p);
 
         template <typename T>
-        friend bool operator!=(BigIntConstantProxy p, const T& other);
+        friend COMPAT_CONSTEXPR_20 bool operator!=(BigIntConstantProxy p, const T& other);
 
         template <typename T>
-        friend bool operator!=(const T& other, BigIntConstantProxy p);
+        friend COMPAT_CONSTEXPR_20 bool operator!=(const T& other, BigIntConstantProxy p);
     };
 
     /// <summary>
@@ -7015,14 +7091,14 @@ public:
     /// 自內部 BigIntStorage 建立 bigint。
     /// </summary>
     /// <param name="storage">來源儲存層物件</param>
-    explicit bigint(detail::BigIntStorage storage) noexcept
+    explicit COMPAT_CONSTEXPR_20 bigint(detail::BigIntStorage storage) noexcept
         : m_storage(std::move(storage)) {}
 
     /// <summary>
     /// 自布林值建構：true 為 1，false 為 0。
     /// </summary>
     /// <param name="b">布林值</param>
-    bigint(bool b) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(bool b) noexcept {
         m_storage.set_uint64(b ? 1 : 0, b ? 1 : 0);
     }
 
@@ -7030,7 +7106,7 @@ public:
     /// 自 8 位元有符號整數建構。
     /// </summary>
     /// <param name="v">8 位元整數</param>
-    bigint(int8_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int8_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -7042,7 +7118,7 @@ public:
     /// 自 16 位元有符號整數建構。
     /// </summary>
     /// <param name="v">16 位元整數</param>
-    bigint(int16_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int16_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -7054,7 +7130,7 @@ public:
     /// 自 32 位元有符號整數建構。
     /// </summary>
     /// <param name="v">32 位元整數</param>
-    bigint(int32_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int32_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -7066,7 +7142,7 @@ public:
     /// 自 64 位元有符號整數建構。
     /// </summary>
     /// <param name="v">64 位元整數</param>
-    bigint(int64_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(int64_t v) noexcept {
         if (v < 0) {
             m_storage.set_uint64(static_cast<uint64_t>(-(v + 1)) + 1, -1);
         } else {
@@ -7078,7 +7154,7 @@ public:
     /// 自 8 位元無符號整數建構。
     /// </summary>
     /// <param name="v">8 位元無符號整數</param>
-    bigint(uint8_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint8_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -7086,7 +7162,7 @@ public:
     /// 自 16 位元無符號整數建構。
     /// </summary>
     /// <param name="v">16 位元無符號整數</param>
-    bigint(uint16_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint16_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -7094,7 +7170,7 @@ public:
     /// 自 32 位元無符號整數建構。
     /// </summary>
     /// <param name="v">32 位元無符號整數</param>
-    bigint(uint32_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint32_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -7102,7 +7178,7 @@ public:
     /// 自 64 位元無符號整數建構。
     /// </summary>
     /// <param name="v">64 位元無符號整數</param>
-    bigint(uint64_t v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(uint64_t v) noexcept {
         m_storage.set_uint64(v, v > 0 ? 1 : 0);
     }
 
@@ -7122,7 +7198,7 @@ public:
         !std::is_same<T, uint16_t>::value &&
         !std::is_same<T, uint32_t>::value &&
         !std::is_same<T, uint64_t>::value, int>::type = 0>
-    bigint(T v) noexcept {
+    COMPAT_CONSTEXPR_20 bigint(T v) noexcept {
         if (std::is_signed<T>::value) {
             int64_t val = static_cast<int64_t>(v);
             if (val < 0) {
@@ -7141,7 +7217,7 @@ public:
     /// </summary>
     /// <param name="sv">十進位字串視圖</param>
     /// <exception cref="std::invalid_argument">字串無效時拋出</exception>
-    explicit bigint(compat::string_view sv) {
+    explicit COMPAT_CONSTEXPR_20 bigint(compat::string_view sv) {
         detail::BigIntCore::from_string(m_storage, sv);
     }
 
@@ -7150,7 +7226,7 @@ public:
     /// </summary>
     /// <param name="s">字串指標</param>
     /// <exception cref="std::invalid_argument">指標為 null 或格式不合法時拋出</exception>
-    explicit bigint(const char* s) {
+    explicit COMPAT_CONSTEXPR_20 bigint(const char* s) {
         if (s == nullptr) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("null string pointer"));
         }
@@ -7167,15 +7243,19 @@ public:
     }
 
     /// <summary>
+    /// 自 std::bitset 建構非負任意精度整數（N == 0 之特化處理）。
+    /// </summary>
+    /// <typeparam name="N">來源位元寬度</typeparam>
+    template <size_t N, typename std::enable_if<(N == 0), int>::type = 0>
+    bigint(const std::bitset<N>&) {}
+
+    /// <summary>
     /// 自 std::bitset 建構非負任意精度整數（按無符號二進位數解析）。
     /// </summary>
     /// <typeparam name="N">來源位元寬度</typeparam>
     /// <param name="bs">來源 bitset 物件</param>
-    template <size_t N>
+    template <size_t N, typename std::enable_if<(N > 0), int>::type = 0>
     bigint(const std::bitset<N>& bs) {
-        if (N == 0) {
-            return;
-        }
         size_t limb_cnt = (N + 63) / 64;
         m_storage.resize(limb_cnt, 0);
         bool any_bit = false;
@@ -7206,7 +7286,7 @@ public:
     /// <param name="sv">十進位字串視圖</param>
     /// <returns>解析完成之 bigint 物件</returns>
     /// <exception cref="std::invalid_argument">字串為空或包含無效字元時拋出</exception>
-    static bigint from_string(compat::string_view sv) {
+    static COMPAT_CONSTEXPR_20 bigint from_string(compat::string_view sv) {
         bigint res;
         detail::BigIntCore::from_string(res.m_storage, sv);
         return res;
@@ -7276,7 +7356,7 @@ public:
     /// 查詢是否正在使用 128-bit SBO 內建緩衝區（無堆積配置）。
     /// </summary>
     /// <returns>若使用 SBO 回傳 true，否則回傳 false</returns>
-    COMPAT_NODISCARD bool is_sbo() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_sbo() const noexcept {
         return m_storage.is_sbo();
     }
 
@@ -7284,15 +7364,23 @@ public:
     /// 查詢是否為小數值（SBO 模式之別名）。
     /// </summary>
     /// <returns>若為 SBO 儲存回傳 true</returns>
-    COMPAT_NODISCARD bool is_small() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_small() const noexcept {
         return m_storage.is_sbo();
+    }
+
+    /// <summary>
+    /// 查詢數值是否為 0。
+    /// </summary>
+    /// <returns>若為零回傳 true</returns>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_zero() const noexcept {
+        return m_storage.m_size == 0 || (m_storage.m_size == 1 && m_storage.m_data[0] == 0);
     }
 
     /// <summary>
     /// 取得數值符號。
     /// </summary>
     /// <returns>負數為 -1，零為 0，正數為 1</returns>
-    COMPAT_NODISCARD int8_t sign() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 int8_t sign() const noexcept {
         return m_storage.m_sign;
     }
 
@@ -7300,7 +7388,7 @@ public:
     /// 取得有效 64-bit limbs 數量。
     /// </summary>
     /// <returns>limbs 數量</returns>
-    COMPAT_NODISCARD size_t limb_count() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 size_t limb_count() const noexcept {
         return m_storage.m_size;
     }
 
@@ -7308,7 +7396,7 @@ public:
     /// 取得內部儲存層之 limbs 唯讀指標。
     /// </summary>
     /// <returns>唯讀 uint64_t 指標</returns>
-    COMPAT_NODISCARD const uint64_t* limbs() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 const uint64_t* limbs() const noexcept {
         return m_storage.m_data;
     }
 
@@ -7316,7 +7404,7 @@ public:
     /// 取得儲存層物件之內部非 const 參考。
     /// </summary>
     /// <returns>儲存層物件參考</returns>
-    detail::BigIntStorage& storage() noexcept {
+    COMPAT_CONSTEXPR_20 detail::BigIntStorage& storage() noexcept {
         return m_storage;
     }
 
@@ -7324,7 +7412,7 @@ public:
     /// 取得儲存層物件之內部 const 參考。
     /// </summary>
     /// <returns>儲存層物件 const 參考</returns>
-    const detail::BigIntStorage& storage() const noexcept {
+    COMPAT_CONSTEXPR_20 const detail::BigIntStorage& storage() const noexcept {
         return m_storage;
     }
 
@@ -7332,7 +7420,7 @@ public:
     /// 明確轉型為布林值（符合 C 語言非 0 為 true、0 為 false）。
     /// </summary>
     /// <returns>非零時回傳 true，零時回傳 false</returns>
-    explicit operator bool() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator bool() const noexcept {
         return m_storage.m_sign != 0;
     }
 
@@ -7340,7 +7428,7 @@ public:
     /// 邏輯非運算子。
     /// </summary>
     /// <returns>若值為 0 回傳 true，否則回傳 false</returns>
-    bool operator!() const noexcept {
+    COMPAT_CONSTEXPR_20 bool operator!() const noexcept {
         return m_storage.m_sign == 0;
     }
 
@@ -7348,7 +7436,7 @@ public:
     /// 明確轉型為 64 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int64_t 數值</returns>
-    explicit operator int64_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator int64_t() const noexcept {
         if (m_storage.m_size == 0) return 0;
         uint64_t mag = m_storage.m_data[0];
         if (m_storage.m_sign < 0) {
@@ -7361,7 +7449,7 @@ public:
     /// 明確轉型為 64 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint64_t 數值</returns>
-    explicit operator uint64_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator uint64_t() const noexcept {
         if (m_storage.m_size == 0) return 0;
         return m_storage.m_data[0];
     }
@@ -7370,7 +7458,7 @@ public:
     /// 明確轉型為 32 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int32_t 數值</returns>
-    explicit operator int32_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator int32_t() const noexcept {
         return static_cast<int32_t>(static_cast<int64_t>(*this));
     }
 
@@ -7378,7 +7466,7 @@ public:
     /// 明確轉型為 32 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint32_t 數值</returns>
-    explicit operator uint32_t() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator uint32_t() const noexcept {
         return static_cast<uint32_t>(static_cast<uint64_t>(*this));
     }
 
@@ -7482,7 +7570,7 @@ public:
     /// 一元正號運算子。
     /// </summary>
     /// <returns>自身之副本</returns>
-    bigint operator+() const {
+    COMPAT_CONSTEXPR_20 bigint operator+() const {
         return *this;
     }
 
@@ -7490,7 +7578,7 @@ public:
     /// 一元負號運算子。
     /// </summary>
     /// <returns>正負號反轉後之結果</returns>
-    bigint operator-() const {
+    COMPAT_CONSTEXPR_20 bigint operator-() const {
         bigint res = *this;
         res.m_storage.m_sign = -res.m_storage.m_sign;
         return res;
@@ -7500,7 +7588,7 @@ public:
     /// 前置遞增運算子：++a。
     /// </summary>
     /// <returns>遞增後之自身參考</returns>
-    bigint& operator++() {
+    COMPAT_CONSTEXPR_20 bigint& operator++() {
         *this += 1;
         return *this;
     }
@@ -7509,7 +7597,7 @@ public:
     /// 後置遞增運算子：a++。
     /// </summary>
     /// <returns>遞增前之舊值</returns>
-    bigint operator++(int) {
+    COMPAT_CONSTEXPR_20 bigint operator++(int) {
         bigint tmp = *this;
         *this += 1;
         return tmp;
@@ -7519,7 +7607,7 @@ public:
     /// 前置遞減運算子：--a。
     /// </summary>
     /// <returns>遞減後之自身參考</returns>
-    bigint& operator--() {
+    COMPAT_CONSTEXPR_20 bigint& operator--() {
         *this -= 1;
         return *this;
     }
@@ -7528,7 +7616,7 @@ public:
     /// 後置遞減運算子：a--。
     /// </summary>
     /// <returns>遞減前之舊值</returns>
-    bigint operator--(int) {
+    COMPAT_CONSTEXPR_20 bigint operator--(int) {
         bigint tmp = *this;
         *this -= 1;
         return tmp;
@@ -7538,7 +7626,7 @@ public:
     /// 位元非運算子：~a = -a - 1。
     /// </summary>
     /// <returns>反轉後之數值</returns>
-    bigint operator~() const {
+    COMPAT_CONSTEXPR_20 bigint operator~() const {
         bigint res;
         detail::BigIntCore::bitwise_not(res.m_storage, m_storage);
         return res;
@@ -7549,7 +7637,7 @@ public:
     /// </summary>
     /// <param name="rhs">加數</param>
     /// <returns>自身參考</returns>
-    bigint& operator+=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator+=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::add_signed(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -7561,7 +7649,7 @@ public:
     /// </summary>
     /// <param name="rhs">減數</param>
     /// <returns>自身參考</returns>
-    bigint& operator-=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator-=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::sub_signed(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -7573,7 +7661,7 @@ public:
     /// </summary>
     /// <param name="rhs">乘數</param>
     /// <returns>自身參考</returns>
-    bigint& operator*=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator*=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::mul_signed(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -7586,7 +7674,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    bigint& operator/=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator/=(const bigint& rhs) {
         detail::BigIntStorage q, r;
         detail::BigIntCore::div_mod_signed(q, r, m_storage, rhs.m_storage);
         m_storage = std::move(q);
@@ -7599,7 +7687,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    bigint& operator%=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator%=(const bigint& rhs) {
         detail::BigIntStorage q, r;
         detail::BigIntCore::div_mod_signed(q, r, m_storage, rhs.m_storage);
         m_storage = std::move(r);
@@ -7611,7 +7699,7 @@ public:
     /// </summary>
     /// <param name="rhs">運算元</param>
     /// <returns>自身參考</returns>
-    bigint& operator&=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator&=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::bitwise_and(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -7623,7 +7711,7 @@ public:
     /// </summary>
     /// <param name="rhs">運算元</param>
     /// <returns>自身參考</returns>
-    bigint& operator|=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator|=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::bitwise_or(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -7635,7 +7723,7 @@ public:
     /// </summary>
     /// <param name="rhs">運算元</param>
     /// <returns>自身參考</returns>
-    bigint& operator^=(const bigint& rhs) {
+    COMPAT_CONSTEXPR_20 bigint& operator^=(const bigint& rhs) {
         detail::BigIntStorage tmp;
         detail::BigIntCore::bitwise_xor(tmp, m_storage, rhs.m_storage);
         m_storage = std::move(tmp);
@@ -7650,7 +7738,7 @@ public:
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">位移為負數時拋出</exception>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    bigint& operator<<=(T shift) {
+    COMPAT_CONSTEXPR_20 bigint& operator<<=(T shift) {
         if (shift < 0) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("negative bit shift"));
         }
@@ -7668,7 +7756,7 @@ public:
     /// <returns>自身參考</returns>
     /// <exception cref="std::invalid_argument">位移為負數時拋出</exception>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    bigint& operator>>=(T shift) {
+    COMPAT_CONSTEXPR_20 bigint& operator>>=(T shift) {
         if (shift < 0) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("negative bit shift"));
         }
@@ -7684,7 +7772,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>加法結果</returns>
-    friend bigint operator+(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator+(bigint lhs, const bigint& rhs) {
         lhs += rhs;
         return lhs;
     }
@@ -7695,7 +7783,7 @@ public:
     /// <param name="lhs">被減數</param>
     /// <param name="rhs">減數</param>
     /// <returns>減法結果</returns>
-    friend bigint operator-(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator-(bigint lhs, const bigint& rhs) {
         lhs -= rhs;
         return lhs;
     }
@@ -7706,7 +7794,7 @@ public:
     /// <param name="lhs">乘數</param>
     /// <param name="rhs">乘數</param>
     /// <returns>乘法結果</returns>
-    friend bigint operator*(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator*(bigint lhs, const bigint& rhs) {
         lhs *= rhs;
         return lhs;
     }
@@ -7718,7 +7806,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>商</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    friend bigint operator/(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator/(bigint lhs, const bigint& rhs) {
         lhs /= rhs;
         return lhs;
     }
@@ -7730,7 +7818,7 @@ public:
     /// <param name="rhs">除數</param>
     /// <returns>餘數</returns>
     /// <exception cref="std::invalid_argument">除數為 0 時拋出</exception>
-    friend bigint operator%(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator%(bigint lhs, const bigint& rhs) {
         lhs %= rhs;
         return lhs;
     }
@@ -7741,7 +7829,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>運算結果</returns>
-    friend bigint operator&(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator&(bigint lhs, const bigint& rhs) {
         lhs &= rhs;
         return lhs;
     }
@@ -7752,7 +7840,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>運算結果</returns>
-    friend bigint operator|(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator|(bigint lhs, const bigint& rhs) {
         lhs |= rhs;
         return lhs;
     }
@@ -7763,7 +7851,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>運算結果</returns>
-    friend bigint operator^(bigint lhs, const bigint& rhs) {
+    friend COMPAT_CONSTEXPR_20 bigint operator^(bigint lhs, const bigint& rhs) {
         lhs ^= rhs;
         return lhs;
     }
@@ -7776,7 +7864,7 @@ public:
     /// <param name="shift">位移位元數</param>
     /// <returns>位移結果</returns>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    friend bigint operator<<(bigint lhs, T shift) {
+    friend COMPAT_CONSTEXPR_20 bigint operator<<(bigint lhs, T shift) {
         lhs <<= shift;
         return lhs;
     }
@@ -7789,7 +7877,7 @@ public:
     /// <param name="shift">位移位元數</param>
     /// <returns>位移結果</returns>
     template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-    friend bigint operator>>(bigint lhs, T shift) {
+    friend COMPAT_CONSTEXPR_20 bigint operator>>(bigint lhs, T shift) {
         lhs >>= shift;
         return lhs;
     }
@@ -7800,11 +7888,14 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若數值相等回傳 true</returns>
-    friend bool operator==(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator==(const bigint& lhs, const bigint& rhs) noexcept {
         if (lhs.m_storage.m_sign != rhs.m_storage.m_sign) return false;
         if (lhs.m_storage.m_size != rhs.m_storage.m_size) return false;
         if (lhs.m_storage.m_size == 0) return true;
-        return std::memcmp(lhs.m_storage.m_data, rhs.m_storage.m_data, lhs.m_storage.m_size * sizeof(uint64_t)) == 0;
+        for (size_t i = 0; i < lhs.m_storage.m_size; ++i) {
+            if (lhs.m_storage.m_data[i] != rhs.m_storage.m_data[i]) return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -7813,7 +7904,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若數值不相等回傳 true</returns>
-    friend bool operator!=(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator!=(const bigint& lhs, const bigint& rhs) noexcept {
         return !(lhs == rhs);
     }
 
@@ -7823,7 +7914,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt; rhs 回傳 true</returns>
-    friend bool operator<(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<(const bigint& lhs, const bigint& rhs) noexcept {
         if (lhs.m_storage.m_sign < rhs.m_storage.m_sign) return true;
         if (lhs.m_storage.m_sign > rhs.m_storage.m_sign) return false;
         if (lhs.m_storage.m_sign == 0) return false;
@@ -7843,7 +7934,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt;= rhs 回傳 true</returns>
-    friend bool operator<=(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<=(const bigint& lhs, const bigint& rhs) noexcept {
         return !(rhs < lhs);
     }
 
@@ -7853,7 +7944,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt; rhs 回傳 true</returns>
-    friend bool operator>(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>(const bigint& lhs, const bigint& rhs) noexcept {
         return rhs < lhs;
     }
 
@@ -7863,7 +7954,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt;= rhs 回傳 true</returns>
-    friend bool operator>=(const bigint& lhs, const bigint& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>=(const bigint& lhs, const bigint& rhs) noexcept {
         return !(lhs < rhs);
     }
 
@@ -7881,31 +7972,31 @@ public:
 
 namespace detail {
 
-    inline BigIntConstantProxy::operator bigint() const {
+    COMPAT_CONSTEXPR_20 BigIntConstantProxy::operator bigint() const {
         return bigint(value);
     }
 
-    inline bigint BigIntConstantProxy::operator()() const {
+    COMPAT_CONSTEXPR_20 bigint BigIntConstantProxy::operator()() const {
         return bigint(value);
     }
 
     template <typename T>
-    inline bool operator==(BigIntConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 bool operator==(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, BigIntConstantProxy p) {
+    COMPAT_CONSTEXPR_20 bool operator==(const T& other, BigIntConstantProxy p) {
         return other == bigint(p.value);
     }
 
     template <typename T>
-    inline bool operator!=(BigIntConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 bool operator!=(BigIntConstantProxy p, const T& other) {
         return bigint(p.value) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, BigIntConstantProxy p) {
+    COMPAT_CONSTEXPR_20 bool operator!=(const T& other, BigIntConstantProxy p) {
         return other != bigint(p.value);
     }
 
@@ -7917,7 +8008,7 @@ namespace detail {
 /// <param name="lhs">左運算元</param>
 /// <param name="rhs">右運算元</param>
 /// <returns>邏輯及結果</returns>
-inline bool operator&&(const bigint& lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator&&(const bigint& lhs, const bigint& rhs) noexcept {
     return static_cast<bool>(lhs) && static_cast<bool>(rhs);
 }
 
@@ -7927,7 +8018,7 @@ inline bool operator&&(const bigint& lhs, const bigint& rhs) noexcept {
 /// <param name="lhs">左運算元</param>
 /// <param name="rhs">右運算元</param>
 /// <returns>邏輯或結果</returns>
-inline bool operator||(const bigint& lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator||(const bigint& lhs, const bigint& rhs) noexcept {
     return static_cast<bool>(lhs) || static_cast<bool>(rhs);
 }
 
@@ -7939,7 +8030,7 @@ inline bool operator||(const bigint& lhs, const bigint& rhs) noexcept {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(const bigint& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator&&(const bigint& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) && (rhs != 0);
 }
 
@@ -7951,7 +8042,7 @@ inline bool operator&&(const bigint& lhs, T rhs) noexcept {
 /// <param name="rhs">右 bigint</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(T lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator&&(T lhs, const bigint& rhs) noexcept {
     return (lhs != 0) && static_cast<bool>(rhs);
 }
 
@@ -7963,7 +8054,7 @@ inline bool operator&&(T lhs, const bigint& rhs) noexcept {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(const bigint& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator||(const bigint& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) || (rhs != 0);
 }
 
@@ -7975,7 +8066,7 @@ inline bool operator||(const bigint& lhs, T rhs) noexcept {
 /// <param name="rhs">右 bigint</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(T lhs, const bigint& rhs) noexcept {
+COMPAT_CONSTEXPR_20 bool operator||(T lhs, const bigint& rhs) noexcept {
     return (lhs != 0) || static_cast<bool>(rhs);
 }
 
@@ -8143,8 +8234,8 @@ public:
     /// </summary>
     /// <param name="exp">次方數</param>
     /// <returns>10^exp 之 bigint 數值</returns>
-    static bigint power_of_10(size_t exp) {
-        static const uint64_t POW10_TABLE[20] = {
+    static COMPAT_CONSTEXPR_20 bigint power_of_10(size_t exp) {
+        constexpr uint64_t pow10_table[20] = {
             1ULL,
             10ULL,
             100ULL,
@@ -8168,7 +8259,7 @@ public:
         };
 
         if (exp < 20) {
-            return bigint(POW10_TABLE[exp]);
+            return bigint(pow10_table[exp]);
         }
 
         // 二元快速冪演算法
@@ -8194,7 +8285,7 @@ public:
     /// <param name="scale">小數縮放位數參考</param>
     /// <param name="is_nan">是否為 NaN</param>
     /// <param name="is_infinity">是否為無窮大</param>
-    static void normalize(bigint& unscaled, int64_t& scale, bool is_nan, bool is_infinity) {
+    static COMPAT_CONSTEXPR_20 void normalize(bigint& unscaled, int64_t& scale, bool is_nan, bool is_infinity) {
         if (is_nan || is_infinity) {
             return;
         }
@@ -8221,6 +8312,24 @@ public:
     }
 
     /// <summary>
+    /// 不區分大小寫之 string_view 比對輔助函式。
+    /// </summary>
+    /// <param name="a">字串視圖 a</param>
+    /// <param name="b">字串視圖 b</param>
+    /// <returns>若相等回傳 true</returns>
+    static COMPAT_CONSTEXPR_20 bool iequals(compat::string_view a, compat::string_view b) noexcept {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            char ca = a[i];
+            char cb = b[i];
+            if (ca >= 'A' && ca <= 'Z') ca = static_cast<char>(ca + ('a' - 'A'));
+            if (cb >= 'A' && cb <= 'Z') cb = static_cast<char>(cb + ('a' - 'A'));
+            if (ca != cb) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// 自字串視圖解析十進位浮點數值。
     /// </summary>
     /// <param name="unscaled">輸出之未縮放整數</param>
@@ -8229,7 +8338,7 @@ public:
     /// <param name="is_nan">輸出之 NaN 標記</param>
     /// <param name="sv">輸入字串視圖</param>
     /// <exception cref="std::invalid_argument">字串為空或格式不合法時拋出</exception>
-    static void from_string(bigint& unscaled, int64_t& scale, bool& is_infinity, bool& is_nan, compat::string_view sv) {
+    static COMPAT_CONSTEXPR_20 void from_string(bigint& unscaled, int64_t& scale, bool& is_infinity, bool& is_nan, compat::string_view sv) {
         // 去除前後空白
         size_t start = 0;
         size_t end = sv.size();
@@ -8246,33 +8355,22 @@ public:
 
         compat::string_view trimmed(sv.data() + start, end - start);
 
-        // 轉換為全小寫副本以比對特殊字串
-        std::string lower_str;
-        lower_str.reserve(trimmed.size());
-        for (size_t i = 0; i < trimmed.size(); ++i) {
-            char c = trimmed[i];
-            if (c >= 'A' && c <= 'Z') {
-                c = static_cast<char>(c + ('a' - 'A'));
-            }
-            lower_str.push_back(c);
-        }
-
         // 特殊常數比對
-        if (lower_str == "nan" || lower_str == "+nan" || lower_str == "-nan") {
+        if (iequals(trimmed, "nan") || iequals(trimmed, "+nan") || iequals(trimmed, "-nan")) {
             is_nan = true;
             is_infinity = false;
             unscaled = 0;
             scale = 0;
             return;
         }
-        if (lower_str == "inf" || lower_str == "+inf" || lower_str == "infinity" || lower_str == "+infinity") {
+        if (iequals(trimmed, "inf") || iequals(trimmed, "+inf") || iequals(trimmed, "infinity") || iequals(trimmed, "+infinity")) {
             is_nan = false;
             is_infinity = true;
             unscaled = 1;
             scale = 0;
             return;
         }
-        if (lower_str == "-inf" || lower_str == "-infinity") {
+        if (iequals(trimmed, "-inf") || iequals(trimmed, "-infinity")) {
             is_nan = false;
             is_infinity = true;
             unscaled = -1;
@@ -8296,8 +8394,7 @@ public:
             COMPAT_THROW_OR_ABORT(std::invalid_argument("expected digits after sign"));
         }
 
-        std::string digits;
-        digits.reserve(len);
+        size_t mantissa_start = idx;
         bool has_dot = false;
         int64_t frac_digits = 0;
         bool has_any_digit = false;
@@ -8305,7 +8402,6 @@ public:
         while (idx < len && trimmed[idx] != 'e' && trimmed[idx] != 'E') {
             char c = trimmed[idx];
             if (c >= '0' && c <= '9') {
-                digits.push_back(c);
                 has_any_digit = true;
                 if (has_dot) {
                     frac_digits++;
@@ -8324,6 +8420,8 @@ public:
         if (!has_any_digit) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("no digits found in mantissa"));
         }
+
+        size_t mantissa_end = idx;
 
         int64_t exp_val = 0;
         if (idx < len && (trimmed[idx] == 'e' || trimmed[idx] == 'E')) {
@@ -8369,13 +8467,35 @@ public:
             COMPAT_THROW_OR_ABORT(std::invalid_argument("unexpected trailing characters in decimal string"));
         }
 
+        // 解析 mantissa 數字為 bigint，跳過小數點（零堆積配置分塊解析）
+        BigIntStorage cur;
+        size_t m_idx = mantissa_start;
+        while (m_idx < mantissa_end) {
+            uint64_t chunk_val = 0;
+            uint64_t mult = 1;
+            size_t digits_in_chunk = 0;
+            while (m_idx < mantissa_end && digits_in_chunk < 19) {
+                char c = trimmed[m_idx++];
+                if (c == '.') continue;
+                chunk_val = chunk_val * 10 + static_cast<uint64_t>(c - '0');
+                mult *= 10;
+                digits_in_chunk++;
+            }
+            if (digits_in_chunk > 0) {
+                BigIntStorage mult_st, chunk_st, prod;
+                mult_st.set_uint64(mult, 1);
+                chunk_st.set_uint64(chunk_val, 1);
+                BigIntCore::mul_signed(prod, cur, mult_st);
+                BigIntCore::add_signed(cur, prod, chunk_st);
+            }
+        }
+        cur.m_sign = sign;
+        cur.normalize();
+        unscaled = bigint(std::move(cur));
+
         scale = frac_digits - exp_val;
         is_nan = false;
         is_infinity = false;
-        unscaled = bigint(digits);
-        if (sign < 0) {
-            unscaled = -unscaled;
-        }
 
         normalize(unscaled, scale, false, false);
     }
@@ -8497,7 +8617,7 @@ public:
     /// <param name="b_s">運算元 B 小數縮放位數</param>
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
-    static void add(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void add(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan) {
@@ -8572,7 +8692,7 @@ public:
     /// <param name="b_s">運算元 B 小數縮放位數</param>
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
-    static void sub(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void sub(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         add(r_u, r_s, r_inf, r_nan, a_u, a_s, a_inf, a_nan, -b_u, b_s, b_inf, b_nan);
@@ -8593,7 +8713,7 @@ public:
     /// <param name="b_s">運算元 B 小數縮放位數</param>
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
-    static void mul(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void mul(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan) {
@@ -8629,6 +8749,26 @@ public:
     }
 
     /// <summary>
+    /// 計算 bigint 十進位位數，支援編譯期 constexpr 運算。
+    /// </summary>
+    /// <param name="x">輸入整數</param>
+    /// <returns>十進位有效位數</returns>
+    static COMPAT_CONSTEXPR_20 size_t count_digits(bigint x) {
+        if (x == 0) return 1;
+        if (x < 0) x = -x;
+        size_t cnt = 0;
+        while (x >= 100000000ULL) {
+            x /= 100000000ULL;
+            cnt += 8;
+        }
+        while (x > 0) {
+            x /= 10;
+            cnt += 1;
+        }
+        return cnt;
+    }
+
+    /// <summary>
     /// 執行除法運算，支援指定精度與銀行家捨入法 (Banker's Rounding / Half-Even)。
     /// </summary>
     /// <param name="r_u">結果未縮放整數</param>
@@ -8644,7 +8784,7 @@ public:
     /// <param name="b_inf">除數無窮大標記</param>
     /// <param name="b_nan">除數 NaN 標記</param>
     /// <param name="precision">有效十進位數字精度（預設為 34 位）</param>
-    static void div(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    static COMPAT_CONSTEXPR_20 void div(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan,
                     int32_t precision = 34) {
@@ -8721,8 +8861,8 @@ public:
             ub = -ub;
         }
 
-        size_t da = ua.to_string().size();
-        size_t db = ub.to_string().size();
+        size_t da = count_digits(ua);
+        size_t db = count_digits(ub);
 
         // 擴增被除數位數以滿足目標精度及捨入判斷
         int64_t K = static_cast<int64_t>(precision) - (static_cast<int64_t>(da) - static_cast<int64_t>(db)) + 5;
@@ -8738,8 +8878,7 @@ public:
         bigint Q = num / ub;
         bigint R = num % ub;
 
-        std::string q_str = Q.to_string();
-        size_t dq = q_str.size();
+        size_t dq = count_digits(Q);
         int64_t current_scale = a_s - b_s + K;
 
         // 若商位數大於期望有效數字 precision，執行銀行家捨入
@@ -8768,7 +8907,7 @@ public:
             if (round_up) {
                 q_drop += 1;
                 // 若進位造成位數增加（如 999 -> 1000），調整位移
-                if (q_drop.to_string().size() > static_cast<size_t>(precision)) {
+                if (count_digits(q_drop) > static_cast<size_t>(precision)) {
                     q_drop /= 10;
                     L++;
                 }
@@ -8799,7 +8938,7 @@ public:
     /// <param name="b_s">除數小數縮放位數</param>
     /// <param name="b_inf">除數無窮大標記</param>
     /// <param name="b_nan">除數 NaN 標記</param>
-    static void mod(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
+    COMPAT_CONSTEXPR_20 static void mod(bigint& r_u, int64_t& r_s, bool& r_inf, bool& r_nan,
                     const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                     const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan || a_inf || b_u == 0) {
@@ -8841,7 +8980,7 @@ public:
     /// <param name="unscaled">未縮放整數參考</param>
     /// <param name="scale">小數縮放位數參考</param>
     /// <param name="decimal_places">目標小數位數</param>
-    static void round_half_even(bigint& unscaled, int64_t& scale, int64_t decimal_places) {
+    COMPAT_CONSTEXPR_20 static void round_half_even(bigint& unscaled, int64_t& scale, int64_t decimal_places) {
         if (scale <= decimal_places) {
             return;
         }
@@ -8880,7 +9019,7 @@ public:
     /// <param name="b_inf">運算元 B 無窮大標記</param>
     /// <param name="b_nan">運算元 B NaN 標記</param>
     /// <returns>小於傳回 -1，等於傳回 0，大於傳回 1，若含 NaN 傳回 -2（無序）</returns>
-    static int compare(const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
+    COMPAT_CONSTEXPR_20 static int compare(const bigint& a_u, int64_t a_s, bool a_inf, bool a_nan,
                        const bigint& b_u, int64_t b_s, bool b_inf, bool b_nan) {
         if (a_nan || b_nan) {
             return -2; // 無序 (unordered)
@@ -9005,19 +9144,19 @@ struct DecimalConstantProxy {
     /// 隱式轉換至 decimal 實例。
     /// </summary>
     /// <returns>對應之 decimal 物件</returns>
-    inline operator decimal() const;
+    COMPAT_CONSTEXPR_20 operator decimal() const;
 
     /// <summary>
     /// 函式呼叫運算子，回傳對應之 decimal 實例。
     /// </summary>
     /// <returns>對應之 decimal 物件</returns>
-    inline decimal operator()() const;
+    COMPAT_CONSTEXPR_20 decimal operator()() const;
 
     /// <summary>
     /// 一元負號運算子（支援 -decimal::infinity）。
     /// </summary>
     /// <returns>反轉正負號後之 decimal 物件</returns>
-    inline decimal operator-() const;
+    COMPAT_CONSTEXPR_20 decimal operator-() const;
 
     /// <summary>
     /// 常數代理相等比較運算子。
@@ -9027,7 +9166,7 @@ struct DecimalConstantProxy {
     /// <param name="other">比較目標</param>
     /// <returns>若相等回傳 true</returns>
     template <typename T>
-    friend bool operator==(DecimalConstantProxy p, const T& other);
+    friend COMPAT_CONSTEXPR_20 bool operator==(DecimalConstantProxy p, const T& other);
 
     /// <summary>
     /// 常數代理相等比較運算子。
@@ -9037,7 +9176,7 @@ struct DecimalConstantProxy {
     /// <param name="p">常數代理物件</param>
     /// <returns>若相等回傳 true</returns>
     template <typename T>
-    friend bool operator==(const T& other, DecimalConstantProxy p);
+    friend COMPAT_CONSTEXPR_20 bool operator==(const T& other, DecimalConstantProxy p);
 
     /// <summary>
     /// 常數代理不相等比較運算子。
@@ -9047,7 +9186,7 @@ struct DecimalConstantProxy {
     /// <param name="other">比較目標</param>
     /// <returns>若不相等回傳 true</returns>
     template <typename T>
-    friend bool operator!=(DecimalConstantProxy p, const T& other);
+    friend COMPAT_CONSTEXPR_20 bool operator!=(DecimalConstantProxy p, const T& other);
 
     /// <summary>
     /// 常數代理不相等比較運算子。
@@ -9057,7 +9196,7 @@ struct DecimalConstantProxy {
     /// <param name="p">常數代理物件</param>
     /// <returns>若不相等回傳 true</returns>
     template <typename T>
-    friend bool operator!=(const T& other, DecimalConstantProxy p);
+    friend COMPAT_CONSTEXPR_20 bool operator!=(const T& other, DecimalConstantProxy p);
 };
 
 /// <summary>
@@ -9106,45 +9245,45 @@ public:
     /// <summary>
     /// 預設建構子：初始化為數值 0。
     /// </summary>
-    decimal() noexcept = default;
+    COMPAT_CONSTEXPR_20 decimal() noexcept = default;
 
     /// <summary>
     /// 複製建構子。
     /// </summary>
     /// <param name="other">來源 decimal</param>
-    decimal(const decimal& other) = default;
+    COMPAT_CONSTEXPR_20 decimal(const decimal& other) = default;
 
     /// <summary>
     /// 移動建構子。
     /// </summary>
     /// <param name="other">來源 decimal（右值）</param>
-    decimal(decimal&& other) noexcept = default;
+    COMPAT_CONSTEXPR_20 decimal(decimal&& other) noexcept = default;
 
     /// <summary>
     /// 複製賦值運算子。
     /// </summary>
     /// <param name="other">來源 decimal</param>
     /// <returns>自身參考</returns>
-    decimal& operator=(const decimal& other) = default;
+    COMPAT_CONSTEXPR_20 decimal& operator=(const decimal& other) = default;
 
     /// <summary>
     /// 移動賦值運算子。
     /// </summary>
     /// <param name="other">來源 decimal（右值）</param>
     /// <returns>自身參考</returns>
-    decimal& operator=(decimal&& other) noexcept = default;
+    COMPAT_CONSTEXPR_20 decimal& operator=(decimal&& other) noexcept = default;
 
     /// <summary>
     /// 解構子。
     /// </summary>
-    ~decimal() = default;
+    COMPAT_CONSTEXPR_20 ~decimal() = default;
 
     /// <summary>
     /// 自未縮放整數與縮放位數建構十進位數。
     /// </summary>
     /// <param name="unscaled">未縮放整數</param>
     /// <param name="scale">小數縮放位數（數值為 unscaled * 10^-scale）</param>
-    decimal(bigint unscaled, int64_t scale)
+    COMPAT_CONSTEXPR_20 decimal(bigint unscaled, int64_t scale)
         : m_unscaled(std::move(unscaled)), m_scale(scale), m_is_infinity(false), m_is_nan(false) {
         detail::DecimalCore::normalize(m_unscaled, m_scale, false, false);
     }
@@ -9153,77 +9292,77 @@ public:
     /// 自 compat::bigint 隱式建構（scale 為 0）。
     /// </summary>
     /// <param name="val">來源 bigint 整數</param>
-    decimal(const bigint& val)
+    COMPAT_CONSTEXPR_20 decimal(const bigint& val)
         : m_unscaled(val), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 compat::bigint 右值隱式建構（scale 為 0）。
     /// </summary>
     /// <param name="val">來源 bigint 右值</param>
-    decimal(bigint&& val) noexcept
+    COMPAT_CONSTEXPR_20 decimal(bigint&& val) noexcept
         : m_unscaled(std::move(val)), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自布林值建構：true 為 1，false 為 0。
     /// </summary>
     /// <param name="b">布林值</param>
-    decimal(bool b) noexcept
+    COMPAT_CONSTEXPR_20 decimal(bool b) noexcept
         : m_unscaled(b ? 1 : 0), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 8 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">8 位元整數</param>
-    decimal(int8_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int8_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 16 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">16 位元整數</param>
-    decimal(int16_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int16_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 32 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">32 位元整數</param>
-    decimal(int32_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int32_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 64 位元有符號整數隱式建構。
     /// </summary>
     /// <param name="v">64 位元整數</param>
-    decimal(int64_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(int64_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 8 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">8 位元無符號整數</param>
-    decimal(uint8_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint8_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 16 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">16 位元無符號整數</param>
-    decimal(uint16_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint16_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 32 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">32 位元無符號整數</param>
-    decimal(uint32_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint32_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
     /// 自 64 位元無符號整數隱式建構。
     /// </summary>
     /// <param name="v">64 位元無符號整數</param>
-    decimal(uint64_t v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(uint64_t v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
@@ -9242,7 +9381,7 @@ public:
         !std::is_same<T, uint16_t>::value &&
         !std::is_same<T, uint32_t>::value &&
         !std::is_same<T, uint64_t>::value, int>::type = 0>
-    decimal(T v) noexcept
+    COMPAT_CONSTEXPR_20 decimal(T v) noexcept
         : m_unscaled(v), m_scale(0), m_is_infinity(false), m_is_nan(false) {}
 
     /// <summary>
@@ -9274,7 +9413,7 @@ public:
     /// </summary>
     /// <param name="sv">十進位字串視圖</param>
     /// <exception cref="std::invalid_argument">字串無效時拋出</exception>
-    explicit decimal(compat::string_view sv) {
+    explicit COMPAT_CONSTEXPR_20 decimal(compat::string_view sv) {
         detail::DecimalCore::from_string(m_unscaled, m_scale, m_is_infinity, m_is_nan, sv);
     }
 
@@ -9283,7 +9422,7 @@ public:
     /// </summary>
     /// <param name="s">字串指標</param>
     /// <exception cref="std::invalid_argument">指標為 null 或格式不合法時拋出</exception>
-    explicit decimal(const char* s) {
+    explicit COMPAT_CONSTEXPR_20 decimal(const char* s) {
         if (s == nullptr) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("null string pointer"));
         }
@@ -9305,7 +9444,7 @@ public:
     /// <param name="sv">十進位字串視圖</param>
     /// <returns>解析完成之 decimal 物件</returns>
     /// <exception cref="std::invalid_argument">字串為空或包含無效字元時拋出</exception>
-    static decimal from_string(compat::string_view sv) {
+    COMPAT_CONSTEXPR_20 static decimal from_string(compat::string_view sv) {
         decimal res;
         detail::DecimalCore::from_string(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan, sv);
         return res;
@@ -9315,7 +9454,7 @@ public:
     /// 查詢是否正在使用 128-bit SBO 緩衝區（未配置堆積記憶體）。
     /// </summary>
     /// <returns>若符合 SBO 回傳 true，否則回傳 false</returns>
-    COMPAT_NODISCARD bool is_sbo() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_sbo() const noexcept {
         return m_unscaled.is_sbo();
     }
 
@@ -9323,7 +9462,7 @@ public:
     /// 查詢是否為小數值（SBO 模式之別名）。
     /// </summary>
     /// <returns>若為 SBO 儲存回傳 true</returns>
-    COMPAT_NODISCARD bool is_small() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_small() const noexcept {
         return m_unscaled.is_sbo();
     }
 
@@ -9331,7 +9470,7 @@ public:
     /// 查詢是否為 NaN。
     /// </summary>
     /// <returns>若為 NaN 回傳 true</returns>
-    COMPAT_NODISCARD bool is_nan() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_nan() const noexcept {
         return m_is_nan;
     }
 
@@ -9339,7 +9478,7 @@ public:
     /// 查詢是否為無窮大（包含正負無窮大）。
     /// </summary>
     /// <returns>若為無窮大回傳 true</returns>
-    COMPAT_NODISCARD bool is_infinite() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_infinite() const noexcept {
         return m_is_infinity;
     }
 
@@ -9347,7 +9486,7 @@ public:
     /// 查詢是否為無窮大（別名）。
     /// </summary>
     /// <returns>若為無窮大回傳 true</returns>
-    COMPAT_NODISCARD bool is_infinity() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_infinity() const noexcept {
         return m_is_infinity;
     }
 
@@ -9355,7 +9494,7 @@ public:
     /// 查詢是否為有限數值。
     /// </summary>
     /// <returns>非 NaN 且非無窮大時回傳 true</returns>
-    COMPAT_NODISCARD bool is_finite() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_finite() const noexcept {
         return !m_is_nan && !m_is_infinity;
     }
 
@@ -9363,7 +9502,7 @@ public:
     /// 查詢數值是否為 0。
     /// </summary>
     /// <returns>若為零回傳 true</returns>
-    COMPAT_NODISCARD bool is_zero() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_zero() const noexcept {
         return !m_is_nan && !m_is_infinity && m_unscaled == 0;
     }
 
@@ -9371,7 +9510,7 @@ public:
     /// 取得數值符號。
     /// </summary>
     /// <returns>正數或正無窮回傳 1，負數或負無窮回傳 -1，零或 NaN 回傳 0</returns>
-    COMPAT_NODISCARD int8_t sign() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 int8_t sign() const noexcept {
         if (m_is_nan) {
             return 0;
         }
@@ -9385,7 +9524,7 @@ public:
     /// 取得未縮放整數之 const 參考。
     /// </summary>
     /// <returns>bigint 參考</returns>
-    COMPAT_NODISCARD const bigint& unscaled() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 const bigint& unscaled() const noexcept {
         return m_unscaled;
     }
 
@@ -9393,7 +9532,7 @@ public:
     /// 取得小數縮放位數。
     /// </summary>
     /// <returns>scale 數值</returns>
-    COMPAT_NODISCARD int64_t scale() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 int64_t scale() const noexcept {
         return m_scale;
     }
 
@@ -9401,7 +9540,7 @@ public:
     /// 明確轉型為布林值（非 0 且非 NaN 為 true，0 或 NaN 為 false）。
     /// </summary>
     /// <returns>布林值</returns>
-    explicit operator bool() const noexcept {
+    explicit COMPAT_CONSTEXPR_20 operator bool() const noexcept {
         if (m_is_nan) {
             return false;
         }
@@ -9415,7 +9554,7 @@ public:
     /// 邏輯非運算子。
     /// </summary>
     /// <returns>若數值為 0 或 NaN 回傳 true，否則回傳 false</returns>
-    bool operator!() const noexcept {
+    COMPAT_CONSTEXPR_20 bool operator!() const noexcept {
         return !static_cast<bool>(*this);
     }
 
@@ -9424,7 +9563,7 @@ public:
     /// </summary>
     /// <returns>bigint 整數</returns>
     /// <exception cref="std::domain_error">數值為 NaN 或無窮大時拋出</exception>
-    explicit operator bigint() const {
+    explicit COMPAT_CONSTEXPR_20 operator bigint() const {
         if (m_is_nan || m_is_infinity) {
             COMPAT_THROW_OR_ABORT(std::domain_error("cannot convert special value to bigint"));
         }
@@ -9441,7 +9580,7 @@ public:
     /// 明確轉型為 64 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int64_t 數值</returns>
-    explicit operator int64_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int64_t() const {
         return static_cast<int64_t>(static_cast<bigint>(*this));
     }
 
@@ -9449,7 +9588,7 @@ public:
     /// 明確轉型為 64 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint64_t 數值</returns>
-    explicit operator uint64_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint64_t() const {
         return static_cast<uint64_t>(static_cast<bigint>(*this));
     }
 
@@ -9457,7 +9596,7 @@ public:
     /// 明確轉型為 32 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int32_t 數值</returns>
-    explicit operator int32_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int32_t() const {
         return static_cast<int32_t>(static_cast<bigint>(*this));
     }
 
@@ -9465,7 +9604,7 @@ public:
     /// 明確轉型為 32 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint32_t 數值</returns>
-    explicit operator uint32_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint32_t() const {
         return static_cast<uint32_t>(static_cast<bigint>(*this));
     }
 
@@ -9473,7 +9612,7 @@ public:
     /// 明確轉型為 16 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int16_t 數值</returns>
-    explicit operator int16_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int16_t() const {
         return static_cast<int16_t>(static_cast<int32_t>(static_cast<bigint>(*this)));
     }
 
@@ -9481,7 +9620,7 @@ public:
     /// 明確轉型為 16 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint16_t 數值</returns>
-    explicit operator uint16_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint16_t() const {
         return static_cast<uint16_t>(static_cast<uint32_t>(static_cast<bigint>(*this)));
     }
 
@@ -9489,7 +9628,7 @@ public:
     /// 明確轉型為 8 位元有符號整數（可能截斷）。
     /// </summary>
     /// <returns>int8_t 數值</returns>
-    explicit operator int8_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator int8_t() const {
         return static_cast<int8_t>(static_cast<int32_t>(static_cast<bigint>(*this)));
     }
 
@@ -9497,7 +9636,7 @@ public:
     /// 明確轉型為 8 位元無符號整數（可能截斷）。
     /// </summary>
     /// <returns>uint8_t 數值</returns>
-    explicit operator uint8_t() const {
+    explicit COMPAT_CONSTEXPR_20 operator uint8_t() const {
         return static_cast<uint8_t>(static_cast<uint32_t>(static_cast<bigint>(*this)));
     }
 
@@ -9553,7 +9692,13 @@ public:
     /// <param name="other">除數</param>
     /// <param name="precision">有效十進位數字精度（預設為 34 位）</param>
     /// <returns>除法結果</returns>
-    COMPAT_NODISCARD decimal divide(const decimal& other, int32_t precision = 34) const {
+    /// <summary>
+    /// 依指定精度執行除法運算。
+    /// </summary>
+    /// <param name="other">除數</param>
+    /// <param name="precision">有效十進位數字精度（預設為 34 位）</param>
+    /// <returns>除法結果</returns>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 decimal divide(const decimal& other, int32_t precision = 34) const {
         decimal res;
         detail::DecimalCore::div(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -9567,7 +9712,7 @@ public:
     /// </summary>
     /// <param name="decimal_places">目標小數位數（預設為 0，捨入至整數）</param>
     /// <returns>捨入後之 decimal 物件</returns>
-    COMPAT_NODISCARD decimal round(int64_t decimal_places = 0) const {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 decimal round(int64_t decimal_places = 0) const {
         if (m_is_nan || m_is_infinity) {
             return *this;
         }
@@ -9580,7 +9725,7 @@ public:
     /// 一元正號運算子。
     /// </summary>
     /// <returns>自身副本</returns>
-    decimal operator+() const {
+    COMPAT_CONSTEXPR_20 decimal operator+() const {
         return *this;
     }
 
@@ -9588,7 +9733,7 @@ public:
     /// 一元負號運算子。
     /// </summary>
     /// <returns>正負號反轉後之結果</returns>
-    decimal operator-() const {
+    COMPAT_CONSTEXPR_20 decimal operator-() const {
         if (m_is_nan) {
             return *this;
         }
@@ -9601,7 +9746,7 @@ public:
     /// 前置遞增運算子：++d。
     /// </summary>
     /// <returns>遞增後之自身參考</returns>
-    decimal& operator++() {
+    COMPAT_CONSTEXPR_20 decimal& operator++() {
         *this += 1;
         return *this;
     }
@@ -9610,7 +9755,7 @@ public:
     /// 後置遞增運算子：d++。
     /// </summary>
     /// <returns>遞增前之舊值</returns>
-    decimal operator++(int) {
+    COMPAT_CONSTEXPR_20 decimal operator++(int) {
         decimal tmp = *this;
         *this += 1;
         return tmp;
@@ -9620,7 +9765,7 @@ public:
     /// 前置遞減運算子：--d。
     /// </summary>
     /// <returns>遞減後之自身參考</returns>
-    decimal& operator--() {
+    COMPAT_CONSTEXPR_20 decimal& operator--() {
         *this -= 1;
         return *this;
     }
@@ -9629,7 +9774,7 @@ public:
     /// 後置遞減運算子：d--。
     /// </summary>
     /// <returns>遞減前之舊值</returns>
-    decimal operator--(int) {
+    COMPAT_CONSTEXPR_20 decimal operator--(int) {
         decimal tmp = *this;
         *this -= 1;
         return tmp;
@@ -9640,7 +9785,7 @@ public:
     /// </summary>
     /// <param name="rhs">加數</param>
     /// <returns>自身參考</returns>
-    decimal& operator+=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator+=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::add(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -9654,7 +9799,7 @@ public:
     /// </summary>
     /// <param name="rhs">減數</param>
     /// <returns>自身參考</returns>
-    decimal& operator-=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator-=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::sub(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -9668,7 +9813,7 @@ public:
     /// </summary>
     /// <param name="rhs">乘數</param>
     /// <returns>自身參考</returns>
-    decimal& operator*=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator*=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::mul(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -9682,7 +9827,7 @@ public:
     /// </summary>
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
-    decimal& operator/=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator/=(const decimal& rhs) {
         *this = divide(rhs, 34);
         return *this;
     }
@@ -9692,7 +9837,7 @@ public:
     /// </summary>
     /// <param name="rhs">除數</param>
     /// <returns>自身參考</returns>
-    decimal& operator%=(const decimal& rhs) {
+    COMPAT_CONSTEXPR_20 decimal& operator%=(const decimal& rhs) {
         decimal res;
         detail::DecimalCore::mod(res.m_unscaled, res.m_scale, res.m_is_infinity, res.m_is_nan,
                                  m_unscaled, m_scale, m_is_infinity, m_is_nan,
@@ -9707,7 +9852,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>加法結果</returns>
-    friend decimal operator+(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator+(decimal lhs, const decimal& rhs) {
         lhs += rhs;
         return lhs;
     }
@@ -9718,7 +9863,7 @@ public:
     /// <param name="lhs">被減數</param>
     /// <param name="rhs">減數</param>
     /// <returns>減法結果</returns>
-    friend decimal operator-(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator-(decimal lhs, const decimal& rhs) {
         lhs -= rhs;
         return lhs;
     }
@@ -9729,7 +9874,7 @@ public:
     /// <param name="lhs">乘數</param>
     /// <param name="rhs">乘數</param>
     /// <returns>乘法結果</returns>
-    friend decimal operator*(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator*(decimal lhs, const decimal& rhs) {
         lhs *= rhs;
         return lhs;
     }
@@ -9740,7 +9885,7 @@ public:
     /// <param name="lhs">被除數</param>
     /// <param name="rhs">除數</param>
     /// <returns>商</returns>
-    friend decimal operator/(const decimal& lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator/(const decimal& lhs, const decimal& rhs) {
         return lhs.divide(rhs, 34);
     }
 
@@ -9750,7 +9895,7 @@ public:
     /// <param name="lhs">被除數</param>
     /// <param name="rhs">除數</param>
     /// <returns>餘數</returns>
-    friend decimal operator%(decimal lhs, const decimal& rhs) {
+    friend COMPAT_CONSTEXPR_20 decimal operator%(decimal lhs, const decimal& rhs) {
         lhs %= rhs;
         return lhs;
     }
@@ -9761,7 +9906,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若相等回傳 true</returns>
-    friend bool operator==(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator==(const decimal& lhs, const decimal& rhs) noexcept {
         return detail::DecimalCore::compare(lhs.m_unscaled, lhs.m_scale, lhs.m_is_infinity, lhs.m_is_nan,
                                             rhs.m_unscaled, rhs.m_scale, rhs.m_is_infinity, rhs.m_is_nan) == 0;
     }
@@ -9772,7 +9917,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若不相等回傳 true</returns>
-    friend bool operator!=(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator!=(const decimal& lhs, const decimal& rhs) noexcept {
         if (lhs.m_is_nan || rhs.m_is_nan) {
             return true;
         }
@@ -9785,7 +9930,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt; rhs 回傳 true</returns>
-    friend bool operator<(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<(const decimal& lhs, const decimal& rhs) noexcept {
         return detail::DecimalCore::compare(lhs.m_unscaled, lhs.m_scale, lhs.m_is_infinity, lhs.m_is_nan,
                                             rhs.m_unscaled, rhs.m_scale, rhs.m_is_infinity, rhs.m_is_nan) == -1;
     }
@@ -9796,7 +9941,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &lt;= rhs 回傳 true</returns>
-    friend bool operator<=(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator<=(const decimal& lhs, const decimal& rhs) noexcept {
         if (lhs.m_is_nan || rhs.m_is_nan) {
             return false;
         }
@@ -9811,7 +9956,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt; rhs 回傳 true</returns>
-    friend bool operator>(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>(const decimal& lhs, const decimal& rhs) noexcept {
         return rhs < lhs;
     }
 
@@ -9821,7 +9966,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>若 lhs &gt;= rhs 回傳 true</returns>
-    friend bool operator>=(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator>=(const decimal& lhs, const decimal& rhs) noexcept {
         return rhs <= lhs;
     }
 
@@ -9832,7 +9977,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>偏序比較結果 std::partial_ordering</returns>
-    friend std::partial_ordering operator<=>(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 std::partial_ordering operator<=>(const decimal& lhs, const decimal& rhs) noexcept {
         if (lhs.m_is_nan || rhs.m_is_nan) {
             return std::partial_ordering::unordered;
         }
@@ -9850,7 +9995,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>邏輯及結果</returns>
-    friend bool operator&&(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator&&(const decimal& lhs, const decimal& rhs) noexcept {
         return static_cast<bool>(lhs) && static_cast<bool>(rhs);
     }
 
@@ -9860,7 +10005,7 @@ public:
     /// <param name="lhs">左運算元</param>
     /// <param name="rhs">右運算元</param>
     /// <returns>邏輯或結果</returns>
-    friend bool operator||(const decimal& lhs, const decimal& rhs) noexcept {
+    friend COMPAT_CONSTEXPR_20 bool operator||(const decimal& lhs, const decimal& rhs) noexcept {
         return static_cast<bool>(lhs) || static_cast<bool>(rhs);
     }
 
@@ -9941,7 +10086,7 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
     return res;
 }
 
-    inline DecimalConstantProxy::operator decimal() const {
+    COMPAT_CONSTEXPR_20 inline DecimalConstantProxy::operator decimal() const {
         switch (kind) {
             case DecimalConstantKind::Zero:
                 return decimal(0);
@@ -9963,31 +10108,31 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
         }
     }
 
-    inline decimal DecimalConstantProxy::operator()() const {
+    COMPAT_CONSTEXPR_20 inline decimal DecimalConstantProxy::operator()() const {
         return static_cast<decimal>(*this);
     }
 
-    inline decimal DecimalConstantProxy::operator-() const {
+    COMPAT_CONSTEXPR_20 inline decimal DecimalConstantProxy::operator-() const {
         return -static_cast<decimal>(*this);
     }
 
     template <typename T>
-    inline bool operator==(DecimalConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 inline bool operator==(DecimalConstantProxy p, const T& other) {
         return static_cast<decimal>(p) == other;
     }
 
     template <typename T>
-    inline bool operator==(const T& other, DecimalConstantProxy p) {
+    COMPAT_CONSTEXPR_20 inline bool operator==(const T& other, DecimalConstantProxy p) {
         return other == static_cast<decimal>(p);
     }
 
     template <typename T>
-    inline bool operator!=(DecimalConstantProxy p, const T& other) {
+    COMPAT_CONSTEXPR_20 inline bool operator!=(DecimalConstantProxy p, const T& other) {
         return static_cast<decimal>(p) != other;
     }
 
     template <typename T>
-    inline bool operator!=(const T& other, DecimalConstantProxy p) {
+    COMPAT_CONSTEXPR_20 inline bool operator!=(const T& other, DecimalConstantProxy p) {
         return other != static_cast<decimal>(p);
     }
 
@@ -10001,7 +10146,7 @@ inline std::string FormatDecimalToString(const decimal& d, int precision) {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(const decimal& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator&&(const decimal& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) && (rhs != 0);
 }
 
@@ -10013,7 +10158,7 @@ inline bool operator&&(const decimal& lhs, T rhs) noexcept {
 /// <param name="rhs">右 decimal</param>
 /// <returns>邏輯及結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator&&(T lhs, const decimal& rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator&&(T lhs, const decimal& rhs) noexcept {
     return (lhs != 0) && static_cast<bool>(rhs);
 }
 
@@ -10025,7 +10170,7 @@ inline bool operator&&(T lhs, const decimal& rhs) noexcept {
 /// <param name="rhs">右原生數值</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(const decimal& lhs, T rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator||(const decimal& lhs, T rhs) noexcept {
     return static_cast<bool>(lhs) || (rhs != 0);
 }
 
@@ -10037,7 +10182,7 @@ inline bool operator||(const decimal& lhs, T rhs) noexcept {
 /// <param name="rhs">右 decimal</param>
 /// <returns>邏輯或結果</returns>
 template <typename T, typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
-inline bool operator||(T lhs, const decimal& rhs) noexcept {
+COMPAT_CONSTEXPR_20 inline bool operator||(T lhs, const decimal& rhs) noexcept {
     return (lhs != 0) || static_cast<bool>(rhs);
 }
 
@@ -10208,6 +10353,47 @@ export namespace compat {
 
 namespace detail {
 
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+    /// <summary>
+    /// 取得高精度圓周率 Pi 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 Pi 之 decimal 物件</returns>
+    constexpr decimal cmath_pi() {
+        return decimal("3.1415926535897932384626433832795029");
+    }
+
+    /// <summary>
+    /// 取得高精度 2*Pi 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 2*Pi 之 decimal 物件</returns>
+    constexpr decimal cmath_two_pi() {
+        return decimal("6.2831853071795864769252867665590058");
+    }
+
+    /// <summary>
+    /// 取得高精度 Pi/2 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 Pi/2 之 decimal 物件</returns>
+    constexpr decimal cmath_pi_over_2() {
+        return decimal("1.5707963267948966192313216916397514");
+    }
+
+    /// <summary>
+    /// 取得高精度 ln(2) 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 ln(2) 之 decimal 物件</returns>
+    constexpr decimal cmath_ln2() {
+        return decimal("0.69314718055994530941723212145817657");
+    }
+
+    /// <summary>
+    /// 取得高精度 ln(10) 常數（34 位有效數字，符合 IEEE decimal128 SBO）。
+    /// </summary>
+    /// <returns>高精度 ln(10) 之 decimal 物件</returns>
+    constexpr decimal cmath_ln10() {
+        return decimal("2.3025850929940456840179914546843642");
+    }
+#else
     /// <summary>
     /// 取得高精度圓周率 Pi 常數（50 位有效數字）。
     /// </summary>
@@ -10252,7 +10438,7 @@ namespace detail {
         static const decimal val("2.30258509299404568401799145468436420760110148862877");
         return val;
     }
-
+#endif
 } // namespace detail
 
 // ============================================================================
@@ -10264,7 +10450,7 @@ namespace detail {
 /// </summary>
 /// <param name="x">輸入整數</param>
 /// <returns>絕對值結果</returns>
-COMPAT_NODISCARD inline bigint abs(const bigint& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bigint abs(const bigint& x) noexcept {
     return (x.sign() < 0) ? -x : x;
 }
 
@@ -10463,7 +10649,7 @@ COMPAT_NODISCARD inline bigint pow(const bigint& base, const bigint& exp) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為 NaN 回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool isnan(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool isnan(const decimal& x) noexcept {
     return x.is_nan();
 }
 
@@ -10472,7 +10658,7 @@ COMPAT_NODISCARD inline bool isnan(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為無窮大回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool isinf(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool isinf(const decimal& x) noexcept {
     return x.is_infinite();
 }
 
@@ -10481,7 +10667,7 @@ COMPAT_NODISCARD inline bool isinf(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若非 NaN 且非無窮大回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool isfinite(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool isfinite(const decimal& x) noexcept {
     return x.is_finite();
 }
 
@@ -10490,7 +10676,7 @@ COMPAT_NODISCARD inline bool isfinite(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為負數回傳 true，否則回傳 false</returns>
-COMPAT_NODISCARD inline bool signbit(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline bool signbit(const decimal& x) noexcept {
     return x.sign() < 0 || x.unscaled().sign() < 0;
 }
 
@@ -10500,7 +10686,7 @@ COMPAT_NODISCARD inline bool signbit(const decimal& x) noexcept {
 /// <param name="mag">數值大小</param>
 /// <param name="sgn">符號來源</param>
 /// <returns>調整符號後之數值</returns>
-COMPAT_NODISCARD inline decimal copysign(const decimal& mag, const decimal& sgn) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal copysign(const decimal& mag, const decimal& sgn) noexcept {
     if (mag.is_nan()) {
         return mag;
     }
@@ -10517,7 +10703,7 @@ COMPAT_NODISCARD inline decimal copysign(const decimal& mag, const decimal& sgn)
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>絕對值結果</returns>
-COMPAT_NODISCARD inline decimal abs(const decimal& x) noexcept {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal abs(const decimal& x) noexcept {
     if (x.is_nan()) {
         return x;
     }
@@ -10539,7 +10725,7 @@ COMPAT_NODISCARD inline decimal abs(const decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向下取整後之整數</returns>
-COMPAT_NODISCARD inline decimal floor(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal floor(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -10565,7 +10751,7 @@ COMPAT_NODISCARD inline decimal floor(const decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向上取整後之整數</returns>
-COMPAT_NODISCARD inline decimal ceil(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal ceil(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -10591,7 +10777,7 @@ COMPAT_NODISCARD inline decimal ceil(const decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>截斷後之整數</returns>
-COMPAT_NODISCARD inline decimal trunc(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal trunc(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -10610,7 +10796,7 @@ COMPAT_NODISCARD inline decimal trunc(const decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>四捨五入後之整數</returns>
-COMPAT_NODISCARD inline decimal round(const decimal& x) {
+COMPAT_NODISCARD COMPAT_CONSTEXPR_20 inline decimal round(const decimal& x) {
     if (x.is_nan() || x.is_infinite()) {
         return x;
     }
@@ -11290,7 +11476,7 @@ namespace std {
 /// </summary>
 /// <param name="x">輸入整數</param>
 /// <returns>絕對值結果</returns>
-inline compat::bigint abs(const compat::bigint& x) noexcept {
+COMPAT_CONSTEXPR_20 inline compat::bigint abs(const compat::bigint& x) noexcept {
     return compat::abs(x);
 }
 
@@ -11357,7 +11543,7 @@ inline compat::bigint pow(const compat::bigint& base, const compat::bigint& exp)
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為 NaN 回傳 true</returns>
-inline bool isnan(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool isnan(const compat::decimal& x) noexcept {
     return compat::isnan(x);
 }
 
@@ -11366,7 +11552,7 @@ inline bool isnan(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為無窮大回傳 true</returns>
-inline bool isinf(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool isinf(const compat::decimal& x) noexcept {
     return compat::isinf(x);
 }
 
@@ -11375,7 +11561,7 @@ inline bool isinf(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為有限值回傳 true</returns>
-inline bool isfinite(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool isfinite(const compat::decimal& x) noexcept {
     return compat::isfinite(x);
 }
 
@@ -11384,7 +11570,7 @@ inline bool isfinite(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>若為負回傳 true</returns>
-inline bool signbit(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline bool signbit(const compat::decimal& x) noexcept {
     return compat::signbit(x);
 }
 
@@ -11394,7 +11580,7 @@ inline bool signbit(const compat::decimal& x) noexcept {
 /// <param name="mag">大小</param>
 /// <param name="sgn">符號</param>
 /// <returns>調整後之數值</returns>
-inline compat::decimal copysign(const compat::decimal& mag, const compat::decimal& sgn) noexcept {
+COMPAT_CONSTEXPR_20 inline compat::decimal copysign(const compat::decimal& mag, const compat::decimal& sgn) noexcept {
     return compat::copysign(mag, sgn);
 }
 
@@ -11403,7 +11589,7 @@ inline compat::decimal copysign(const compat::decimal& mag, const compat::decima
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>絕對值結果</returns>
-inline compat::decimal abs(const compat::decimal& x) noexcept {
+COMPAT_CONSTEXPR_20 inline compat::decimal abs(const compat::decimal& x) noexcept {
     return compat::abs(x);
 }
 
@@ -11412,7 +11598,7 @@ inline compat::decimal abs(const compat::decimal& x) noexcept {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向下取整結果</returns>
-inline compat::decimal floor(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal floor(const compat::decimal& x) {
     return compat::floor(x);
 }
 
@@ -11421,7 +11607,7 @@ inline compat::decimal floor(const compat::decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>向上取整結果</returns>
-inline compat::decimal ceil(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal ceil(const compat::decimal& x) {
     return compat::ceil(x);
 }
 
@@ -11430,7 +11616,7 @@ inline compat::decimal ceil(const compat::decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>朝零捨入結果</returns>
-inline compat::decimal trunc(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal trunc(const compat::decimal& x) {
     return compat::trunc(x);
 }
 
@@ -11439,7 +11625,7 @@ inline compat::decimal trunc(const compat::decimal& x) {
 /// </summary>
 /// <param name="x">輸入數值</param>
 /// <returns>四捨五入結果</returns>
-inline compat::decimal round(const compat::decimal& x) {
+COMPAT_CONSTEXPR_20 inline compat::decimal round(const compat::decimal& x) {
     return compat::round(x);
 }
 

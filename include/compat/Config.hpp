@@ -63,6 +63,14 @@
 #  define COMPAT_CONSTEXPR_14 inline
 #endif
 
+// Constexpr support for C++20+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+#  define COMPAT_CONSTEXPR_20 constexpr
+#else
+#  define COMPAT_CONSTEXPR_20 inline
+#endif
+
+
 // ABI tagging and inline namespace support for fallback implementations
 #ifndef COMPAT_ABI_TAG
 #  define COMPAT_ABI_TAG abi_v1

@@ -14,6 +14,7 @@
 #include <vector>
 #include <stdexcept>
 #include <iostream>
+#include <type_traits>
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
 #include <intrin.h>
@@ -38,15 +39,38 @@ public:
     int8_t m_sign;
 
     /// <summary>
+    /// 拷貝指定數量之 limbs，支援編譯期 constexpr 運算。
+    /// </summary>
+    /// <param name="dst">目的端記憶體指標</param>
+    /// <param name="src">來源端記憶體指標</param>
+    /// <param name="count">拷貝 limbs 數量</param>
+    static COMPAT_CONSTEXPR_20 void copy_limbs(uint64_t* dst, const uint64_t* src, size_t count) noexcept {
+        for (size_t i = 0; i < count; ++i) {
+            dst[i] = src[i];
+        }
+    }
+
+    /// <summary>
+    /// 將指定數量之 limbs 清零，支援編譯期 constexpr 運算。
+    /// </summary>
+    /// <param name="dst">目的端記憶體指標</param>
+    /// <param name="count">清零 limbs 數量</param>
+    static COMPAT_CONSTEXPR_20 void zero_limbs(uint64_t* dst, size_t count) noexcept {
+        for (size_t i = 0; i < count; ++i) {
+            dst[i] = 0;
+        }
+    }
+
+    /// <summary>
     /// 預設建構子：初始化為零值，使用 SBO 緩衝區。
     /// </summary>
-    BigIntStorage() noexcept
+    COMPAT_CONSTEXPR_20 BigIntStorage() noexcept
         : m_sbo{0, 0}, m_data(m_sbo), m_size(0), m_capacity(SBO_CAPACITY), m_sign(0) {}
 
     /// <summary>
     /// 解構子：若已配置堆積記憶體則進行釋放。
     /// </summary>
-    ~BigIntStorage() noexcept {
+    COMPAT_CONSTEXPR_20 ~BigIntStorage() noexcept {
         if (!is_sbo() && m_data != nullptr) {
             delete[] m_data;
             m_data = nullptr;
@@ -57,7 +81,7 @@ public:
     /// 複製建構子：深拷貝另一儲存物件之 limbs。
     /// </summary>
     /// <param name="other">來源儲存物件</param>
-    BigIntStorage(const BigIntStorage& other)
+    COMPAT_CONSTEXPR_20 BigIntStorage(const BigIntStorage& other)
         : m_sbo{0, 0}, m_size(other.m_size), m_capacity(SBO_CAPACITY), m_sign(other.m_sign) {
         if (other.is_sbo()) {
             m_sbo[0] = other.m_sbo[0];
@@ -67,7 +91,7 @@ public:
         } else {
             m_capacity = other.m_capacity;
             m_data = new uint64_t[m_capacity];
-            std::memcpy(m_data, other.m_data, m_size * sizeof(uint64_t));
+            copy_limbs(m_data, other.m_data, m_size);
         }
     }
 
@@ -75,7 +99,7 @@ public:
     /// 移動建構子：轉移堆積緩衝區擁有權，或拷貝 SBO 內容。
     /// </summary>
     /// <param name="other">來源儲存物件（右值）</param>
-    BigIntStorage(BigIntStorage&& other) noexcept
+    COMPAT_CONSTEXPR_20 BigIntStorage(BigIntStorage&& other) noexcept
         : m_sbo{0, 0}, m_size(other.m_size), m_capacity(SBO_CAPACITY), m_sign(other.m_sign) {
         if (other.is_sbo()) {
             m_sbo[0] = other.m_sbo[0];
@@ -99,7 +123,7 @@ public:
     /// </summary>
     /// <param name="other">來源儲存物件</param>
     /// <returns>自身參考</returns>
-    BigIntStorage& operator=(const BigIntStorage& other) {
+    COMPAT_CONSTEXPR_20 BigIntStorage& operator=(const BigIntStorage& other) {
         if (this != &other) {
             if (other.is_sbo()) {
                 if (!is_sbo()) {
@@ -117,7 +141,7 @@ public:
                     m_capacity = other.m_capacity;
                     m_data = new uint64_t[m_capacity];
                 }
-                std::memcpy(m_data, other.m_data, other.m_size * sizeof(uint64_t));
+                copy_limbs(m_data, other.m_data, other.m_size);
             }
             m_size = other.m_size;
             m_sign = other.m_sign;
@@ -130,7 +154,7 @@ public:
     /// </summary>
     /// <param name="other">來源儲存物件（右值）</param>
     /// <returns>自身參考</returns>
-    BigIntStorage& operator=(BigIntStorage&& other) noexcept {
+    COMPAT_CONSTEXPR_20 BigIntStorage& operator=(BigIntStorage&& other) noexcept {
         if (this != &other) {
             if (!is_sbo()) {
                 delete[] m_data;
@@ -160,7 +184,7 @@ public:
     /// 檢查當前是否使用 SBO 內建緩衝區儲存。
     /// </summary>
     /// <returns>若使用 SBO 則回傳 true，堆積配置則回傳 false</returns>
-    COMPAT_NODISCARD bool is_sbo() const noexcept {
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_20 bool is_sbo() const noexcept {
         return m_data == m_sbo;
     }
 
@@ -168,11 +192,11 @@ public:
     /// 預留緩衝區容量。
     /// </summary>
     /// <param name="new_cap">目標容量大小（limbs）</param>
-    void reserve(size_t new_cap) {
+    COMPAT_CONSTEXPR_20 void reserve(size_t new_cap) {
         if (new_cap <= m_capacity) return;
         uint64_t* new_data = new uint64_t[new_cap];
         if (m_size > 0) {
-            std::memcpy(new_data, m_data, m_size * sizeof(uint64_t));
+            copy_limbs(new_data, m_data, m_size);
         }
         if (!is_sbo()) {
             delete[] m_data;
@@ -186,14 +210,16 @@ public:
     /// </summary>
     /// <param name="new_size">目標大小</param>
     /// <param name="init_val">新擴充元素之初始值</param>
-    void resize(size_t new_size, uint64_t init_val = 0) {
+    COMPAT_CONSTEXPR_20 void resize(size_t new_size, uint64_t init_val = 0) {
         if (new_size > m_capacity) {
             size_t next_cap = m_capacity * 2;
             if (next_cap < new_size) next_cap = new_size;
             reserve(next_cap);
         }
         if (new_size > m_size) {
-            std::fill(m_data + m_size, m_data + new_size, init_val);
+            for (size_t i = m_size; i < new_size; ++i) {
+                m_data[i] = init_val;
+            }
         }
         m_size = new_size;
     }
@@ -201,7 +227,7 @@ public:
     /// <summary>
     /// 規範化 limbs 陣列，移除高位無效之 0 limbs 並調整正負符號；若長度落回 SBO 則縮回 SBO。
     /// </summary>
-    void normalize() noexcept {
+    COMPAT_CONSTEXPR_20 void normalize() noexcept {
         while (m_size > 0 && m_data[m_size - 1] == 0) {
             --m_size;
         }
@@ -214,7 +240,7 @@ public:
     /// <summary>
     /// 當 limbs 數量小於等於 SBO 容量且當前為堆積配置時，縮回 SBO。
     /// </summary>
-    void shrink_to_sbo_if_possible() noexcept {
+    COMPAT_CONSTEXPR_20 void shrink_to_sbo_if_possible() noexcept {
         if (!is_sbo() && m_size <= SBO_CAPACITY) {
             uint64_t* old_data = m_data;
             m_sbo[0] = (m_size > 0) ? old_data[0] : 0;
@@ -230,7 +256,7 @@ public:
     /// </summary>
     /// <param name="val">數值</param>
     /// <param name="sign">符號 (-1, 0, 1)</param>
-    void set_uint64(uint64_t val, int8_t sign) noexcept {
+    COMPAT_CONSTEXPR_20 void set_uint64(uint64_t val, int8_t sign) noexcept {
         if (!is_sbo()) {
             delete[] m_data;
             m_data = m_sbo;
@@ -262,7 +288,20 @@ public:
     /// </summary>
     /// <param name="x">目標 64 位元整數</param>
     /// <returns>前導 0 數量 (0~64)</returns>
-    static int clz64(uint64_t x) noexcept {
+    static COMPAT_CONSTEXPR_20 int clz64(uint64_t x) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+        if (std::is_constant_evaluated()) {
+            if (x == 0) return 64;
+            int n = 0;
+            if ((x >> 32) == 0) { n += 32; x <<= 32; }
+            if ((x >> 48) == 0) { n += 16; x <<= 16; }
+            if ((x >> 56) == 0) { n += 8;  x <<= 8;  }
+            if ((x >> 60) == 0) { n += 4;  x <<= 4;  }
+            if ((x >> 62) == 0) { n += 2;  x <<= 2;  }
+            if ((x >> 63) == 0) { n += 1; }
+            return n;
+        }
+#endif
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
         unsigned long idx;
         if (_BitScanReverse64(&idx, x)) {
@@ -291,7 +330,22 @@ public:
     /// <param name="b">乘數 b</param>
     /// <param name="hi">輸出高 64 位進位參考</param>
     /// <returns>乘積之低 64 位元</returns>
-    static uint64_t mul64_wide(uint64_t a, uint64_t b, uint64_t& hi) noexcept {
+    static COMPAT_CONSTEXPR_20 uint64_t mul64_wide(uint64_t a, uint64_t b, uint64_t& hi) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+        if (std::is_constant_evaluated()) {
+            uint64_t a_lo = static_cast<uint32_t>(a);
+            uint64_t a_hi = a >> 32;
+            uint64_t b_lo = static_cast<uint32_t>(b);
+            uint64_t b_hi = b >> 32;
+            uint64_t p0 = a_lo * b_lo;
+            uint64_t p1 = a_lo * b_hi;
+            uint64_t p2 = a_hi * b_lo;
+            uint64_t p3 = a_hi * b_hi;
+            uint64_t mid = p1 + static_cast<uint32_t>(p0 >> 32) + static_cast<uint32_t>(p2);
+            hi = p3 + (p1 >> 32) + (p2 >> 32) + (mid >> 32);
+            return (mid << 32) | static_cast<uint32_t>(p0);
+        }
+#endif
 #if defined(__SIZEOF_INT128__)
         unsigned __int128 prod = static_cast<unsigned __int128>(a) * b;
         hi = static_cast<uint64_t>(prod >> 64);
@@ -321,7 +375,22 @@ public:
     /// <param name="d">除數</param>
     /// <param name="rem">輸出餘數參考</param>
     /// <returns>商之 64 位元數值</returns>
-    static uint64_t div128_64(uint64_t hi, uint64_t lo, uint64_t d, uint64_t& rem) noexcept {
+    static COMPAT_CONSTEXPR_20 uint64_t div128_64(uint64_t hi, uint64_t lo, uint64_t d, uint64_t& rem) noexcept {
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
+        if (std::is_constant_evaluated()) {
+            uint64_t q = 0;
+            uint64_t r = hi;
+            for (int i = 63; i >= 0; --i) {
+                r = (r << 1) | ((lo >> i) & 1);
+                if (r >= d) {
+                    r -= d;
+                    q |= (1ULL << i);
+                }
+            }
+            rem = r;
+            return q;
+        }
+#endif
 #if defined(__SIZEOF_INT128__)
         unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         rem = static_cast<uint64_t>(n % d);
@@ -351,7 +420,7 @@ public:
     /// <param name="b">陣列 b</param>
     /// <param name="b_len">陣列 b 長度</param>
     /// <returns>若 a &gt; b 回傳 1，a &lt; b 回傳 -1，相等回傳 0</returns>
-    static int compare_unsigned(const uint64_t* a, size_t a_len, const uint64_t* b, size_t b_len) noexcept {
+    static COMPAT_CONSTEXPR_20 int compare_unsigned(const uint64_t* a, size_t a_len, const uint64_t* b, size_t b_len) noexcept {
         if (a_len > b_len) return 1;
         if (a_len < b_len) return -1;
         for (size_t i = a_len; i > 0; --i) {
@@ -367,7 +436,7 @@ public:
     /// <param name="res">輸出結果儲存物件</param>
     /// <param name="a">加數 a</param>
     /// <param name="b">加數 b</param>
-    static void add_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void add_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         size_t max_len = (a.m_size > b.m_size) ? a.m_size : b.m_size;
         res.resize(max_len + 1, 0);
         uint64_t carry = 0;
@@ -392,7 +461,7 @@ public:
     /// <param name="res">輸出結果儲存物件</param>
     /// <param name="a">被減數 a</param>
     /// <param name="b">減數 b</param>
-    static void sub_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void sub_unsigned(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         res.resize(a.m_size, 0);
         uint64_t borrow = 0;
         for (size_t i = 0; i < a.m_size; ++i) {
@@ -415,7 +484,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void add_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void add_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0) {
             res = b;
             return;
@@ -448,7 +517,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">被減數 a</param>
     /// <param name="b">減數 b</param>
-    static void sub_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void sub_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (b.m_sign == 0) {
             res = a;
             return;
@@ -469,7 +538,7 @@ public:
     /// <param name="res">輸出乘積儲存物件</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_schoolbook(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_schoolbook(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_size == 0 || b.m_size == 0) {
             res.m_size = 0;
             res.m_sign = 0;
@@ -504,7 +573,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_karatsuba(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_karatsuba(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         size_t n = (a.m_size > b.m_size) ? a.m_size : b.m_size;
         if (n < KARATSUBA_THRESHOLD || a.m_size == 0 || b.m_size == 0) {
             mul_schoolbook(res, a, b);
@@ -517,27 +586,27 @@ public:
         size_t b0_len = (b.m_size < k) ? b.m_size : k;
 
         a0.resize(a0_len);
-        if (a0_len > 0) std::memcpy(a0.m_data, a.m_data, a0_len * sizeof(uint64_t));
+        if (a0_len > 0) BigIntStorage::copy_limbs(a0.m_data, a.m_data, a0_len);
         a0.m_sign = 1;
         a0.normalize();
 
         if (a.m_size > k) {
             size_t a1_len = a.m_size - k;
             a1.resize(a1_len);
-            std::memcpy(a1.m_data, a.m_data + k, a1_len * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(a1.m_data, a.m_data + k, a1_len);
             a1.m_sign = 1;
             a1.normalize();
         }
 
         b0.resize(b0_len);
-        if (b0_len > 0) std::memcpy(b0.m_data, b.m_data, b0_len * sizeof(uint64_t));
+        if (b0_len > 0) BigIntStorage::copy_limbs(b0.m_data, b.m_data, b0_len);
         b0.m_sign = 1;
         b0.normalize();
 
         if (b.m_size > k) {
             size_t b1_len = b.m_size - k;
             b1.resize(b1_len);
-            std::memcpy(b1.m_data, b.m_data + k, b1_len * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(b1.m_data, b.m_data + k, b1_len);
             b1.m_sign = 1;
             b1.normalize();
         }
@@ -574,7 +643,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_core(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_core(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_size < KARATSUBA_THRESHOLD || b.m_size < KARATSUBA_THRESHOLD) {
             mul_schoolbook(res, a, b);
         } else {
@@ -588,7 +657,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">乘數 a</param>
     /// <param name="b">乘數 b</param>
-    static void mul_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void mul_signed(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0 || b.m_sign == 0) {
             res.m_size = 0;
             res.m_sign = 0;
@@ -607,7 +676,7 @@ public:
     /// <param name="u">被除數</param>
     /// <param name="v">除數</param>
     /// <exception cref="std::invalid_argument">當除數為 0 時拋出</exception>
-    static void div_mod_core(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
+    static COMPAT_CONSTEXPR_20 void div_mod_core(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
         if (v.m_size == 0) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("division by zero"));
         }
@@ -772,7 +841,7 @@ public:
     /// <param name="r">輸出餘數</param>
     /// <param name="u">被除數</param>
     /// <param name="v">除數</param>
-    static void div_mod_signed(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
+    static COMPAT_CONSTEXPR_20 void div_mod_signed(BigIntStorage& q, BigIntStorage& r, const BigIntStorage& u, const BigIntStorage& v) {
         div_mod_core(q, r, u, v);
         if (q.m_size > 0) {
             q.m_sign = static_cast<int8_t>(u.m_sign * v.m_sign);
@@ -788,15 +857,15 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">輸入數值</param>
     /// <param name="limbs">移動 limbs 數量</param>
-    static void shift_left_limbs(BigIntStorage& res, const BigIntStorage& a, size_t limbs) {
+    static COMPAT_CONSTEXPR_20 void shift_left_limbs(BigIntStorage& res, const BigIntStorage& a, size_t limbs) {
         if (a.m_size == 0) {
             res.m_size = 0;
             res.m_sign = 0;
             return;
         }
         res.resize(a.m_size + limbs, 0);
-        std::memcpy(res.m_data + limbs, a.m_data, a.m_size * sizeof(uint64_t));
-        std::memset(res.m_data, 0, limbs * sizeof(uint64_t));
+        BigIntStorage::copy_limbs(res.m_data + limbs, a.m_data, a.m_size);
+        BigIntStorage::zero_limbs(res.m_data, limbs);
         res.m_sign = a.m_sign;
         res.normalize();
     }
@@ -807,7 +876,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元</param>
     /// <param name="shift">位移位元數</param>
-    static void shift_left(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
+    static COMPAT_CONSTEXPR_20 void shift_left(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
         if (shift == 0 || a.m_size == 0) {
             res = a;
             return;
@@ -818,13 +887,13 @@ public:
         res.resize(new_size, 0);
 
         if (bit_shift == 0) {
-            std::memcpy(res.m_data + limb_shift, a.m_data, a.m_size * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(res.m_data + limb_shift, a.m_data, a.m_size);
             if (limb_shift > 0) {
-                std::memset(res.m_data, 0, limb_shift * sizeof(uint64_t));
+                BigIntStorage::zero_limbs(res.m_data, limb_shift);
             }
         } else {
             if (limb_shift > 0) {
-                std::memset(res.m_data, 0, limb_shift * sizeof(uint64_t));
+                BigIntStorage::zero_limbs(res.m_data, limb_shift);
             }
             uint64_t carry = 0;
             for (size_t i = 0; i < a.m_size; ++i) {
@@ -844,7 +913,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元</param>
     /// <param name="shift">位移位元數</param>
-    static void shift_right(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
+    static COMPAT_CONSTEXPR_20 void shift_right(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
         if (shift == 0 || a.m_size == 0) {
             res = a;
             return;
@@ -875,7 +944,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元</param>
     /// <param name="shift">位移位元數</param>
-    static void shift_right_positive(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
+    static COMPAT_CONSTEXPR_20 void shift_right_positive(BigIntStorage& res, const BigIntStorage& a, size_t shift) {
         size_t limb_shift = shift / 64;
         size_t bit_shift = shift % 64;
         if (limb_shift >= a.m_size) {
@@ -887,7 +956,7 @@ public:
         res.resize(new_size, 0);
 
         if (bit_shift == 0) {
-            std::memcpy(res.m_data, a.m_data + limb_shift, new_size * sizeof(uint64_t));
+            BigIntStorage::copy_limbs(res.m_data, a.m_data + limb_shift, new_size);
         } else {
             for (size_t i = 0; i < new_size; ++i) {
                 uint64_t cur = a.m_data[i + limb_shift];
@@ -904,7 +973,7 @@ public:
     /// </summary>
     /// <param name="res">輸出結果</param>
     /// <param name="a">輸入數值</param>
-    static void bitwise_not(BigIntStorage& res, const BigIntStorage& a) {
+    static COMPAT_CONSTEXPR_20 void bitwise_not(BigIntStorage& res, const BigIntStorage& a) {
         BigIntStorage one_st; one_st.set_uint64(1, 1);
         BigIntStorage tmp;
         add_signed(tmp, a, one_st);
@@ -919,7 +988,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void bitwise_and(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void bitwise_and(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0 || b.m_sign == 0) {
             res.m_size = 0;
             res.m_sign = 0;
@@ -966,7 +1035,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void bitwise_or(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void bitwise_or(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0) { res = b; return; }
         if (b.m_sign == 0) { res = a; return; }
         if (a.m_sign > 0 && b.m_sign > 0) {
@@ -995,7 +1064,7 @@ public:
     /// <param name="res">輸出結果</param>
     /// <param name="a">運算元 a</param>
     /// <param name="b">運算元 b</param>
-    static void bitwise_xor(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
+    static COMPAT_CONSTEXPR_20 void bitwise_xor(BigIntStorage& res, const BigIntStorage& a, const BigIntStorage& b) {
         if (a.m_sign == 0) { res = b; return; }
         if (b.m_sign == 0) { res = a; return; }
         if (a.m_sign > 0 && b.m_sign > 0) {
@@ -1035,7 +1104,7 @@ public:
     /// <param name="res">輸出儲存物件</param>
     /// <param name="sv">輸入字串視圖</param>
     /// <exception cref="std::invalid_argument">當字串為空或包含非數字字元時拋出</exception>
-    static void from_string(BigIntStorage& res, compat::string_view sv) {
+    static COMPAT_CONSTEXPR_20 void from_string(BigIntStorage& res, compat::string_view sv) {
         if (sv.empty()) {
             COMPAT_THROW_OR_ABORT(std::invalid_argument("empty bigint string"));
         }
