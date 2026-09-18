@@ -207,7 +207,7 @@ namespace detail {
 // Feature detection: std::expected (C++23+)
 #  if defined(__cpp_lib_expected) && (__cpp_lib_expected >= 202202L)
 #    define COMPAT_HAS_STD_EXPECTED 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
 #    if __has_include(<expected>)
 #      define COMPAT_HAS_STD_EXPECTED 1
 #    else
@@ -220,7 +220,7 @@ namespace detail {
 // Feature detection: std::print (C++23+)
 #  if defined(__cpp_lib_print) && (__cpp_lib_print >= 202207L)
 #    define COMPAT_HAS_STD_PRINT 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
 #    if __has_include(<print>)
 #      define COMPAT_HAS_STD_PRINT 1
 #    else
@@ -2605,12 +2605,12 @@ namespace self_ranges {
                 constexpr explicit iterator(W val) : val_(val) {}
 
                 constexpr W operator*() const noexcept { return val_; }
-                constexpr iterator& operator++() noexcept { ++val_; return *this; }
-                constexpr iterator operator++(int) noexcept { auto tmp = *this; ++val_; return tmp; }
-                constexpr iterator& operator--() noexcept { --val_; return *this; }
-                constexpr iterator operator--(int) noexcept { auto tmp = *this; --val_; return tmp; }
-                constexpr iterator& operator+=(difference_type n) noexcept { val_ += n; return *this; }
-                constexpr iterator& operator-=(difference_type n) noexcept { val_ -= n; return *this; }
+                COMPAT_CONSTEXPR_14 iterator& operator++() noexcept { ++val_; return *this; }
+                COMPAT_CONSTEXPR_14 iterator operator++(int) noexcept { auto tmp = *this; ++val_; return tmp; }
+                COMPAT_CONSTEXPR_14 iterator& operator--() noexcept { --val_; return *this; }
+                COMPAT_CONSTEXPR_14 iterator operator--(int) noexcept { auto tmp = *this; --val_; return tmp; }
+                COMPAT_CONSTEXPR_14 iterator& operator+=(difference_type n) noexcept { val_ += n; return *this; }
+                COMPAT_CONSTEXPR_14 iterator& operator-=(difference_type n) noexcept { val_ -= n; return *this; }
                 constexpr W operator[](difference_type n) const noexcept { return val_ + n; }
 
                 friend constexpr bool operator==(const iterator& a, const iterator& b) noexcept { return a.val_ == b.val_; }
@@ -2619,9 +2619,9 @@ namespace self_ranges {
                 friend constexpr difference_type operator-(const iterator& a, const iterator& b) noexcept {
                     return static_cast<difference_type>(a.val_ - b.val_);
                 }
-                friend constexpr iterator operator+(iterator it, difference_type n) noexcept { return it += n; }
-                friend constexpr iterator operator+(difference_type n, iterator it) noexcept { return it += n; }
-                friend constexpr iterator operator-(iterator it, difference_type n) noexcept { return it -= n; }
+                friend constexpr iterator operator+(iterator it, difference_type n) noexcept { return iterator(it.val_ + n); }
+                friend constexpr iterator operator+(difference_type n, iterator it) noexcept { return iterator(it.val_ + n); }
+                friend constexpr iterator operator-(iterator it, difference_type n) noexcept { return iterator(it.val_ - n); }
             };
 
             class sentinel {
@@ -4433,7 +4433,7 @@ namespace compat {
 
             struct all_of_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             return false;
@@ -4444,14 +4444,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct any_of_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             return true;
@@ -4462,14 +4462,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct none_of_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             return false;
@@ -4480,14 +4480,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct for_each_fn {
                 template <typename I, typename S, typename F, typename Proj = compat::identity>
-                constexpr for_each_result<I, F> operator()(I first, S last, F f, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 for_each_result<I, F> operator()(I first, S last, F f, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         compat::detail::invoke(f, compat::detail::invoke(proj, *first));
                     }
@@ -4496,14 +4496,14 @@ namespace compat {
 
                 template <typename R, typename F, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr for_each_result<borrowed_iterator_t<R>, F> operator()(R&& r, F f, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 for_each_result<borrowed_iterator_t<R>, F> operator()(R&& r, F f, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(f), std::move(proj));
                 }
             };
 
             struct for_each_n_fn {
                 template <typename I, typename Size, typename F, typename Proj = compat::identity>
-                constexpr for_each_result<I, F> operator()(I first, Size n, F f, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 for_each_result<I, F> operator()(I first, Size n, F f, Proj proj = {}) const {
                     for (Size i = 0; i < n; ++i, ++first) {
                         compat::detail::invoke(f, compat::detail::invoke(proj, *first));
                     }
@@ -4513,7 +4513,7 @@ namespace compat {
 
             struct count_fn {
                 template <typename I, typename S, typename T, typename Proj = compat::identity>
-                constexpr iter_difference_t<I> operator()(I first, S last, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 iter_difference_t<I> operator()(I first, S last, const T& value, Proj proj = {}) const {
                     iter_difference_t<I> counter = 0;
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(proj, *first) == value) {
@@ -4525,14 +4525,14 @@ namespace compat {
 
                 template <typename R, typename T, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr range_difference_t<R> operator()(R&& r, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 range_difference_t<R> operator()(R&& r, const T& value, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(proj));
                 }
             };
 
             struct count_if_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr iter_difference_t<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 iter_difference_t<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     iter_difference_t<I> counter = 0;
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -4544,7 +4544,7 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr range_difference_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 range_difference_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
@@ -4553,7 +4553,7 @@ namespace compat {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr mismatch_result<I1, I2> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 mismatch_result<I1, I2> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                                              Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     while (first1 != last1 && first2 != last2 &&
                            compat::detail::invoke(pred, compat::detail::invoke(proj1, *first1),
@@ -4568,7 +4568,7 @@ namespace compat {
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr mismatch_result<borrowed_iterator_t<R1>, borrowed_iterator_t<R2>>
+                COMPAT_CONSTEXPR_14 mismatch_result<borrowed_iterator_t<R1>, borrowed_iterator_t<R2>>
                 operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
@@ -4580,7 +4580,7 @@ namespace compat {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj1, *first1),
@@ -4595,7 +4595,7 @@ namespace compat {
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr bool operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
                                    std::move(pred), std::move(proj1), std::move(proj2));
@@ -4606,7 +4606,7 @@ namespace compat {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Comp = compat::detail::less_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; (first1 != last1) && (first2 != last2); ++first1, ++first2) {
                         if (compat::detail::invoke(comp, compat::detail::invoke(proj1, *first1),
@@ -4625,7 +4625,7 @@ namespace compat {
                           typename Comp = compat::detail::less_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr bool operator()(R1&& r1, R2&& r2, Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R1&& r1, R2&& r2, Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
                                    std::move(comp), std::move(proj1), std::move(proj2));
@@ -4635,7 +4635,7 @@ namespace compat {
             struct find_fn {
                 template <typename I, typename S, typename T, typename Proj = compat::identity,
                           typename = typename std::enable_if<!range<I>::value>::type>
-                constexpr I operator()(I first, S last, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(proj, *first) == value) {
                             return first;
@@ -4646,14 +4646,14 @@ namespace compat {
 
                 template <typename R, typename T, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, const T& value, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(proj));
                 }
             };
 
             struct find_if_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             return first;
@@ -4664,14 +4664,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct find_if_not_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             return first;
@@ -4682,14 +4682,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct adjacent_find_fn {
                 template <typename I, typename S, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Pred pred = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I next = first;
                     ++next;
@@ -4704,7 +4704,7 @@ namespace compat {
 
                 template <typename R, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Pred pred = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Pred pred = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
@@ -4713,7 +4713,7 @@ namespace compat {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr subrange<I1> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 subrange<I1> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                                   Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     if (first2 == last2) return {first1, first1};
                     for (; first1 != last1; ++first1) {
@@ -4734,7 +4734,7 @@ namespace compat {
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr borrowed_subrange_t<R1> operator()(R1&& r1, R2&& r2,
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R1> operator()(R1&& r1, R2&& r2,
                                                              Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
@@ -4744,13 +4744,13 @@ namespace compat {
 
             struct contains_fn {
                 template <typename I, typename S, typename T, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, const T& value, Proj proj = {}) const {
                     return find_fn{}(first, last, value, std::move(proj)) != last;
                 }
 
                 template <typename R, typename T, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, const T& value, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(proj));
                 }
             };
@@ -4759,7 +4759,7 @@ namespace compat {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj1, *first1),
@@ -4774,7 +4774,7 @@ namespace compat {
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr bool operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
                                    std::move(pred), std::move(proj1), std::move(proj2));
@@ -4785,7 +4785,7 @@ namespace compat {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     // 若為雙向迭代器則從尾部往前回溯
                     I1 end1 = first1;
@@ -4805,7 +4805,7 @@ namespace compat {
                           typename Pred = compat::detail::equal_to_fn,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr bool operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R1&& r1, R2&& r2, Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
                                    std::move(pred), std::move(proj1), std::move(proj2));
@@ -4814,7 +4814,7 @@ namespace compat {
 
             struct fold_left_fn {
                 template <typename I, typename S, typename T, typename F>
-                constexpr T operator()(I first, S last, T init, F f) const {
+                COMPAT_CONSTEXPR_14 T operator()(I first, S last, T init, F f) const {
                     for (; first != last; ++first) {
                         init = compat::detail::invoke(f, std::move(init), *first);
                     }
@@ -4823,7 +4823,7 @@ namespace compat {
 
                 template <typename R, typename T, typename F,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr T operator()(R&& r, T init, F f) const {
+                COMPAT_CONSTEXPR_14 T operator()(R&& r, T init, F f) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(init), std::move(f));
                 }
             };
@@ -4832,7 +4832,7 @@ namespace compat {
 
             struct copy_fn {
                 template <typename I, typename S, typename O>
-                constexpr copy_result<I, O> operator()(I first, S last, O result) const {
+                COMPAT_CONSTEXPR_14 copy_result<I, O> operator()(I first, S last, O result) const {
                     for (; first != last; ++first, ++result) {
                         *result = *first;
                     }
@@ -4841,14 +4841,14 @@ namespace compat {
 
                 template <typename R, typename O,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr copy_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result) const {
+                COMPAT_CONSTEXPR_14 copy_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(result));
                 }
             };
 
             struct copy_if_fn {
                 template <typename I, typename S, typename O, typename Pred, typename Proj = compat::identity>
-                constexpr copy_result<I, O> operator()(I first, S last, O result, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 copy_result<I, O> operator()(I first, S last, O result, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             *result = *first;
@@ -4860,14 +4860,14 @@ namespace compat {
 
                 template <typename R, typename O, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr copy_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 copy_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(result), std::move(pred), std::move(proj));
                 }
             };
 
             struct copy_n_fn {
                 template <typename I, typename Size, typename O>
-                constexpr copy_result<I, O> operator()(I first, Size n, O result) const {
+                COMPAT_CONSTEXPR_14 copy_result<I, O> operator()(I first, Size n, O result) const {
                     for (Size i = 0; i < n; ++i, ++first, ++result) {
                         *result = *first;
                     }
@@ -4877,7 +4877,7 @@ namespace compat {
 
             struct copy_backward_fn {
                 template <typename I1, typename S1, typename I2>
-                constexpr copy_result<I1, I2> operator()(I1 first1, S1 last1, I2 last2) const {
+                COMPAT_CONSTEXPR_14 copy_result<I1, I2> operator()(I1 first1, S1 last1, I2 last2) const {
                     I1 it = last1;
                     while (it != first1) {
                         --it;
@@ -4889,14 +4889,14 @@ namespace compat {
 
                 template <typename R, typename I2,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr copy_result<borrowed_iterator_t<R>, I2> operator()(R&& r, I2 last2) const {
+                COMPAT_CONSTEXPR_14 copy_result<borrowed_iterator_t<R>, I2> operator()(R&& r, I2 last2) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(last2));
                 }
             };
 
             struct move_fn {
                 template <typename I, typename S, typename O>
-                constexpr move_result<I, O> operator()(I first, S last, O result) const {
+                COMPAT_CONSTEXPR_14 move_result<I, O> operator()(I first, S last, O result) const {
                     for (; first != last; ++first, ++result) {
                         *result = std::move(*first);
                     }
@@ -4905,14 +4905,14 @@ namespace compat {
 
                 template <typename R, typename O,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr move_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result) const {
+                COMPAT_CONSTEXPR_14 move_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(result));
                 }
             };
 
             struct move_backward_fn {
                 template <typename I1, typename S1, typename I2>
-                constexpr move_result<I1, I2> operator()(I1 first1, S1 last1, I2 last2) const {
+                COMPAT_CONSTEXPR_14 move_result<I1, I2> operator()(I1 first1, S1 last1, I2 last2) const {
                     I1 it = last1;
                     while (it != first1) {
                         --it;
@@ -4924,14 +4924,14 @@ namespace compat {
 
                 template <typename R, typename I2,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr move_result<borrowed_iterator_t<R>, I2> operator()(R&& r, I2 last2) const {
+                COMPAT_CONSTEXPR_14 move_result<borrowed_iterator_t<R>, I2> operator()(R&& r, I2 last2) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(last2));
                 }
             };
 
             struct fill_fn {
                 template <typename T, typename I, typename S>
-                constexpr I operator()(I first, S last, const T& value) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value) const {
                     for (; first != last; ++first) {
                         *first = value;
                     }
@@ -4940,14 +4940,14 @@ namespace compat {
 
                 template <typename T, typename R,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, const T& value) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, const T& value) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value);
                 }
             };
 
             struct fill_n_fn {
                 template <typename T, typename I, typename Size>
-                constexpr I operator()(I first, Size n, const T& value) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, Size n, const T& value) const {
                     for (Size i = 0; i < n; ++i, ++first) {
                         *first = value;
                     }
@@ -4959,7 +4959,7 @@ namespace compat {
                 // 單元變換 (Unary)
                 template <typename I, typename S, typename O, typename F, typename Proj = compat::identity,
                           typename = typename std::enable_if<!range<I>::value>::type>
-                constexpr unary_transform_result<I, O> operator()(I first, S last, O result, F op, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 unary_transform_result<I, O> operator()(I first, S last, O result, F op, Proj proj = {}) const {
                     for (; first != last; ++first, ++result) {
                         *result = compat::detail::invoke(op, compat::detail::invoke(proj, *first));
                     }
@@ -4968,14 +4968,14 @@ namespace compat {
 
                 template <typename R, typename O, typename F, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value && !range<O>::value>::type>
-                constexpr unary_transform_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result, F op, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 unary_transform_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result, F op, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(result), std::move(op), std::move(proj));
                 }
 
                 // 二元變換 (Binary)
                 template <typename I1, typename S1, typename I2, typename S2, typename O, typename F,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity>
-                constexpr binary_transform_result<I1, I2, O> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+                COMPAT_CONSTEXPR_14 binary_transform_result<I1, I2, O> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                                                         O result, F op,
                                                                         Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2, ++result) {
@@ -4988,7 +4988,7 @@ namespace compat {
                 template <typename R1, typename R2, typename O, typename F,
                           typename Proj1 = compat::identity, typename Proj2 = compat::identity,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr binary_transform_result<borrowed_iterator_t<R1>, borrowed_iterator_t<R2>, O>
+                COMPAT_CONSTEXPR_14 binary_transform_result<borrowed_iterator_t<R1>, borrowed_iterator_t<R2>, O>
                 operator()(R1&& r1, R2&& r2, O result, F op, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2),
@@ -4998,7 +4998,7 @@ namespace compat {
 
             struct generate_fn {
                 template <typename I, typename S, typename F>
-                constexpr I operator()(I first, S last, F gen) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, F gen) const {
                     for (; first != last; ++first) {
                         *first = gen();
                     }
@@ -5007,14 +5007,14 @@ namespace compat {
 
                 template <typename R, typename F,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, F gen) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, F gen) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(gen));
                 }
             };
 
             struct generate_n_fn {
                 template <typename I, typename Size, typename F>
-                constexpr I operator()(I first, Size n, F gen) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, Size n, F gen) const {
                     for (Size i = 0; i < n; ++i, ++first) {
                         *first = gen();
                     }
@@ -5024,7 +5024,7 @@ namespace compat {
 
             struct remove_if_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr subrange<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     first = find_if_fn{}(first, last, pred, proj);
                     if (first != last) {
                         I i = first;
@@ -5040,27 +5040,27 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_subrange_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct remove_fn {
                 template <typename I, typename S, typename T, typename Proj = compat::identity>
-                constexpr subrange<I> operator()(I first, S last, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, const T& value, Proj proj = {}) const {
                     return remove_if_fn{}(first, last, [&value](const T& x) { return x == value; }, std::move(proj));
                 }
 
                 template <typename R, typename T, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_subrange_t<R> operator()(R&& r, const T& value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R> operator()(R&& r, const T& value, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(proj));
                 }
             };
 
             struct replace_if_fn {
                 template <typename I, typename S, typename Pred, typename T, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Pred pred, const T& new_value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, const T& new_value, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
                             *first = new_value;
@@ -5071,14 +5071,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename T, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Pred pred, const T& new_value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Pred pred, const T& new_value, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), new_value, std::move(proj));
                 }
             };
 
             struct replace_fn {
                 template <typename I, typename S, typename T1, typename T2, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, const T1& old_value, const T2& new_value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T1& old_value, const T2& new_value, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(proj, *first) == old_value) {
                             *first = new_value;
@@ -5089,14 +5089,14 @@ namespace compat {
 
                 template <typename R, typename T1, typename T2, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, const T1& old_value, const T2& new_value, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, const T1& old_value, const T2& new_value, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), old_value, new_value, std::move(proj));
                 }
             };
 
             struct swap_ranges_fn {
                 template <typename I1, typename S1, typename I2, typename S2>
-                constexpr swap_ranges_result<I1, I2> operator()(I1 first1, S1 last1, I2 first2, S2 last2) const {
+                COMPAT_CONSTEXPR_14 swap_ranges_result<I1, I2> operator()(I1 first1, S1 last1, I2 first2, S2 last2) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
                         using std::swap;
                         swap(*first1, *first2);
@@ -5106,7 +5106,7 @@ namespace compat {
 
                 template <typename R1, typename R2,
                           typename = typename std::enable_if<range<R1>::value && range<R2>::value>::type>
-                constexpr swap_ranges_result<borrowed_iterator_t<R1>, borrowed_iterator_t<R2>>
+                COMPAT_CONSTEXPR_14 swap_ranges_result<borrowed_iterator_t<R1>, borrowed_iterator_t<R2>>
                 operator()(R1&& r1, R2&& r2) const {
                     return (*this)(range_detail::begin_fn{}(r1), range_detail::end_fn{}(r1),
                                    range_detail::begin_fn{}(r2), range_detail::end_fn{}(r2));
@@ -5115,7 +5115,7 @@ namespace compat {
 
             struct reverse_fn {
                 template <typename I, typename S>
-                constexpr I operator()(I first, S last) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last) const {
                     I end_it = last;
                     while (first != end_it && first != --end_it) {
                         using std::swap;
@@ -5127,14 +5127,14 @@ namespace compat {
 
                 template <typename R,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r));
                 }
             };
 
             struct reverse_copy_fn {
                 template <typename I, typename S, typename O>
-                constexpr reverse_copy_result<I, O> operator()(I first, S last, O result) const {
+                COMPAT_CONSTEXPR_14 reverse_copy_result<I, O> operator()(I first, S last, O result) const {
                     I it = last;
                     while (it != first) {
                         --it;
@@ -5146,14 +5146,14 @@ namespace compat {
 
                 template <typename R, typename O,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr reverse_copy_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result) const {
+                COMPAT_CONSTEXPR_14 reverse_copy_result<borrowed_iterator_t<R>, O> operator()(R&& r, O result) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(result));
                 }
             };
 
             struct rotate_fn {
                 template <typename I, typename S>
-                constexpr subrange<I> operator()(I first, I middle, S last) const {
+                COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, I middle, S last) const {
                     I next = middle;
                     while (first != next) {
                         using std::swap;
@@ -5169,14 +5169,14 @@ namespace compat {
 
                 template <typename R,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_subrange_t<R> operator()(R&& r, iterator_t<R> middle) const {
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R> operator()(R&& r, iterator_t<R> middle) const {
                     return (*this)(range_detail::begin_fn{}(r), std::move(middle), range_detail::end_fn{}(r));
                 }
             };
 
             struct unique_fn {
                 template <typename I, typename S, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity>
-                constexpr subrange<I> operator()(I first, S last, Pred pred = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, Pred pred = {}, Proj proj = {}) const {
                     if (first == last) return {first, first};
                     I dest = first;
                     ++first;
@@ -5195,7 +5195,7 @@ namespace compat {
 
                 template <typename R, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_subrange_t<R> operator()(R&& r, Pred pred = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R> operator()(R&& r, Pred pred = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
@@ -5204,7 +5204,7 @@ namespace compat {
 
             struct is_partitioned_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) break;
                     }
@@ -5216,14 +5216,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct partition_point_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     auto len = std::distance(first, last);
                     while (len > 0) {
                         auto half = len / 2;
@@ -5241,14 +5241,14 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
 
             struct partition_fn {
                 template <typename I, typename S, typename Pred, typename Proj = compat::identity>
-                constexpr subrange<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     first = find_if_not_fn{}(first, last, pred, proj);
                     if (first == last) return {first, first};
                     for (I i = std::next(first); i != last; ++i) {
@@ -5263,7 +5263,7 @@ namespace compat {
 
                 template <typename R, typename Pred, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_subrange_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R> operator()(R&& r, Pred pred, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(pred), std::move(proj));
                 }
             };
@@ -5272,7 +5272,7 @@ namespace compat {
 
             struct is_sorted_until_fn {
                 template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I next = first;
                     for (++next; next != last; first = next, ++next) {
@@ -5286,20 +5286,20 @@ namespace compat {
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                 }
             };
 
             struct is_sorted_fn {
                 template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     return is_sorted_until_fn{}(first, last, std::move(comp), std::move(proj)) == last;
                 }
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                 }
             };
@@ -5340,7 +5340,7 @@ namespace compat {
 
             struct lower_bound_fn {
                 template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     auto len = std::distance(first, last);
                     while (len > 0) {
                         auto half = len / 2;
@@ -5358,14 +5358,14 @@ namespace compat {
 
                 template <typename R, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(comp), std::move(proj));
                 }
             };
 
             struct upper_bound_fn {
                 template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     auto len = std::distance(first, last);
                     while (len > 0) {
                         auto half = len / 2;
@@ -5383,35 +5383,35 @@ namespace compat {
 
                 template <typename R, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(comp), std::move(proj));
                 }
             };
 
             struct equal_range_fn {
                 template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr subrange<I> operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     return {lower_bound_fn{}(first, last, value, comp, proj),
                             upper_bound_fn{}(first, last, value, comp, proj)};
                 }
 
                 template <typename R, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_subrange_t<R> operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_subrange_t<R> operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(comp), std::move(proj));
                 }
             };
 
             struct binary_search_fn {
                 template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr bool operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     I it = lower_bound_fn{}(first, last, value, comp, proj);
                     return it != last && !compat::detail::invoke(comp, value, compat::detail::invoke(proj, *it));
                 }
 
                 template <typename R, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr bool operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 bool operator()(R&& r, const T& value, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), value, std::move(comp), std::move(proj));
                 }
             };
@@ -5420,7 +5420,7 @@ namespace compat {
 
             struct min_element_fn {
                 template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I smallest = first;
                     ++first;
@@ -5435,14 +5435,14 @@ namespace compat {
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                 }
             };
 
             struct max_element_fn {
                 template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I largest = first;
                     ++first;
@@ -5457,14 +5457,14 @@ namespace compat {
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr borrowed_iterator_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 borrowed_iterator_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                 }
             };
 
             struct minmax_element_fn {
                 template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr minmax_element_result<I> operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 minmax_element_result<I> operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     I min_it = first;
                     I max_it = first;
                     if (first == last) return {min_it, max_it};
@@ -5483,21 +5483,21 @@ namespace compat {
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr minmax_element_result<borrowed_iterator_t<R>> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 minmax_element_result<borrowed_iterator_t<R>> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                 }
             };
 
             struct min_fn {
                 template <typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr const T& operator()(const T& a, const T& b, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 const T& operator()(const T& a, const T& b, Comp comp = {}, Proj proj = {}) const {
                     return compat::detail::invoke(comp, compat::detail::invoke(proj, b),
                                                         compat::detail::invoke(proj, a)) ? b : a;
                 }
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr range_value_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 range_value_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     auto it = min_element_fn{}(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                     return *it;
                 }
@@ -5505,14 +5505,14 @@ namespace compat {
 
             struct max_fn {
                 template <typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr const T& operator()(const T& a, const T& b, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 const T& operator()(const T& a, const T& b, Comp comp = {}, Proj proj = {}) const {
                     return compat::detail::invoke(comp, compat::detail::invoke(proj, a),
                                                         compat::detail::invoke(proj, b)) ? b : a;
                 }
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr range_value_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 range_value_t<R> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     auto it = max_element_fn{}(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                     return *it;
                 }
@@ -5520,7 +5520,7 @@ namespace compat {
 
             struct minmax_fn {
                 template <typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr minmax_result<const T&> operator()(const T& a, const T& b, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 minmax_result<const T&> operator()(const T& a, const T& b, Comp comp = {}, Proj proj = {}) const {
                     if (compat::detail::invoke(comp, compat::detail::invoke(proj, b),
                                                     compat::detail::invoke(proj, a))) {
                         return {b, a};
@@ -5530,7 +5530,7 @@ namespace compat {
 
                 template <typename R, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
                           typename = typename std::enable_if<range<R>::value>::type>
-                constexpr minmax_result<range_value_t<R>> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 minmax_result<range_value_t<R>> operator()(R&& r, Comp comp = {}, Proj proj = {}) const {
                     auto res = minmax_element_fn{}(range_detail::begin_fn{}(r), range_detail::end_fn{}(r), std::move(comp), std::move(proj));
                     return {*res.min, *res.max};
                 }
@@ -5538,7 +5538,7 @@ namespace compat {
 
             struct clamp_fn {
                 template <typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
-                constexpr const T& operator()(const T& val, const T& lo, const T& hi, Comp comp = {}, Proj proj = {}) const {
+                COMPAT_CONSTEXPR_14 const T& operator()(const T& val, const T& lo, const T& hi, Comp comp = {}, Proj proj = {}) const {
                     return compat::detail::invoke(comp, compat::detail::invoke(proj, val),
                                                         compat::detail::invoke(proj, lo)) ? lo
                          : compat::detail::invoke(comp, compat::detail::invoke(proj, hi),

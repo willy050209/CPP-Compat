@@ -172,7 +172,7 @@ namespace detail {
 // Feature detection: std::expected (C++23+)
 #  if defined(__cpp_lib_expected) && (__cpp_lib_expected >= 202202L)
 #    define COMPAT_HAS_STD_EXPECTED 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
 #    if __has_include(<expected>)
 #      define COMPAT_HAS_STD_EXPECTED 1
 #    else
@@ -185,7 +185,7 @@ namespace detail {
 // Feature detection: std::print (C++23+)
 #  if defined(__cpp_lib_print) && (__cpp_lib_print >= 202207L)
 #    define COMPAT_HAS_STD_PRINT 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
 #    if __has_include(<print>)
 #      define COMPAT_HAS_STD_PRINT 1
 #    else

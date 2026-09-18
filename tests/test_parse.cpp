@@ -162,7 +162,7 @@ void run_test_parse() {
     const char* bin_str = "10110011";
     compat::from_chars_result r_bin = compat::from_chars(bin_str, bin_str + 8, val_bin, 2);
     TEST_ASSERT(r_bin);
-    TEST_ASSERT(val_bin == 0b10110011);
+    TEST_ASSERT(val_bin == 0xb3); // binary 10110011
     TEST_ASSERT(r_bin.ptr == bin_str + 8);
 
     // 整數溢位測試 (std::errc::result_out_of_range)

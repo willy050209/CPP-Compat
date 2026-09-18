@@ -857,12 +857,12 @@ namespace self_ranges {
                 constexpr explicit iterator(W val) : val_(val) {}
 
                 constexpr W operator*() const noexcept { return val_; }
-                constexpr iterator& operator++() noexcept { ++val_; return *this; }
-                constexpr iterator operator++(int) noexcept { auto tmp = *this; ++val_; return tmp; }
-                constexpr iterator& operator--() noexcept { --val_; return *this; }
-                constexpr iterator operator--(int) noexcept { auto tmp = *this; --val_; return tmp; }
-                constexpr iterator& operator+=(difference_type n) noexcept { val_ += n; return *this; }
-                constexpr iterator& operator-=(difference_type n) noexcept { val_ -= n; return *this; }
+                COMPAT_CONSTEXPR_14 iterator& operator++() noexcept { ++val_; return *this; }
+                COMPAT_CONSTEXPR_14 iterator operator++(int) noexcept { auto tmp = *this; ++val_; return tmp; }
+                COMPAT_CONSTEXPR_14 iterator& operator--() noexcept { --val_; return *this; }
+                COMPAT_CONSTEXPR_14 iterator operator--(int) noexcept { auto tmp = *this; --val_; return tmp; }
+                COMPAT_CONSTEXPR_14 iterator& operator+=(difference_type n) noexcept { val_ += n; return *this; }
+                COMPAT_CONSTEXPR_14 iterator& operator-=(difference_type n) noexcept { val_ -= n; return *this; }
                 constexpr W operator[](difference_type n) const noexcept { return val_ + n; }
 
                 friend constexpr bool operator==(const iterator& a, const iterator& b) noexcept { return a.val_ == b.val_; }
@@ -871,9 +871,9 @@ namespace self_ranges {
                 friend constexpr difference_type operator-(const iterator& a, const iterator& b) noexcept {
                     return static_cast<difference_type>(a.val_ - b.val_);
                 }
-                friend constexpr iterator operator+(iterator it, difference_type n) noexcept { return it += n; }
-                friend constexpr iterator operator+(difference_type n, iterator it) noexcept { return it += n; }
-                friend constexpr iterator operator-(iterator it, difference_type n) noexcept { return it -= n; }
+                friend constexpr iterator operator+(iterator it, difference_type n) noexcept { return iterator(it.val_ + n); }
+                friend constexpr iterator operator+(difference_type n, iterator it) noexcept { return iterator(it.val_ + n); }
+                friend constexpr iterator operator-(iterator it, difference_type n) noexcept { return iterator(it.val_ - n); }
             };
 
             class sentinel {

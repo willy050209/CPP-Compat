@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include <compat/Format.hpp>
 #include <string>
 #include <cstdint>
