@@ -1,168 +1,191 @@
-# CPP-Compat（自研 C++ 標準庫向下相容層）
+﻿# CPP-Compat（自研 C++ 標準庫向下相容層）
 
 [![CI Build](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml/badge.svg)](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml)
-[![Standard](https://img.shields.io/badge/C%2B%2B-11%20%7C%2014%20%7C%2017%20%7C%2020%20%7C%2023-blue.svg)](#)
+[![Standard](https://img.shields.io/badge/C%2B%2B-11%20%7C%2014%20%7C%2017%20%7C%2020%20%7C%2023%20%7C%2026-blue.svg)](#)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
 
 純自研、零第三方函式庫相依性（Zero External Dependencies）的現代 C++ 標準庫向下相容層架構。  
-在 C++23/20 支援環境下透明別名至原生 `std`，在 C++11/14/17 等舊環境下自動切換至輕量自研 Fallback 實作。
+在現代 C++20/23/26 支援環境下透明別名至原生 `std`，在 C++11/14/17 等舊環境下自動無縫切換至純自研 Fallback 實作。
+
+---
+
+## 📖 API 參考文件 (MSDN / cppreference 風格)
+
+本專案提供比照 **Microsoft Learn (MSDN)** 與 **C++ cppreference** 規格之官方 API 參考手冊，歡迎深入查閱各模組詳細規格：
+
+- 📚 [**API 參考首頁與導覽 (docs/README.md)**](docs/README.md)
+- ⚙️ [**特性檢測與配置 (docs/config.md)**](docs/config.md)：標準方言常數、特性探測巨集、雙軌開關
+- 🔤 [**字串檢視 (docs/string_view.md)**](docs/string_view.md)：`compat::string_view`、`std::hash` 特化
+- 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作
+- 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、`formatter<T>` 自訂型別擴充
+- 🖨️ [**終端列印 (docs/print.md)**](docs/print.md)：`print`、`println`、Windows UTF-8 `WriteConsoleW` 直寫管線
+- 🔢 [**強型別解析 (docs/parse.md)**](docs/parse.md)：`parse<T>`、零堆積 `from_chars`（整數 2~36 進位、浮點數、NaN/Inf）
+- 🔄 [**範圍基礎與概念 (docs/ranges.md)**](docs/ranges.md)：Range Concepts、CPO (`begin`, `end`, `size` 等)、`subrange`、`dangling`
+- 🌊 [**視圖適配器 (docs/views.md)**](docs/views.md)：管道語法 (`|`)、C++20 視圖、C++23 `as_const`、C++26 `concat` 與 `cache_latest`
+- ⚡ [**受約束範圍演算法 (docs/algorithms.md)**](docs/algorithms.md)：Niebloids、投影支援 (`&Item::id`)、標籤結果型別 (`in_out_result`)
 
 ---
 
 ## 核心特性
 
-- **零外部第三方相依**：專案完全自給自足，不下載或連結任何外部函式庫（如 `fmt`、`tl::expected` 等）。
+- **零外部第三方相依**：專案完全自給自足，不下載或連結任何外部函式庫（如 `fmt`、`range-v3`、`tl::expected` 等）。
 - **透明條件編譯對接**：
-  - 當編譯器支援現代標準（如 C++23/C++20）時，直接透傳至原生 `std`，享受極致零負擔編譯器最佳化。
+  - 當編譯器支援現代標準（如 C++20/23/26）時，直接透傳至原生 `std`，享受極致零負擔編譯器最佳化。
   - 當編譯環境為舊版（C++11/14/17）或缺乏原生庫支援時，無縫切換至純自研、輕量級且型別安全之 Fallback 實作。
-- **向下相容 C++11**：舊標準缺乏 `<variant>`、`<string_view>`、`<format>` 時，自動啟用基於 C++11 無限制聯合體（Tagged Unrestricted Union）之 `expected`、自研 `string_view` 與自研串流格式化引擎。
-- **ISO C++23 對齊**：Refinement Phase 已完成 `expected<void, E>`、Trivial 屬性傳遞、完整 Monadic Operations、`bad_expected_access`。
-- **自訂型別格式化**：`compat::formatter<T>` 擴充介面，相容 `std::formatter<T>` 語意。
-- **Windows UTF-8 終端支援**：透過 `WriteConsoleW` 正確輸出 Unicode，無需 `SetConsoleOutputCP(65001)`。
+- **向下相容至 C++11**：舊標準缺乏 `<variant>`、`<string_view>`、`<format>`、`<ranges>` 時，自動啟用基於 C++11 無限制聯合體（Tagged Unrestricted Union）之 `expected`、自研 `string_view`、自研串流格式化引擎與純自研 Ranges / Algorithms 模組。
+- **ISO C++26 前沿特性**：
+  - `compat::views::concat` (P2542R8 / N4984)：前綴長度儲存、雙向狀態機、跳過空區間與 $O(1)$ 下標跳轉階梯。
+  - `compat::views::cache_latest` (P3138R5)：嚴格的 `non-propagating-cache` 快取語意。
+  - `compat::ranges::constant_range` (P2728R6)：唯讀範圍概念合約。
+- **受約束範圍演算法全家族**：40+ 個全套 `compat::ranges::*` 演算法，支援 Niebloid 呼叫防護、投影（PMF/PMD 成員指標）與標籤結果型別（`in_out_result` 等）。
+- **自訂型別格式化**：`compat::formatter<T>` 擴充介面，完全相容 `std::formatter<T>` 語意。
+- **Windows UTF-8 終端支援**：透過 `WriteConsoleW` 直寫通道正確輸出 Unicode，徹底杜絕亂碼，無需 `SetConsoleOutputCP(65001)`。
 - **強型別字串解析 `parse<T>`**：純函數、無例外、Fail-fast 安全轉換（支援 `int8_t`~`uint64_t`、`float`、`double`、`bool`、`string`）。
-- **`-fno-exceptions` 安全**：`COMPAT_THROW_OR_ABORT` 巨集在無例外環境中自動改為 `std::abort()`。
-- **ABI 隔離**：`COMPAT_ABI_TAG` inline namespace 防止雙軌混用時的 ODR 衝突。
+- **`-fno-exceptions` 安全**：`COMPAT_THROW_OR_ABORT` 巨集在無例外環境中自動降階為 `std::abort()`。
+- **ABI 隔離**：`COMPAT_ABI_TAG` inline namespace 防止跨編譯單元混用時的 ODR 衝突。
 - **自動化發行工具**：
-  - 一鍵打包單一標頭檔：`dist/compat.hpp`（5,139 行，含 `#undef` 清除）
-  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`
-- **嚴格規範標準**：全數遵循純函數、固定寬度型別（`<cstdint>`）、XML 文件註解、Fail-fast 原則、UTF-8 BOM 編碼與 `#pragma once`。
+  - 一鍵打包單一標頭檔：`dist/compat.hpp`（10,341 行，含 `#undef` 清除）
+  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（10,354 行，支援 `import compat;`）
 
 ---
 
 ## 模組對照表
 
-| 功能組件 | 標頭檔 | C++23 原生支援時 | 舊標準 (C++11/14/17/20) Fallback |
-| :--- | :--- | :--- | :--- |
-| **特性檢測** | `compat/Config.hpp` | 探測 `__cpp_lib_*` | `COMPAT_FORCE_SELF_IMPLEMENTATION` / `COMPAT_FORCE_STD_IMPLEMENTATION` |
-| **字串檢視** | `compat/StringView.hpp` | `std::string_view` (C++17+) | 自研 `compat::detail::string_view`（constexpr、`std::hash`）|
-| **期望值/錯誤** | `compat/Expected.hpp` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union |
-| **格式化輸出** | `compat/Format.hpp` | `std::format` (C++20+) | 自研 `{}` 佔位符替換引擎 + `compat::formatter<T>` |
-| **終端列印** | `compat/Print.hpp` | `std::print`, `std::println` | 自研引擎 + Windows UTF-8 WriteConsoleW |
-| **總括標頭** | `compat/Compat.hpp` | 聚合所有模組 | 聚合所有模組 |
-
-
+| 功能組件 | 標頭檔 | 所屬命名空間 | 現代標準原生支援時 | 舊標準 (C++11/14/17) Fallback |
+| :--- | :--- | :--- | :--- | :--- |
+| **特性檢測** | `<compat/Config.hpp>` | `compat`, `compat::detail` | 探測 `__cpp_lib_*` | `COMPAT_FORCE_SELF_IMPLEMENTATION` / `COMPAT_FORCE_STD_IMPLEMENTATION` |
+| **字串檢視** | `<compat/StringView.hpp>` | `compat` | `std::string_view` (C++17+) | 自研 `compat::string_view`（constexpr、`std::hash`）|
+| **期望值/錯誤** | `<compat/Expected.hpp>` | `compat` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union |
+| **格式化輸出** | `<compat/Format.hpp>` | `compat` | `std::format` (C++20+) | 自研 `{}` 佔位符替換引擎 + `compat::formatter<T>` |
+| **終端列印** | `<compat/Print.hpp>` | `compat` | `std::print`, `std::println` | 自研引擎 + Windows UTF-8 WriteConsoleW 直寫 |
+| **強型別解析** | `<compat/Parse.hpp>` | `compat` | 原生或自研 `from_chars` | 自研零堆積、零 locale、基數 2~36 數值解析 |
+| **範圍概念/CPO**| `<compat/Ranges.hpp>` | `compat::ranges` | `std::ranges` (C++20+) | 自研 CPO (`begin`/`end`/`size`)、`subrange`、Concepts 萃取器 |
+| **視圖適配器** | `<compat/View.hpp>` | `compat::views` | `std::views` (C++20+) | 自研管道 (`\|`)、核心 Views、C++26 `concat` 與 `cache_latest` |
+| **範圍演算法** | `<compat/Algorithm.hpp>`| `compat::ranges` | `std::ranges::*` (C++20+) | 自研 Niebloids、投影支援、標籤結果型別 (`in_out_result` 等) |
+| **總括標頭** | `<compat/Compat.hpp>` | 全部聚合 | 聚合所有模組 | 聚合所有模組 |
 
 ---
 
 ## 快速上手範例
 
-### 基本用法
+### 1. 現代範圍管道 (Range Views Pipeline: `operator|`)
 
 ```cpp
-#include <cstdint>
-#include <compat/Compat.hpp>
-
-/// <summary>
-/// 安全純函數除法計算：驗證除數，除數為零時返回錯誤。
-/// </summary>
-[[nodiscard]] static constexpr compat::expected<int32_t, compat::string_view> SafeDivide(
-    const int32_t dividend,
-    const int32_t divisor
-) noexcept {
-    if (divisor == 0) {
-        return compat::unexpected<compat::string_view>("Division by zero is not permitted.");
-    }
-    return dividend / divisor;
-}
+#include <compat/Ranges.hpp>
+#include <compat/Print.hpp>
 
 int main() {
-    // 1. 純函數安全除法
-    const auto result = SafeDivide(42, 0);
-    if (!result.has_value()) {
-        compat::println("Calculation Failed: {}", result.error());
-    }
+    using namespace compat::views;
 
-    // 2. parse<T> 強型別解析
-    const auto parsedInt = compat::parse<int32_t>("1024");
-    if (parsedInt.has_value()) {
-        compat::println("Parsed integer: {}", parsedInt.value());
-    }
+    // 產生 1 到 50，篩選奇數，計算三次方，截取前 4 個
+    auto stream = iota(1, 50)
+        | filter([](int n) { return n % 2 != 0; })
+        | transform([](int n) { return n * n * n; })
+        | take(4);
 
-    // 3. 相容 std::format 格式化
-    const std::string formatted = compat::format("Formatted value: {}, PI: {}", 42, 3.14159);
-    compat::println("{}", formatted);
+    compat::print("Cube of odd numbers: ");
+    for (int v : stream) {
+        compat::print("{} ", v);
+    }
+    compat::println("");
+    // 輸出: Cube of odd numbers: 1 27 125 343
 
     return 0;
 }
 ```
 
-### Monadic Operations
+### 2. 受約束範圍演算法與投影 (Ranges Algorithms with Projections)
 
 ```cpp
-#include <compat/Expected.hpp>
-
-const auto result = compat::expected<int32_t, std::string>{42}
-    .and_then([](int32_t v) -> compat::expected<int32_t, std::string> {
-        return v * 2;
-    })
-    .transform([](int32_t v) { return v + 1; })
-    .or_else([](const std::string& e) -> compat::expected<int32_t, std::string> {
-        return 0;
-    });
-
-// result.value() == 85
-```
-
-### 自訂型別格式化（compat::formatter<T>）
-
-```cpp
-#include <compat/Format.hpp>
+#include <compat/Algorithm.hpp>
 #include <compat/Print.hpp>
+#include <vector>
+#include <string>
 
-struct Point { int32_t x, y; };
-
-template<>
-struct compat::formatter<Point> {
-    static std::string format(const Point& p) {
-        return compat::format("({}, {})", p.x, p.y);
-    }
+struct Task {
+    std::string title;
+    int priority;
 };
 
 int main() {
-    compat::println("Position: {}", Point{3, 4});
-    // 輸出：Position: (3, 4)
+    std::vector<Task> tasks = {
+        {"Refactor Architecture", 2},
+        {"Fix Security Bug", 1},
+        {"Write API Docs", 3}
+    };
+
+    // 透過成員變數指標投影，依照優先級升序排序
+    compat::ranges::sort(tasks, {}, &Task::priority);
+
+    for (const auto& task : tasks) {
+        compat::println("[Priority {}] {}", task.priority, task.title);
+    }
+    // 輸出:
+    // [Priority 1] Fix Security Bug
+    // [Priority 2] Refactor Architecture
+    // [Priority 3] Write API Docs
+
+    return 0;
 }
 ```
 
-### from_chars 解析介面
+### 3. ISO C++26 `views::concat` 多區間串接
 
 ```cpp
-#include <compat/Parse.hpp>
+#include <compat/Ranges.hpp>
+#include <compat/Print.hpp>
+#include <vector>
+#include <array>
 
-// 整數（支援 2–36 進位）
-int32_t val = 0;
-const auto r1 = compat::from_chars("255", nullptr, val, 16);  // hex
-// r1.ec == std::errc{}, val == 255
+int main() {
+    std::vector<int> prefix = {1, 2};
+    std::vector<int> empty_mid;
+    std::array<int, 3> suffix = {3, 4, 5};
 
-// 浮點（零堆積、零 locale、零 sscanf）
-double d = 0.0;
-const auto r2 = compat::from_chars("3.14e2", nullptr, d);
-// r2.ec == std::errc{}, d == 314.0
+    auto all = compat::views::concat(prefix, empty_mid, suffix);
 
-// NaN / Inf
-double nan_val = 0.0;
-compat::from_chars("NaN", nullptr, nan_val);  // std::isnan(nan_val) == true
+    compat::println("Total length: {}", compat::ranges::size(all)); // 5
+    compat::println("Random access element at [3]: {}", all[3]);   // 4
+
+    return 0;
+}
 ```
 
-### expected<void, E>
+### 4. 安全純函數除法與 Monadic Operations
 
 ```cpp
 #include <compat/Expected.hpp>
+#include <compat/Print.hpp>
+#include <string>
 
-[[nodiscard]] compat::expected<void, std::string> CheckRange(int32_t v) {
-    if (v < 0 || v > 100) {
-        return compat::unexpected<std::string>("Out of range");
+[[nodiscard]] compat::expected<int, std::string> SafeDivide(int a, int b) {
+    if (b == 0) {
+        return compat::unexpected<std::string>("Division by zero");
     }
-    return {};
+    return a / b;
 }
 
-const auto ok = CheckRange(50);
-if (!ok) compat::println("Error: {}", ok.error());
+int main() {
+    auto res = SafeDivide(100, 2)
+        .and_then([](int v) -> compat::expected<int, std::string> {
+            return SafeDivide(v, 5);
+        })
+        .transform([](int v) {
+            return v + 1;
+        });
+
+    if (res) {
+        compat::println("Result: {}", *res); // 11
+    } else {
+        compat::println("Error: {}", res.error());
+    }
+
+    return 0;
+}
 ```
 
 ---
-
 
 ## 編譯模式開關
 
@@ -185,91 +208,81 @@ target_compile_definitions(my_target PRIVATE COMPAT_FORCE_SELF_IMPLEMENTATION)
 
 ## 單一標頭檔與 C++20 Module 導出
 
-本專案提供 Python 導出工具：
+本專案提供自動化 Python 發行工具：
 
 ```bash
 # 1. 自動拓撲排序打包為單一標頭檔（含 #undef 清除內部巨集）
 python scripts/bundle_header.py
-# 產出: dist/compat.hpp
+# 產出: dist/compat.hpp (10,341 行，UTF-8 BOM 驗證)
 
-# 2. 自動導出為 C++20 Module 介面單元
+# 2. 自動導出為標準 C++20 Module 介面單元
 python scripts/export_module.py
-# 產出: dist/compat.ixx (支援 import compat;)
-
-# 3. 打包驗證（26 項斷言）
-python scripts/test_packaging.py
+# 產出: dist/compat.ixx (10,354 行，支援 import compat;)
 ```
 
 ---
 
 ## 建置與測試
 
-### Windows (Visual Studio 18 Insiders / MSVC)
+### Windows (Visual Studio / MSVC 19.51+)
 
 ```powershell
-# 設定 C++23 原生標準
-cmake -B build -DCMAKE_CXX_STANDARD=23
+# 設定 C++20 原生標準
+cmake -B build -DCMAKE_CXX_STANDARD=20
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 
-# 強制 Fallback 模式（驗證自研路徑）
-cmake -B build_fb -DCMAKE_CXX_STANDARD=23 -DCOMPAT_FORCE_SELF_IMPLEMENTATION=ON
+# 強制自研 Fallback 模式驗證
+cmake -B build_fb -DCMAKE_CXX_STANDARD=20 -DCOMPAT_FORCE_SELF_IMPLEMENTATION=ON
 cmake --build build_fb --config Release
 ctest --test-dir build_fb -C Release --output-on-failure
 ```
 
-### Linux (Ubuntu / GCC)
+### Linux (Ubuntu / GCC 14.2 & Clang 18)
 
 ```bash
-# 驗證 C++11 (完整向下相容測試)
+# 驗證 C++11 (完整向下相容與 pedantic 嚴格模式)
 cmake -B build-cxx11 -DCMAKE_CXX_STANDARD=11
 cmake --build build-cxx11
-ctest --test-dir build-cxx11 --output-on-failure
+./build-cxx11/compat_test
 
-# 驗證 C++23 原生標準
-cmake -B build-cxx23 -DCMAKE_CXX_STANDARD=23
-cmake --build build-cxx23
-ctest --test-dir build-cxx23 --output-on-failure
-```
-
-### macOS (Apple Clang)
-
-```bash
-cmake -B build-mac -DCMAKE_CXX_STANDARD=20
-cmake --build build-mac
-ctest --test-dir build-mac --output-on-failure
+# 驗證 Clang 18 C++11 模式
+cmake -B build-clang-cxx11 -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_STANDARD=11
+cmake --build build-clang-cxx11
+./build-clang-cxx11/compat_test
 ```
 
 ---
 
-## CI 矩陣
+## 跨編譯器與方言驗證矩陣
 
-| 平台 | C++ 標準 | 模式 |
-| :--- | :--- | :--- |
-| Ubuntu (GCC) | C++11, 14, 17, 20, 23 | Auto + Forced Fallback |
-| Windows (MSVC) | C++17, 20, 23 | Auto + Forced Fallback |
-| macOS (Apple Clang) | C++14, 17, 20, 23 | Auto + Forced Fallback |
+所有測試套件與演算法在各平臺上均達成 **100% 通過（0 警告、0 錯誤）**：
+
+| 平臺 / 編譯器 | 語言標準 | 執行模式 | 斷言總數 | 測試狀態 |
+| :--- | :--- | :--- | :---: | :---: |
+| **Ubuntu Clang 18.1** | C++11 (`-Wall -Wextra -Werror`) | Self-contained | 388 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++11 (`-pedantic-errors`) | Self-contained | 388 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++14 / C++17 | Self-contained | 388 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++20 | Native STL | 385 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 388 | **PASSED** |
+| **Windows MSVC 19.51** | C++14 / C++17 | Fallback | 388 | **PASSED** |
+| **Windows MSVC 19.51** | C++20 | Native STL | 385 | **PASSED** |
+| **Windows MSVC 19.51** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 388 | **PASSED** |
+| **macOS Apple Clang** | C++11 ~ C++23 | Auto + Fallback | 388 | **PASSED** |
 
 ---
 
 ## 規範標準
 
-- 固定寬度整數型別（`int32_t`、`uint64_t` 等），不使用 `int`/`long`
+- 固定寬度整數型別（`int32_t`、`uint64_t` 等），不使用非固定寬度 `int`/`long`
 - 所有公開 API 附 XML 文件註解（`<summary>`, `<param>`, `<returns>`）
-- 純函數設計（Fail-fast）：`[[nodiscard]]`、`noexcept`、`constexpr`
-- 禁止 `using namespace std`
-- UTF-8 BOM 編碼、`#pragma once`
-- 禁止包含 `<iostream>` 於任何 `*.hpp` 標頭檔
+- 純函數設計（Fail-fast）：`[[nodiscard]]`、`noexcept`、`constexpr` / `COMPAT_CONSTEXPR_14`
+- 禁止 `using namespace std` 於標頭檔中污染使用者命名空間
+- 全原始碼與標頭檔嚴格遵循 **UTF-8 BOM** 編碼與 `#pragma once`
+- 禁止包含 `<iostream>` 於任何發行標頭檔
 
 ---
 
 ## 授權條款 (License)
 
 本專案採用 [MIT License](LICENSE) 授權。
-
----
-
-## 詳細架構說明
-
-請參閱 [ARCHITECTURE.md](ARCHITECTURE.md)。
-
