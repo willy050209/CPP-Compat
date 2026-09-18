@@ -59,6 +59,7 @@ DEFAULT_CLEANUP_MACROS = [
     "COMPAT_CXX_17",
     "COMPAT_CXX_20",
     "COMPAT_CXX_23",
+    "COMPAT_CXX_26",
     "COMPAT_HAS_EXCEPTIONS",
     "COMPAT_THROW_OR_ABORT",
     "COMPAT_CONSTEXPR_14",
@@ -68,6 +69,11 @@ DEFAULT_CLEANUP_MACROS = [
     "COMPAT_HAS_STD_FORMAT",
     "COMPAT_HAS_STD_STRING_VIEW",
     "COMPAT_HAS_STD_VARIANT",
+    "COMPAT_HAS_STD_RANGES",
+    "COMPAT_HAS_STD_VIEWS_CONCAT",
+    "COMPAT_HAS_STD_VIEWS_CACHE_LATEST",
+    "COMPAT_HAS_STD_CONSTANT_RANGE",
+    "COMPAT_HAS_STD_VIEWS_AS_CONST",
     "COMPAT_BAD_EXPECTED_ACCESS_DEFINED",
 ]
 
@@ -97,10 +103,10 @@ def convert_to_module(header_content: str, verbose: bool = False) -> str:
 
     # Core STL headers known to be needed across compat shim modules
     core_stl_headers = {
-        "algorithm", "cstddef", "cstdint", "cstdlib", "cstring",
-        "exception", "functional", "iostream", "limits", "new",
-        "ostream", "sstream", "stdexcept", "string", "system_error",
-        "type_traits", "utility", "variant"
+        "algorithm", "array", "cassert", "cstddef", "cstdint", "cstdlib", "cstring",
+        "exception", "functional", "iostream", "iterator", "limits", "memory", "new",
+        "ostream", "ranges", "sstream", "stdexcept", "string", "system_error",
+        "tuple", "type_traits", "utility", "variant"
     }
     all_gmf_headers = sorted(list(external_includes.union(core_stl_headers)))
 
@@ -161,6 +167,10 @@ def convert_to_module(header_content: str, verbose: bool = False) -> str:
 
     result_parts: list[str] = []
 
+    # Headers requiring platform conditionals or language version checks
+    platform_headers = {"windows.h", "unistd.h", "io.h"}
+    conditional_stl_headers = {"expected", "print", "format", "version", "string_view", "ranges"}
+
     # Module banner
     result_parts.append("// ============================================================================")
     result_parts.append("// CPP-Compat: Zero-Dependency Modern C++ Backward Compatibility Shim Layer")
@@ -176,10 +186,22 @@ def convert_to_module(header_content: str, verbose: bool = False) -> str:
     result_parts.append("// Global Module Fragment (GMF): Standard Library Headers")
     result_parts.append("// ----------------------------------------------------------------------------")
     for header in all_gmf_headers:
-        result_parts.append(f"#include <{header}>")
+        if header not in platform_headers and header not in conditional_stl_headers:
+            result_parts.append(f"#include <{header}>")
     result_parts.append("")
 
-    result_parts.append("// Conditional Standard Headers for C++20 / C++23 in GMF")
+    result_parts.append("// Platform-Specific Headers in GMF")
+    result_parts.append("#if defined(_WIN32)")
+    result_parts.append("#  define WIN32_LEAN_AND_MEAN")
+    result_parts.append("#  define NOMINMAX")
+    result_parts.append("#  include <windows.h>")
+    result_parts.append("#  include <io.h>")
+    result_parts.append("#else")
+    result_parts.append("#  include <unistd.h>")
+    result_parts.append("#endif")
+    result_parts.append("")
+
+    result_parts.append("// Conditional Standard Headers for C++20 / C++23 / C++26 in GMF")
     result_parts.append("#if defined(__has_include)")
     result_parts.append("#  if __has_include(<version>)")
     result_parts.append("#    include <version>")
@@ -187,16 +209,20 @@ def convert_to_module(header_content: str, verbose: bool = False) -> str:
     result_parts.append("#  if __has_include(<string_view>)")
     result_parts.append("#    include <string_view>")
     result_parts.append("#  endif")
-    result_parts.append("#  if __has_include(<format>)")
+    result_parts.append("#  if __has_include(<ranges>)")
+    result_parts.append("#    include <ranges>")
+    result_parts.append("#  endif")
+    result_parts.append("#  if __has_include(<format>) && (defined(_MSVC_LANG) ? _MSVC_LANG >= 202002L : __cplusplus >= 202002L)")
     result_parts.append("#    include <format>")
     result_parts.append("#  endif")
-    result_parts.append("#  if __has_include(<expected>)")
+    result_parts.append("#  if __has_include(<expected>) && (defined(_MSVC_LANG) ? _MSVC_LANG >= 202302L : __cplusplus >= 202302L)")
     result_parts.append("#    include <expected>")
     result_parts.append("#  endif")
-    result_parts.append("#  if __has_include(<print>)")
+    result_parts.append("#  if __has_include(<print>) && (defined(_MSVC_LANG) ? _MSVC_LANG >= 202302L : __cplusplus >= 202302L)")
     result_parts.append("#    include <print>")
     result_parts.append("#  endif")
     result_parts.append("#endif")
+    result_parts.append("")
     result_parts.append("")
 
     result_parts.append("// ============================================================================")

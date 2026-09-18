@@ -6,6 +6,7 @@ void run_test_format();
 void run_test_parse();
 void run_test_print();
 void run_test_string_view();
+void run_test_ranges();
 
 /// <summary>
 /// 單元測試套件整合進入點。
@@ -21,6 +22,7 @@ int main() {
     run_test_format();
     run_test_print();
     run_test_parse();
+    run_test_ranges();
 
 
     TestStats& stats = GetGlobalTestStats();
