@@ -307,7 +307,13 @@ namespace self_ranges {
                     return t.size();
                 }
 
-                template <typename T, typename = typename std::enable_if<!std::is_array<typename std::remove_reference<T>::type>::value && !has_member_size<T>::value>::type,
+                template <typename T,
+                          typename = typename std::enable_if<
+                              !std::is_array<typename std::remove_reference<T>::type>::value &&
+                              !has_member_size<T>::value &&
+                              (has_member_begin<T>::value || has_adl_begin<T>::value) &&
+                              (has_member_end<T>::value || has_adl_end<T>::value)
+                          >::type,
                           typename Diff = decltype(end_fn{}(std::declval<T&>()) - begin_fn{}(std::declval<T&>()))>
                 constexpr size_t operator()(T&& t) const {
                     return static_cast<size_t>(end_fn{}(t) - begin_fn{}(t));
@@ -322,6 +328,11 @@ namespace self_ranges {
             };
 
             struct empty_fn {
+                template <typename T, size_t N>
+                constexpr bool operator()(T (&)[N]) const noexcept {
+                    return false;
+                }
+
                 template <typename T, typename = typename std::enable_if<has_member_empty<T>::value>::type>
                 constexpr auto operator()(T&& t) const -> decltype(bool(t.empty())) {
                     return bool(t.empty());
@@ -332,7 +343,13 @@ namespace self_ranges {
                     return size_fn{}(t) == 0;
                 }
 
-                template <typename T, typename = typename std::enable_if<!has_member_empty<T>::value && !has_member_size<T>::value>::type, int = 0, int = 0>
+                template <typename T,
+                          typename = typename std::enable_if<
+                              !has_member_empty<T>::value &&
+                              !has_member_size<T>::value &&
+                              (has_member_begin<T>::value || has_adl_begin<T>::value) &&
+                              (has_member_end<T>::value || has_adl_end<T>::value)
+                          >::type, int = 0, int = 0>
                 constexpr bool operator()(T&& t) const {
                     return begin_fn{}(t) == end_fn{}(t);
                 }
@@ -420,6 +437,15 @@ namespace self_ranges {
 #endif
 
         // --- Range Type Traits & Concepts ---
+        template <typename I>
+        using iter_difference_t = typename std::iterator_traits<I>::difference_type;
+
+        template <typename I>
+        using iter_value_t = typename std::iterator_traits<I>::value_type;
+
+        template <typename I>
+        using iter_reference_t = decltype(*std::declval<I&>());
+
         template <typename R>
         using iterator_t = decltype(detail::begin_fn{}(std::declval<R&>()));
 
@@ -749,6 +775,133 @@ namespace self_ranges {
         COMPAT_CONSTEXPR_14 bool enable_borrowed_range<subrange<I, S, K>> = true;
 #endif
 
+        /// <summary>
+        /// 借用迭代器型別推導 (對齊 C++20 std::ranges::borrowed_iterator_t)。
+        /// </summary>
+        template <typename R>
+        using borrowed_iterator_t = typename std::conditional<borrowed_range<R>::value, iterator_t<R>, dangling>::type;
+
+        /// <summary>
+        /// 借用子區間型別推導 (對齊 C++20 std::ranges::borrowed_subrange_t)。
+        /// </summary>
+        template <typename R>
+        using borrowed_subrange_t = typename std::conditional<borrowed_range<R>::value, subrange<iterator_t<R>>, dangling>::type;
+
+
+        // --- empty_view ---
+        /// <summary>
+        /// 空 View (對齊 C++20 std::ranges::empty_view)。
+        /// </summary>
+        template <typename T>
+        class empty_view : public view_interface<empty_view<T>> {
+        public:
+            static constexpr T* begin() noexcept { return nullptr; }
+            static constexpr T* end() noexcept { return nullptr; }
+            static constexpr T* data() noexcept { return nullptr; }
+            static constexpr size_t size() noexcept { return 0; }
+            static constexpr bool empty() noexcept { return true; }
+        };
+
+        template <typename T>
+        struct enable_borrowed_range_helper<empty_view<T>> : std::true_type {};
+
+        // --- single_view ---
+        /// <summary>
+        /// 單一元素 View (對齊 C++20 std::ranges::single_view)。
+        /// </summary>
+        template <typename T>
+        class single_view : public view_interface<single_view<T>> {
+        private:
+            T value_{};
+
+        public:
+            single_view() = default;
+            constexpr explicit single_view(const T& val) : value_(val) {}
+            constexpr explicit single_view(T&& val) : value_(std::move(val)) {}
+
+            COMPAT_CONSTEXPR_14 T* data() noexcept { return &value_; }
+            constexpr const T* data() const noexcept { return &value_; }
+            COMPAT_CONSTEXPR_14 T* begin() noexcept { return &value_; }
+            constexpr const T* begin() const noexcept { return &value_; }
+            COMPAT_CONSTEXPR_14 T* end() noexcept { return &value_ + 1; }
+            constexpr const T* end() const noexcept { return &value_ + 1; }
+            static constexpr size_t size() noexcept { return 1; }
+            static constexpr bool empty() noexcept { return false; }
+        };
+
+        template <typename T>
+        struct enable_borrowed_range_helper<single_view<T>> : std::true_type {};
+
+        // --- iota_view ---
+        /// <summary>
+        /// 數值產生 View (對齊 C++20 std::ranges::iota_view)。
+        /// </summary>
+        template <typename W, typename Bound = void>
+        class iota_view : public view_interface<iota_view<W, Bound>> {
+        private:
+            W value_{};
+            Bound bound_{};
+
+        public:
+            class iterator {
+            private:
+                W val_{};
+            public:
+                using iterator_category = std::random_access_iterator_tag;
+                using value_type = W;
+                using difference_type = std::ptrdiff_t;
+                using pointer = const W*;
+                using reference = W;
+
+                iterator() = default;
+                constexpr explicit iterator(W val) : val_(val) {}
+
+                constexpr W operator*() const noexcept { return val_; }
+                constexpr iterator& operator++() noexcept { ++val_; return *this; }
+                constexpr iterator operator++(int) noexcept { auto tmp = *this; ++val_; return tmp; }
+                constexpr iterator& operator--() noexcept { --val_; return *this; }
+                constexpr iterator operator--(int) noexcept { auto tmp = *this; --val_; return tmp; }
+                constexpr iterator& operator+=(difference_type n) noexcept { val_ += n; return *this; }
+                constexpr iterator& operator-=(difference_type n) noexcept { val_ -= n; return *this; }
+                constexpr W operator[](difference_type n) const noexcept { return val_ + n; }
+
+                friend constexpr bool operator==(const iterator& a, const iterator& b) noexcept { return a.val_ == b.val_; }
+                friend constexpr bool operator!=(const iterator& a, const iterator& b) noexcept { return !(a == b); }
+                friend constexpr bool operator<(const iterator& a, const iterator& b) noexcept { return a.val_ < b.val_; }
+                friend constexpr difference_type operator-(const iterator& a, const iterator& b) noexcept {
+                    return static_cast<difference_type>(a.val_ - b.val_);
+                }
+                friend constexpr iterator operator+(iterator it, difference_type n) noexcept { return it += n; }
+                friend constexpr iterator operator+(difference_type n, iterator it) noexcept { return it += n; }
+                friend constexpr iterator operator-(iterator it, difference_type n) noexcept { return it -= n; }
+            };
+
+            class sentinel {
+            private:
+                Bound bound_{};
+            public:
+                sentinel() = default;
+                constexpr explicit sentinel(Bound b) : bound_(b) {}
+                friend constexpr bool operator==(const iterator& it, const sentinel& s) noexcept { return *it == s.bound_; }
+                friend constexpr bool operator==(const sentinel& s, const iterator& it) noexcept { return it == s; }
+                friend constexpr bool operator!=(const iterator& it, const sentinel& s) noexcept { return !(it == s); }
+                friend constexpr bool operator!=(const sentinel& s, const iterator& it) noexcept { return !(it == s); }
+            };
+
+            iota_view() = default;
+            constexpr explicit iota_view(W value) : value_(value) {}
+            constexpr iota_view(W value, Bound bound) : value_(value), bound_(bound) {}
+
+            constexpr iterator begin() const noexcept { return iterator{value_}; }
+            constexpr sentinel end() const noexcept { return sentinel{bound_}; }
+            constexpr auto size() const noexcept -> decltype(static_cast<size_t>(bound_ - value_)) {
+                return static_cast<size_t>(bound_ - value_);
+            }
+        };
+
+        template <typename W, typename Bound>
+        struct enable_borrowed_range_helper<iota_view<W, Bound>> : std::true_type {};
+
         // --- owning_view ---
         /// <summary>
         /// 容器持有 View (對齊 C++20 std::ranges::owning_view)。
@@ -829,6 +982,497 @@ namespace self_ranges {
 
         template <typename R>
         using all_t = decltype(all(std::declval<R>()));
+
+        // --- Single & Iota Adaptors ---
+        namespace detail {
+            struct single_fn {
+                template <typename T>
+                constexpr ranges::single_view<typename std::decay<T>::type> operator()(T&& val) const {
+                    return ranges::single_view<typename std::decay<T>::type>(std::forward<T>(val));
+                }
+            };
+
+            struct iota_fn {
+                template <typename W>
+                constexpr ranges::iota_view<typename std::decay<W>::type> operator()(W&& val) const {
+                    return ranges::iota_view<typename std::decay<W>::type>(std::forward<W>(val));
+                }
+                template <typename W, typename Bound>
+                constexpr ranges::iota_view<typename std::decay<W>::type, typename std::decay<Bound>::type>
+                operator()(W&& val, Bound&& bound) const {
+                    return ranges::iota_view<typename std::decay<W>::type, typename std::decay<Bound>::type>(
+                        std::forward<W>(val), std::forward<Bound>(bound));
+                }
+            };
+        } // namespace detail
+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+        inline constexpr detail::single_fn single{};
+        inline constexpr detail::iota_fn iota{};
+#else
+        namespace {
+            constexpr const detail::single_fn& single = static_const<detail::single_fn>::value;
+            constexpr const detail::iota_fn& iota = static_const<detail::iota_fn>::value;
+        }
+#endif
+
+    } // namespace views
+
+    namespace ranges {
+
+        // --- filter_view ---
+        /// <summary>
+        /// 條件過濾 View (對齊 C++20 std::ranges::filter_view)。
+        /// </summary>
+        template <typename V, typename Pred>
+        class filter_view : public view_interface<filter_view<V, Pred>> {
+        private:
+            V base_{};
+            Pred pred_{};
+
+        public:
+            class iterator {
+            private:
+                iterator_t<V> current_{};
+                sentinel_t<V> end_{};
+                const Pred* pred_{nullptr};
+
+                void satisfy() {
+                    while (current_ != end_ && !(*pred_)(*current_)) {
+                        ++current_;
+                    }
+                }
+            public:
+                using iterator_category = std::forward_iterator_tag;
+                using value_type = range_value_t<V>;
+                using difference_type = range_difference_t<V>;
+                using reference = range_reference_t<V>;
+                using pointer = void;
+
+                iterator() = default;
+                iterator(iterator_t<V> cur, sentinel_t<V> end, const Pred* pred)
+                    : current_(std::move(cur)), end_(std::move(end)), pred_(pred) {
+                    satisfy();
+                }
+
+                const iterator_t<V>& base() const & noexcept { return current_; }
+                iterator_t<V> base() && { return std::move(current_); }
+
+                reference operator*() const { return *current_; }
+                iterator& operator++() {
+                    ++current_;
+                    satisfy();
+                    return *this;
+                }
+                iterator operator++(int) {
+                    auto tmp = *this;
+                    ++(*this);
+                    return tmp;
+                }
+
+                friend bool operator==(const iterator& a, const iterator& b) { return a.current_ == b.current_; }
+                friend bool operator!=(const iterator& a, const iterator& b) { return !(a == b); }
+                friend bool operator==(const iterator& a, default_sentinel_t) { return a.current_ == a.end_; }
+                friend bool operator==(default_sentinel_t s, const iterator& a) { return a == s; }
+                friend bool operator!=(const iterator& a, default_sentinel_t s) { return !(a == s); }
+                friend bool operator!=(default_sentinel_t s, const iterator& a) { return !(a == s); }
+            };
+
+            filter_view() = default;
+            filter_view(V base, Pred pred) : base_(std::move(base)), pred_(std::move(pred)) {}
+
+            V base() const & { return base_; }
+            V base() && { return std::move(base_); }
+            const Pred& pred() const { return pred_; }
+
+            iterator begin() {
+                return iterator(detail::begin_fn{}(base_), detail::end_fn{}(base_), std::addressof(pred_));
+            }
+            default_sentinel_t end() const noexcept { return default_sentinel; }
+        };
+
+        template <typename R, bool Enable>
+        struct maybe_const_iter {
+            using type = iterator_t<R>;
+        };
+        template <typename R>
+        struct maybe_const_iter<R, true> {
+            using type = iterator_t<const R>;
+        };
+
+        template <typename R, bool Enable>
+        struct maybe_const_sent {
+            using type = sentinel_t<R>;
+        };
+        template <typename R>
+        struct maybe_const_sent<R, true> {
+            using type = sentinel_t<const R>;
+        };
+
+        // --- transform_view ---
+        /// <summary>
+        /// 元素映射變換 View (對齊 C++20 std::ranges::transform_view)。
+        /// </summary>
+        template <typename V, typename F>
+        class transform_view : public view_interface<transform_view<V, F>> {
+        private:
+            V base_{};
+            F fun_{};
+
+        public:
+            template <bool IsConst>
+            class iterator_impl {
+            private:
+                using BaseIter = typename maybe_const_iter<V, IsConst && range<const V>::value>::type;
+                BaseIter current_{};
+                const F* fun_{nullptr};
+            public:
+                using iterator_category = typename std::iterator_traits<BaseIter>::iterator_category;
+                using reference = decltype(std::declval<const F&>()(*std::declval<BaseIter>()));
+                using value_type = typename std::decay<reference>::type;
+                using difference_type = range_difference_t<V>;
+                using pointer = void;
+
+                iterator_impl() = default;
+                iterator_impl(BaseIter cur, const F* fun) : current_(std::move(cur)), fun_(fun) {}
+
+                const BaseIter& base() const noexcept { return current_; }
+
+                reference operator*() const { return (*fun_)(*current_); }
+                iterator_impl& operator++() { ++current_; return *this; }
+                iterator_impl operator++(int) { auto tmp = *this; ++current_; return tmp; }
+                iterator_impl& operator--() { --current_; return *this; }
+                iterator_impl operator--(int) { auto tmp = *this; --current_; return tmp; }
+                iterator_impl& operator+=(difference_type n) { current_ += n; return *this; }
+                iterator_impl& operator-=(difference_type n) { current_ -= n; return *this; }
+                reference operator[](difference_type n) const { return (*fun_)(current_[n]); }
+
+                friend inline bool operator==(const iterator_impl& a, const iterator_impl& b) { return a.current_ == b.current_; }
+                friend inline bool operator!=(const iterator_impl& a, const iterator_impl& b) { return !(a == b); }
+                friend inline bool operator<(const iterator_impl& a, const iterator_impl& b) { return a.current_ < b.current_; }
+                friend inline difference_type operator-(const iterator_impl& a, const iterator_impl& b) { return a.current_ - b.current_; }
+                friend inline iterator_impl operator+(iterator_impl it, difference_type n) { return it += n; }
+                friend inline iterator_impl operator+(difference_type n, iterator_impl it) { return it += n; }
+                friend inline iterator_impl operator-(iterator_impl it, difference_type n) { return it -= n; }
+            };
+
+            template <bool IsConst>
+            class sentinel_impl {
+            private:
+                using BaseSent = typename maybe_const_sent<V, IsConst && range<const V>::value>::type;
+                BaseSent end_{};
+            public:
+                sentinel_impl() = default;
+                explicit sentinel_impl(BaseSent end) : end_(std::move(end)) {}
+                BaseSent base() const { return end_; }
+
+                template <bool OtherConst>
+                friend inline bool operator==(const iterator_impl<OtherConst>& it, const sentinel_impl& s) {
+                    return it.base() == s.end_;
+                }
+                template <bool OtherConst>
+                friend inline bool operator==(const sentinel_impl& s, const iterator_impl<OtherConst>& it) {
+                    return it == s;
+                }
+                template <bool OtherConst>
+                friend inline bool operator!=(const iterator_impl<OtherConst>& it, const sentinel_impl& s) {
+                    return !(it == s);
+                }
+                template <bool OtherConst>
+                friend inline bool operator!=(const sentinel_impl& s, const iterator_impl<OtherConst>& it) {
+                    return !(it == s);
+                }
+            };
+
+            using iterator = iterator_impl<false>;
+            using const_iterator = iterator_impl<true>;
+            using sentinel = sentinel_impl<false>;
+            using const_sentinel = sentinel_impl<true>;
+
+            transform_view() = default;
+            transform_view(V base, F fun) : base_(std::move(base)), fun_(std::move(fun)) {}
+
+            iterator begin() { return iterator(detail::begin_fn{}(base_), std::addressof(fun_)); }
+
+            template <typename VV = const V, typename = typename std::enable_if<range<VV>::value>::type>
+            const_iterator begin() const { return const_iterator(detail::begin_fn{}(base_), std::addressof(fun_)); }
+
+            template <typename VV = V, typename = typename std::enable_if<common_range<VV>::value>::type>
+            iterator end() { return iterator(detail::end_fn{}(base_), std::addressof(fun_)); }
+
+            template <typename VV = V, typename = typename std::enable_if<!common_range<VV>::value>::type, int = 0>
+            sentinel end() { return sentinel(detail::end_fn{}(base_)); }
+
+            template <typename VV = const V, typename = typename std::enable_if<common_range<VV>::value>::type>
+            const_iterator end() const { return const_iterator(detail::end_fn{}(base_), std::addressof(fun_)); }
+
+            template <typename VV = const V, typename = typename std::enable_if<range<VV>::value && !common_range<VV>::value>::type, int = 0>
+            const_sentinel end() const { return const_sentinel(detail::end_fn{}(base_)); }
+
+            template <typename VV = V, typename = typename std::enable_if<sized_range<VV>::value>::type>
+            auto size() -> decltype(ranges::size(std::declval<VV&>())) { return ranges::size(base_); }
+
+            template <typename VV = const V, typename = typename std::enable_if<sized_range<VV>::value>::type>
+            auto size() const -> decltype(ranges::size(std::declval<VV&>())) { return ranges::size(base_); }
+        };
+
+        // --- take_view ---
+        /// <summary>
+        /// 前 N 個元素截取 View (對齊 C++20 std::ranges::take_view)。
+        /// </summary>
+        template <typename V>
+        class take_view : public view_interface<take_view<V>> {
+        private:
+            V base_{};
+            range_difference_t<V> count_{};
+
+        public:
+            class sentinel {
+            private:
+                sentinel_t<V> end_{};
+            public:
+                sentinel() = default;
+                explicit sentinel(sentinel_t<V> end) : end_(std::move(end)) {}
+                sentinel_t<V> base() const { return end_; }
+            };
+
+            class iterator {
+            private:
+                iterator_t<V> current_{};
+                range_difference_t<V> count_{};
+            public:
+                using iterator_category = typename std::iterator_traits<iterator_t<V>>::iterator_category;
+                using value_type = range_value_t<V>;
+                using difference_type = range_difference_t<V>;
+                using reference = range_reference_t<V>;
+
+                iterator() = default;
+                iterator(iterator_t<V> cur, range_difference_t<V> count)
+                    : current_(std::move(cur)), count_(count) {}
+
+                reference operator*() const { return *current_; }
+                iterator& operator++() { ++current_; --count_; return *this; }
+                iterator operator++(int) { auto tmp = *this; ++(*this); return tmp; }
+                iterator& operator--() { --current_; ++count_; return *this; }
+                iterator operator--(int) { auto tmp = *this; --(*this); return tmp; }
+
+                friend bool operator==(const iterator& it, default_sentinel_t) { return it.count_ == 0; }
+                friend bool operator==(default_sentinel_t s, const iterator& it) { return it == s; }
+                friend bool operator!=(const iterator& it, default_sentinel_t s) { return !(it == s); }
+                friend bool operator!=(default_sentinel_t s, const iterator& it) { return !(it == s); }
+                friend bool operator==(const iterator& a, const sentinel& b) { return a.count_ == 0 || a.current_ == b.base(); }
+                friend bool operator==(const sentinel& b, const iterator& a) { return a == b; }
+                friend bool operator!=(const iterator& a, const sentinel& b) { return !(a == b); }
+                friend bool operator!=(const sentinel& b, const iterator& a) { return !(a == b); }
+            };
+
+            take_view() = default;
+            take_view(V base, range_difference_t<V> count) : base_(std::move(base)), count_(count) {}
+
+            iterator begin() { return iterator(detail::begin_fn{}(base_), count_); }
+            sentinel end() { return sentinel(detail::end_fn{}(base_)); }
+
+            template <typename VV = V, typename = typename std::enable_if<sized_range<VV>::value>::type>
+            auto size() -> decltype(ranges::size(std::declval<VV&>())) {
+                auto n = static_cast<range_difference_t<V>>(ranges::size(base_));
+                return static_cast<size_t>(count_ < n ? count_ : n);
+            }
+
+            template <typename VV = const V, typename = typename std::enable_if<sized_range<VV>::value>::type>
+            auto size() const -> decltype(ranges::size(std::declval<VV&>())) {
+                auto n = static_cast<range_difference_t<V>>(ranges::size(base_));
+                return static_cast<size_t>(count_ < n ? count_ : n);
+            }
+        };
+
+        // --- drop_view ---
+        /// <summary>
+        /// 跳過前 N 個元素 View (對齊 C++20 std::ranges::drop_view)。
+        /// </summary>
+        template <typename V>
+        class drop_view : public view_interface<drop_view<V>> {
+        private:
+            V base_{};
+            range_difference_t<V> count_{};
+
+        public:
+            drop_view() = default;
+            drop_view(V base, range_difference_t<V> count) : base_(std::move(base)), count_(count) {}
+
+            auto begin() -> decltype(detail::begin_fn{}(base_)) {
+                auto it = detail::begin_fn{}(base_);
+                auto last = detail::end_fn{}(base_);
+                range_difference_t<V> n = count_;
+                while (it != last && n > 0) {
+                    ++it;
+                    --n;
+                }
+                return it;
+            }
+
+            auto end() -> decltype(detail::end_fn{}(base_)) {
+                return detail::end_fn{}(base_);
+            }
+
+            template <typename VV = V, typename = typename std::enable_if<sized_range<VV>::value>::type>
+            auto size() -> decltype(ranges::size(std::declval<VV&>())) {
+                auto s = ranges::size(base_);
+                auto c = static_cast<size_t>(count_ > 0 ? count_ : 0);
+                return s > c ? s - c : 0;
+            }
+
+            template <typename VV = const V, typename = typename std::enable_if<sized_range<VV>::value>::type>
+            auto size() const -> decltype(ranges::size(std::declval<VV&>())) {
+                auto s = ranges::size(base_);
+                auto c = static_cast<size_t>(count_ > 0 ? count_ : 0);
+                return s > c ? s - c : 0;
+            }
+        };
+
+        // --- reverse_view ---
+        /// <summary>
+        /// 反向檢視 View (對齊 C++20 std::ranges::reverse_view)。
+        /// </summary>
+        template <typename V>
+        class reverse_view : public view_interface<reverse_view<V>> {
+        private:
+            V base_{};
+
+        public:
+            reverse_view() = default;
+            explicit reverse_view(V base) : base_(std::move(base)) {}
+
+            auto begin() -> std::reverse_iterator<iterator_t<V>> {
+                return std::reverse_iterator<iterator_t<V>>(detail::end_fn{}(base_));
+            }
+            auto end() -> std::reverse_iterator<iterator_t<V>> {
+                return std::reverse_iterator<iterator_t<V>>(detail::begin_fn{}(base_));
+            }
+
+            auto size() -> decltype(ranges::size(base_)) { return ranges::size(base_); }
+        };
+
+    } // namespace ranges
+
+    namespace views {
+
+        namespace detail {
+
+            template <typename Pred>
+            struct filter_closure : ranges::range_adaptor_closure<filter_closure<Pred>> {
+                Pred pred_;
+                explicit filter_closure(Pred pred) : pred_(std::move(pred)) {}
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::filter_view<all_t<R>, Pred> {
+                    return ranges::filter_view<all_t<R>, Pred>(all(std::forward<R>(r)), pred_);
+                }
+            };
+
+            struct filter_fn {
+                template <typename Pred>
+                constexpr filter_closure<typename std::decay<Pred>::type> operator()(Pred&& pred) const {
+                    return filter_closure<typename std::decay<Pred>::type>(std::forward<Pred>(pred));
+                }
+                template <typename R, typename Pred>
+                auto operator()(R&& r, Pred&& pred) const
+                    -> decltype(ranges::filter_view<all_t<R>, typename std::decay<Pred>::type>(
+                        all(std::forward<R>(r)), std::forward<Pred>(pred))) {
+                    return ranges::filter_view<all_t<R>, typename std::decay<Pred>::type>(
+                        all(std::forward<R>(r)), std::forward<Pred>(pred));
+                }
+            };
+
+            template <typename F>
+            struct transform_closure : ranges::range_adaptor_closure<transform_closure<F>> {
+                F fun_;
+                explicit transform_closure(F fun) : fun_(std::move(fun)) {}
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::transform_view<all_t<R>, F> {
+                    return ranges::transform_view<all_t<R>, F>(all(std::forward<R>(r)), fun_);
+                }
+            };
+
+            struct transform_fn {
+                template <typename F>
+                constexpr transform_closure<typename std::decay<F>::type> operator()(F&& fun) const {
+                    return transform_closure<typename std::decay<F>::type>(std::forward<F>(fun));
+                }
+                template <typename R, typename F>
+                auto operator()(R&& r, F&& fun) const
+                    -> decltype(ranges::transform_view<all_t<R>, typename std::decay<F>::type>(
+                        all(std::forward<R>(r)), std::forward<F>(fun))) {
+                    return ranges::transform_view<all_t<R>, typename std::decay<F>::type>(
+                        all(std::forward<R>(r)), std::forward<F>(fun));
+                }
+            };
+
+            struct take_closure : ranges::range_adaptor_closure<take_closure> {
+                std::ptrdiff_t count_;
+                constexpr explicit take_closure(std::ptrdiff_t count) noexcept : count_(count) {}
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::take_view<all_t<R>> {
+                    return ranges::take_view<all_t<R>>(all(std::forward<R>(r)), count_);
+                }
+            };
+
+            struct take_fn {
+                constexpr take_closure operator()(std::ptrdiff_t count) const {
+                    return take_closure(count);
+                }
+                template <typename R>
+                auto operator()(R&& r, std::ptrdiff_t count) const -> ranges::take_view<all_t<R>> {
+                    return ranges::take_view<all_t<R>>(all(std::forward<R>(r)), count);
+                }
+            };
+
+            struct drop_closure : ranges::range_adaptor_closure<drop_closure> {
+                std::ptrdiff_t count_;
+                constexpr explicit drop_closure(std::ptrdiff_t count) noexcept : count_(count) {}
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::drop_view<all_t<R>> {
+                    return ranges::drop_view<all_t<R>>(all(std::forward<R>(r)), count_);
+                }
+            };
+
+            struct drop_fn {
+                constexpr drop_closure operator()(std::ptrdiff_t count) const {
+                    return drop_closure(count);
+                }
+                template <typename R>
+                auto operator()(R&& r, std::ptrdiff_t count) const -> ranges::drop_view<all_t<R>> {
+                    return ranges::drop_view<all_t<R>>(all(std::forward<R>(r)), count);
+                }
+            };
+
+            struct reverse_fn : ranges::range_adaptor_closure<reverse_fn> {
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::reverse_view<all_t<R>> {
+                    return ranges::reverse_view<all_t<R>>(all(std::forward<R>(r)));
+                }
+            };
+
+        } // namespace detail
+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+        template <typename T>
+        COMPAT_CONSTEXPR_14 ranges::empty_view<T> empty{};
+#endif
+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+        inline constexpr detail::filter_fn filter{};
+        inline constexpr detail::transform_fn transform{};
+        inline constexpr detail::take_fn take{};
+        inline constexpr detail::drop_fn drop{};
+        inline constexpr detail::reverse_fn reverse{};
+#else
+        namespace {
+            constexpr const detail::filter_fn& filter = static_const<detail::filter_fn>::value;
+            constexpr const detail::transform_fn& transform = static_const<detail::transform_fn>::value;
+            constexpr const detail::take_fn& take = static_const<detail::take_fn>::value;
+            constexpr const detail::drop_fn& drop = static_const<detail::drop_fn>::value;
+            constexpr const detail::reverse_fn& reverse = static_const<detail::reverse_fn>::value;
+        }
+#endif
 
     } // namespace views
 

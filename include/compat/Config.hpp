@@ -132,6 +132,9 @@ namespace detail {
 #  define COMPAT_HAS_STD_VIEWS_CACHE_LATEST 0
 #  define COMPAT_HAS_STD_VIEWS_AS_CONST     0
 #  define COMPAT_HAS_STD_CONSTANT_RANGE     0
+#  define COMPAT_HAS_STD_RANGES_CONTAINS    0
+#  define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
+#  define COMPAT_HAS_STD_RANGES_FOLD        0
 
 #else
 
@@ -233,6 +236,33 @@ namespace detail {
 #    define COMPAT_HAS_STD_VIEWS_CACHE_LATEST 1
 #  else
 #    define COMPAT_HAS_STD_VIEWS_CACHE_LATEST 0
+#  endif
+
+// Feature detection: std::ranges::contains (C++23+)
+#  if defined(__cpp_lib_ranges_contains) && (__cpp_lib_ranges_contains >= 202207L)
+#    define COMPAT_HAS_STD_RANGES_CONTAINS 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_CONTAINS 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_CONTAINS 0
+#  endif
+
+// Feature detection: std::ranges::starts_with / ends_with (C++23+)
+#  if defined(__cpp_lib_ranges_starts_ends_with) && (__cpp_lib_ranges_starts_ends_with >= 202106L)
+#    define COMPAT_HAS_STD_RANGES_STARTS_WITH 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_STARTS_WITH 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
+#  endif
+
+// Feature detection: std::ranges::fold_left etc. (C++23+)
+#  if defined(__cpp_lib_ranges_fold) && (__cpp_lib_ranges_fold >= 202207L)
+#    define COMPAT_HAS_STD_RANGES_FOLD 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_FOLD 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_FOLD 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)

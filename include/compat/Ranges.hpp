@@ -29,6 +29,10 @@ namespace compat {
         using std::ranges::subrange;
         using std::ranges::owning_view;
         using detail::self_ranges::ranges::range_adaptor_closure;
+        using std::iter_difference_t;
+        using std::iter_value_t;
+        using std::iter_reference_t;
+
         using std::ranges::iterator_t;
         using std::ranges::sentinel_t;
         using std::ranges::range_difference_t;
@@ -48,6 +52,19 @@ namespace compat {
         template <typename R> using borrowed_range = detail::self_ranges::ranges::borrowed_range<R>;
         template <typename R> using view = detail::self_ranges::ranges::view<R>;
         template <typename R> using viewable_range = detail::self_ranges::ranges::viewable_range<R>;
+
+        using std::ranges::dangling;
+        using std::ranges::borrowed_iterator_t;
+        using std::ranges::borrowed_subrange_t;
+
+        using std::ranges::empty_view;
+        using std::ranges::single_view;
+        using std::ranges::iota_view;
+        using std::ranges::filter_view;
+        using std::ranges::transform_view;
+        using std::ranges::take_view;
+        using std::ranges::drop_view;
+        using std::ranges::reverse_view;
 
 #  if COMPAT_HAS_STD_VIEWS_CONCAT
         using std::ranges::concat_view;
@@ -69,6 +86,14 @@ namespace compat {
     namespace views {
         using std::views::all;
         using std::views::all_t;
+        using std::views::empty;
+        using std::views::single;
+        using std::views::iota;
+        using std::views::filter;
+        using std::views::transform;
+        using std::views::take;
+        using std::views::drop;
+        using std::views::reverse;
 
 #  if COMPAT_HAS_STD_VIEWS_CONCAT
         using std::views::concat;

@@ -11,4 +11,5 @@
 #include "Parse.hpp"
 #include "Ranges.hpp"
 #include "View.hpp"
+#include "Algorithm.hpp"
 

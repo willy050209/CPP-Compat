@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include <iostream>
 
 void run_test_expected();
@@ -7,6 +7,7 @@ void run_test_parse();
 void run_test_print();
 void run_test_string_view();
 void run_test_ranges();
+void run_test_algorithm();
 
 /// <summary>
 /// 單元測試套件整合進入點。
@@ -23,6 +24,7 @@ int main() {
     run_test_print();
     run_test_parse();
     run_test_ranges();
+    run_test_algorithm();
 
 
     TestStats& stats = GetGlobalTestStats();
