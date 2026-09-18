@@ -52,9 +52,9 @@ namespace compat {
 
 ```mermaid
 flowchart TD
-    Call["compat::print / println 呼叫"] --> CheckOS{作業系統平臺}
+    Call["compat::print / println 呼叫"] --> CheckOS{"作業系統平臺"}
     CheckOS -- "Linux / macOS" --> UnixWrite["fwrite(buffer, 1, len, stream)<br>(原生 POSIX UTF-8 輸出)"]
-    CheckOS -- "Windows" --> CheckStream{輸出標的是否為終端 Console？<br>(_isatty && GetConsoleMode)}
+    CheckOS -- "Windows" --> CheckStream{"輸出標的是否為終端 Console？<br>(_isatty && GetConsoleMode)"}
     CheckStream -- "是 (真實終端控制台)" --> WinConvert["轉換 UTF-8 為 UTF-16 (MultiByteToWideChar)"]
     WinConvert --> WinWrite["WriteConsoleW(hConsole, wide_buf, ...)<br>(零亂碼直接渲染)"]
     CheckStream -- "否 (管道/檔案重定向)" --> WinFile["fwrite(buffer, 1, len, stream)<br>(保留完整 UTF-8 Byte Stream)"]
