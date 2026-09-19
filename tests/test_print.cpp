@@ -137,5 +137,34 @@ void run_test_print() {
     TEST_ASSERT_THROWS(compat::println(static_cast<std::FILE*>(nullptr)), std::invalid_argument);
 #endif
 
+    // 13. 測試多國語系、Unicode Emoji 與特殊符號至字串串流
+    std::ostringstream oss_multi;
+    compat::print(oss_multi, "CJK: {}-{}-{}, Emoji: {}, Box: {}, Greek: {}, Cyrillic: {}",
+        "繁體中文", "简体中文", "こんにちは", "🚀🎉✨", "┌─┐", "Γειά", "Привет");
+    TEST_ASSERT(oss_multi.str() == "CJK: 繁體中文-简体中文-こんにちは, Emoji: 🚀🎉✨, Box: ┌─┐, Greek: Γειά, Cyrillic: Привет");
+
+    // 14. 測試 std::cout 與 std::cerr 路由 (確保無崩潰且正常支援 UTF-8 特殊字元)
+    compat::println(std::cout, "   [std::cout UTF-8 Test] 繁體中文: 現代 C++ 控制台路由 🚀");
+    compat::println(std::cerr, "   [std::cerr UTF-8 Test] 繁體中文錯誤串流測試: éöñ 🌟");
+
+    // 15. 測試寬字元與寬字串 (wchar_t, const wchar_t*, std::wstring) 原生轉換至 UTF-8
+#if !COMPAT_HAS_STD_PRINT
+    std::ostringstream oss_wide;
+    std::wstring ws = L"寬字串測試 🌟";
+    compat::print(oss_wide, "Wide char: {}, Wide str: {}, wstring: {}", L'中', L"繁體寬字串 🚀", ws);
+    TEST_ASSERT(oss_wide.str() == "Wide char: 中, Wide str: 繁體寬字串 🚀, wstring: 寬字串測試 🌟");
+    compat::println("   [Console Output Wide] wchar_t: {}, std::wstring: {}", L'測', ws);
+#endif
+
+    // 16. 測試雙位元組（Big5 許功蓋等 0x7B / 0x7D 尾位元組）格式字串防禦
+    std::ostringstream oss_big5_safe;
+    compat::println(oss_big5_safe, "許功蓋餐枯擺測試: {}", "OK");
+    TEST_ASSERT(oss_big5_safe.str() == "許功蓋餐枯擺測試: OK\n");
+
+    // 17. 測試歐系變音符號 (Accented Latin)
+    std::ostringstream oss_eu;
+    compat::print(oss_eu, "Accents: {} {} {} {} {}", "é", "ö", "ñ", "ç", "ü");
+    TEST_ASSERT(oss_eu.str() == "Accents: é ö ñ ç ü");
+
     std::cout << "[PASS] test_print passed." << std::endl;
 }

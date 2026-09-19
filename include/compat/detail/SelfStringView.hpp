@@ -500,7 +500,7 @@ private:
 /// </summary>
 COMPAT_CONSTEXPR_14 bool operator==(string_view lhs, string_view rhs) noexcept {
     return lhs.size() == rhs.size() &&
-           (lhs.data() == rhs.data() || lhs.size() == 0 ||
+           (lhs.size() == 0 ||
             string_view_helper::ConstexprMemcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
 }
 

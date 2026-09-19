@@ -41,7 +41,13 @@ template <typename... Args>
 inline void print(std::ostream& os, compat::string_view fmt, const Args&... args) {
     detail::stack_buffer<512> buf;
     detail::WriteFormattedBuffer(buf, fmt, args...);
-    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    if (&os == &std::cout) {
+        detail::WriteFileUtf8(stdout, buf.view());
+    } else if (&os == &std::cerr || &os == &std::clog) {
+        detail::WriteFileUtf8(stderr, buf.view());
+    } else {
+        os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    }
 }
 
 /// <summary>
@@ -82,7 +88,13 @@ inline void println(std::ostream& os, compat::string_view fmt, const Args&... ar
     detail::stack_buffer<512> buf;
     detail::WriteFormattedBuffer(buf, fmt, args...);
     buf.push_back('\n');
-    os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    if (&os == &std::cout) {
+        detail::WriteFileUtf8(stdout, buf.view());
+    } else if (&os == &std::cerr || &os == &std::clog) {
+        detail::WriteFileUtf8(stderr, buf.view());
+    } else {
+        os.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+    }
 }
 
 /// <summary>
@@ -109,7 +121,13 @@ inline void println(std::FILE* stream) {
 /// </summary>
 /// <param name="os">Target output stream.</param>
 inline void println(std::ostream& os) {
-    os << '\n';
+    if (&os == &std::cout) {
+        detail::WriteFileUtf8(stdout, "\n");
+    } else if (&os == &std::cerr || &os == &std::clog) {
+        detail::WriteFileUtf8(stderr, "\n");
+    } else {
+        os << '\n';
+    }
 }
 
 /// <summary>

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
+#include <cwchar>
 
 #if COMPAT_HAS_STD_FORMAT
 #  include <format>
@@ -45,6 +46,96 @@ struct formatter;
 #endif // !COMPAT_HAS_STD_FORMAT
 
 namespace detail {
+
+/// <summary>
+/// Ensures Windows console input/output code page is set to UTF-8 and enables virtual terminal processing.
+/// </summary>
+inline void EnsureConsoleUtf8() noexcept {
+#if defined(_WIN32)
+    static const bool initialized = []() noexcept {
+        ::SetConsoleOutputCP(CP_UTF8);
+        ::SetConsoleCP(CP_UTF8);
+        HANDLE hOut = ::GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hOut != INVALID_HANDLE_VALUE && hOut != NULL) {
+            DWORD mode = 0;
+            if (::GetConsoleMode(hOut, &mode)) {
+                ::SetConsoleMode(hOut, mode | 0x0004 /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */);
+            }
+        }
+        HANDLE hErr = ::GetStdHandle(STD_ERROR_HANDLE);
+        if (hErr != INVALID_HANDLE_VALUE && hErr != NULL) {
+            DWORD mode = 0;
+            if (::GetConsoleMode(hErr, &mode)) {
+                ::SetConsoleMode(hErr, mode | 0x0004 /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */);
+            }
+        }
+        return true;
+    }();
+    (void)initialized;
+#endif
+}
+
+#if defined(_WIN32)
+namespace {
+    struct ConsoleUtf8AutoInit {
+        ConsoleUtf8AutoInit() noexcept {
+            EnsureConsoleUtf8();
+        }
+    };
+    static const ConsoleUtf8AutoInit g_console_utf8_auto_init;
+}
+#endif
+
+/// <summary>
+/// Validates whether a character sequence is strictly valid UTF-8.
+/// </summary>
+/// <param name="s">String view to validate.</param>
+/// <returns>True if sequence is valid UTF-8, false otherwise.</returns>
+inline bool IsValidUtf8(compat::string_view s) noexcept {
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
+    const unsigned char* end = p + s.size();
+    while (p < end) {
+        if (*p <= 0x7FU) {
+            ++p;
+        } else if (*p >= 0xC2U && *p <= 0xDFU) {
+            if (p + 1 >= end || (p[1] & 0xC0U) != 0x80U) return false;
+            p += 2;
+        } else if (*p >= 0xE0U && *p <= 0xEFU) {
+            if (p + 2 >= end || (p[1] & 0xC0U) != 0x80U || (p[2] & 0xC0U) != 0x80U) return false;
+            if (*p == 0xE0U && p[1] < 0xA0U) return false;
+            if (*p == 0xEDU && p[1] > 0x9FU) return false;
+            p += 3;
+        } else if (*p >= 0xF0U && *p <= 0xF4U) {
+            if (p + 3 >= end || (p[1] & 0xC0U) != 0x80U || (p[2] & 0xC0U) != 0x80U || (p[3] & 0xC0U) != 0x80U) return false;
+            if (*p == 0xF0U && p[1] < 0x90U) return false;
+            if (*p == 0xF4U && p[1] > 0x8FU) return false;
+            p += 4;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+#if defined(_WIN32)
+/// <summary>
+/// Converts an ANSI string encoded in the active system code page (CP_ACP) to a UTF-8 std::string.
+/// </summary>
+/// <param name="s">String view in CP_ACP encoding.</param>
+/// <returns>UTF-8 encoded std::string.</returns>
+inline std::string AcpToUtf8(compat::string_view s) {
+    if (s.empty()) return std::string();
+    int wlen = MultiByteToWideChar(CP_ACP, 0, s.data(), static_cast<int>(s.size()), NULL, 0);
+    if (wlen <= 0) return std::string(s.data(), s.size());
+    std::wstring wstr(static_cast<std::size_t>(wlen), L'\0');
+    MultiByteToWideChar(CP_ACP, 0, s.data(), static_cast<int>(s.size()), &wstr[0], wlen);
+    int u8len = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), wlen, NULL, 0, NULL, NULL);
+    if (u8len <= 0) return std::string(s.data(), s.size());
+    std::string u8str(static_cast<std::size_t>(u8len), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr.data(), wlen, &u8str[0], u8len, NULL, NULL);
+    return u8str;
+}
+#endif
 
 /// <summary>
 /// Small-buffer-optimized stack buffer with fallback to heap allocation for formatted output.
@@ -212,6 +303,84 @@ private:
     char* heap_ptr_;
     std::size_t capacity_;
 };
+
+/// <summary>
+/// Encodes a 32-bit Unicode code point to UTF-8 bytes and appends to stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="cp">Unicode code point.</param>
+template <std::size_t Capacity>
+inline void AppendUtf8CodePoint(stack_buffer<Capacity>& buf, uint32_t cp) {
+    if (cp <= 0x7FU) {
+        buf.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FFU) {
+        buf.push_back(static_cast<char>(0xC0U | ((cp >> 6) & 0x1FU)));
+        buf.push_back(static_cast<char>(0x80U | (cp & 0x3FU)));
+    } else if (cp <= 0xFFFFU) {
+        if (cp >= 0xD800U && cp <= 0xDFFFU) {
+            cp = 0xFFFDU;
+        }
+        buf.push_back(static_cast<char>(0xE0U | ((cp >> 12) & 0x0FU)));
+        buf.push_back(static_cast<char>(0x80U | ((cp >> 6) & 0x3FU)));
+        buf.push_back(static_cast<char>(0x80U | (cp & 0x3FU)));
+    } else if (cp <= 0x10FFFFU) {
+        buf.push_back(static_cast<char>(0xF0U | ((cp >> 18) & 0x07U)));
+        buf.push_back(static_cast<char>(0x80U | ((cp >> 12) & 0x3FU)));
+        buf.push_back(static_cast<char>(0x80U | ((cp >> 6) & 0x3FU)));
+        buf.push_back(static_cast<char>(0x80U | (cp & 0x3FU)));
+    } else {
+        buf.push_back(static_cast<char>(0xEFU));
+        buf.push_back(static_cast<char>(0xBFU));
+        buf.push_back(static_cast<char>(0xBDU));
+    }
+}
+
+/// <summary>
+/// Converts UTF-16 code units to UTF-8 and appends to stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <typeparam name="Char16It">Iterator or pointer to 16-bit characters.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="begin">Start of UTF-16 character sequence.</param>
+/// <param name="end">End of UTF-16 character sequence.</param>
+template <std::size_t Capacity, typename Char16It>
+inline void AppendUtf16ToBuffer(stack_buffer<Capacity>& buf, Char16It begin, Char16It end) {
+    while (begin != end) {
+        uint32_t c1 = static_cast<uint16_t>(*begin++);
+        if (c1 >= 0xD800U && c1 <= 0xDBFFU) {
+            if (begin != end) {
+                uint32_t c2 = static_cast<uint16_t>(*begin);
+                if (c2 >= 0xDC00U && c2 <= 0xDFFFU) {
+                    ++begin;
+                    uint32_t cp = 0x10000U + (((c1 - 0xD800U) << 10) | (c2 - 0xDC00U));
+                    AppendUtf8CodePoint(buf, cp);
+                    continue;
+                }
+            }
+            AppendUtf8CodePoint(buf, 0xFFFDU);
+        } else if (c1 >= 0xDC00U && c1 <= 0xDFFFU) {
+            AppendUtf8CodePoint(buf, 0xFFFDU);
+        } else {
+            AppendUtf8CodePoint(buf, c1);
+        }
+    }
+}
+
+/// <summary>
+/// Converts UTF-32 code units to UTF-8 and appends to stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <typeparam name="Char32It">Iterator or pointer to 32-bit characters.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="begin">Start of UTF-32 character sequence.</param>
+/// <param name="end">End of UTF-32 character sequence.</param>
+template <std::size_t Capacity, typename Char32It>
+inline void AppendUtf32ToBuffer(stack_buffer<Capacity>& buf, Char32It begin, Char32It end) {
+    while (begin != end) {
+        AppendUtf8CodePoint(buf, static_cast<uint32_t>(*begin++));
+    }
+}
 
 /// <summary>
 /// Output iterator adapter appending characters directly into a stack_buffer.
@@ -718,6 +887,58 @@ template <typename F, typename PC>
 inline typename std::enable_if<!has_parse_member<F, PC>::value, void>::type
 CallFormatterParse(F&, PC&) {}
 
+// Forward declarations for concrete FormatArgToBuffer overloads
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::string& val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, compat::string_view val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::wstring& val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char16_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u16string& val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char32_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u32string& val);
+#if defined(__cpp_char8_t)
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char8_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u8string& val);
+#endif
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t (&val)[N]) {
+    const wchar_t* p = val;
+    std::size_t len = (N > 0 && val[N - 1] == L'\0') ? N - 1 : N;
+#if defined(_WIN32)
+    AppendUtf16ToBuffer(buf, p, p + len);
+#else
+    AppendUtf32ToBuffer(buf, p, p + len);
+#endif
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t (&val)[N]) {
+    FormatArgToBuffer(buf, static_cast<const wchar_t (&)[N]>(val));
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char (&val)[N]) {
+    std::size_t len = (N > 0 && val[N - 1] == '\0') ? N - 1 : N;
+    buf.append(val, len);
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char (&val)[N]) {
+    FormatArgToBuffer(buf, static_cast<const char (&)[N]>(val));
+}
+
 template <typename T>
 inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
 FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
@@ -752,6 +973,56 @@ FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_v
     FormatterType formatted_arg = static_cast<FormatterType>(arg);
     fmt_obj.format(formatted_arg, ctx);
 }
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::wstring& arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const wchar_t* arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t* arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+template <std::size_t N>
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const wchar_t (&arg)[N], compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+template <std::size_t N>
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t (&arg)[N], compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u16string& arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char16_t* arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char16_t arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u32string& arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char32_t* arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char32_t arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+#if defined(__cpp_char8_t)
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u8string& arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char8_t* arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char8_t arg, compat::string_view) {
+    FormatArgToBuffer(buf, arg);
+}
+#endif
 
 template <typename T>
 inline typename std::enable_if<!has_compat_formatter<T>::value, void>::type
@@ -792,6 +1063,100 @@ COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char* val) {
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char val) {
     buf.push_back(val);
 }
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t val) {
+#if defined(_WIN32)
+    uint16_t u = static_cast<uint16_t>(val);
+    AppendUtf8CodePoint(buf, u);
+#else
+    AppendUtf8CodePoint(buf, static_cast<uint32_t>(val));
+#endif
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t* val) {
+    if (val != nullptr) {
+        std::size_t len = std::wcslen(val);
+#if defined(_WIN32)
+        AppendUtf16ToBuffer(buf, val, val + len);
+#else
+        AppendUtf32ToBuffer(buf, val, val + len);
+#endif
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t* val) {
+    FormatArgToBuffer(buf, static_cast<const wchar_t*>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::wstring& val) {
+#if defined(_WIN32)
+    AppendUtf16ToBuffer(buf, val.data(), val.data() + val.size());
+#else
+    AppendUtf32ToBuffer(buf, val.data(), val.data() + val.size());
+#endif
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t val) {
+    AppendUtf8CodePoint(buf, static_cast<uint16_t>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char16_t* val) {
+    if (val != nullptr) {
+        const char16_t* p = val;
+        while (*p) ++p;
+        AppendUtf16ToBuffer(buf, val, p);
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t* val) {
+    FormatArgToBuffer(buf, static_cast<const char16_t*>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u16string& val) {
+    AppendUtf16ToBuffer(buf, val.data(), val.data() + val.size());
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t val) {
+    AppendUtf8CodePoint(buf, static_cast<uint32_t>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char32_t* val) {
+    if (val != nullptr) {
+        const char32_t* p = val;
+        while (*p) ++p;
+        AppendUtf32ToBuffer(buf, val, p);
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t* val) {
+    FormatArgToBuffer(buf, static_cast<const char32_t*>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u32string& val) {
+    AppendUtf32ToBuffer(buf, val.data(), val.data() + val.size());
+}
+
+#if defined(__cpp_char8_t)
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t val) {
+    buf.push_back(static_cast<char>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char8_t* val) {
+    if (val != nullptr) {
+        const char8_t* p = val;
+        while (*p) ++p;
+        buf.append(reinterpret_cast<const char*>(val), static_cast<std::size_t>(p - val));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t* val) {
+    FormatArgToBuffer(buf, static_cast<const char8_t*>(val));
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u8string& val) {
+    buf.append(reinterpret_cast<const char*>(val.data()), val.size());
+}
+#endif
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, bool val) {
     if (val) {
@@ -1064,6 +1429,13 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
 /// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
 template <typename... Args>
 inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt, const Args&... args) {
+#if defined(_WIN32)
+    std::string converted_fmt;
+    if (COMPAT_UNLIKELY(!IsValidUtf8(fmt))) {
+        converted_fmt = AcpToUtf8(fmt);
+        fmt = compat::string_view(converted_fmt.data(), converted_fmt.size());
+    }
+#endif
     constexpr std::size_t num_args = sizeof...(Args);
     std::size_t num_placeholders = CountAndValidatePlaceholders(fmt);
     if (num_placeholders < num_args) {
@@ -1105,6 +1477,7 @@ inline void WriteFileUtf8(std::FILE* stream, compat::string_view text) {
         return;
     }
 #if defined(_WIN32)
+    EnsureConsoleUtf8();
     int fd = _fileno(stream);
     if (fd >= 0 && _isatty(fd)) {
         intptr_t osfh = _get_osfhandle(fd);
@@ -1112,7 +1485,15 @@ inline void WriteFileUtf8(std::FILE* stream, compat::string_view text) {
             HANDLE hConsole = reinterpret_cast<HANDLE>(osfh);
             DWORD mode = 0;
             if (hConsole != INVALID_HANDLE_VALUE && hConsole != NULL && GetConsoleMode(hConsole, &mode)) {
-                int wide_len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), NULL, 0);
+#ifndef MB_ERR_INVALID_CHARS
+#  define MB_ERR_INVALID_CHARS 0x00000008
+#endif
+                UINT cp_used = CP_UTF8;
+                int wide_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), NULL, 0);
+                if (wide_len <= 0) {
+                    wide_len = MultiByteToWideChar(CP_ACP, 0, text.data(), static_cast<int>(text.size()), NULL, 0);
+                    cp_used = CP_ACP;
+                }
                 if (wide_len > 0) {
                     wchar_t stack_wbuf[256];
                     wchar_t* wptr = stack_wbuf;
@@ -1121,10 +1502,16 @@ inline void WriteFileUtf8(std::FILE* stream, compat::string_view text) {
                         heap_wbuf.resize(static_cast<std::size_t>(wide_len));
                         wptr = &heap_wbuf[0];
                     }
-                    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wptr, wide_len);
-                    DWORD written = 0;
-                    WriteConsoleW(hConsole, wptr, static_cast<DWORD>(wide_len), &written, NULL);
-                    return;
+                    if (MultiByteToWideChar(cp_used, (cp_used == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0), text.data(), static_cast<int>(text.size()), wptr, wide_len) <= 0) {
+                        if (cp_used == CP_UTF8) {
+                            wide_len = MultiByteToWideChar(CP_ACP, 0, text.data(), static_cast<int>(text.size()), wptr, wide_len);
+                        }
+                    }
+                    if (wide_len > 0) {
+                        DWORD written = 0;
+                        WriteConsoleW(hConsole, wptr, static_cast<DWORD>(wide_len), &written, NULL);
+                        return;
+                    }
                 }
             }
         }

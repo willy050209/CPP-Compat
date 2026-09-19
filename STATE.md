@@ -25,7 +25,19 @@
 - [x] Extraction Phase: BigInt 與 Decimal 獨立模組化
   - [x] 將 BigInt 與 Bitset 獨立遷移至 `CPP-BigInt` 專案（建立獨立 Git、CMake、`numeric::bigint` 與測試套件）
   - [x] 將 Decimal 與 CMath 獨立遷移至 `CPP-Decimal` 專案（建立獨立 Git、CMake、`numeric::decimal` 與測試套件）
-  - [x] 清理 `CPP-Compat` 移除數值擴充檔案，重新生成 `dist/compat.hpp` 與 `dist/compat.ixx`，回歸現代 C++ 標準庫向下相容層純粹定位
+    - [x] 清理 `CPP-Compat` 移除數值擴充檔案，重新生成 `dist/compat.hpp` 與 `dist/compat.ixx`，回歸現代 C++ 標準庫向下相容層純粹定位
+- [x] Terminal & Encoding Fix Phase: 解決 print/println 特殊字元終端與管線亂碼問題
+  - [x] Windows 控制台與管線自動初始化 UTF-8 (`SetConsoleOutputCP`) 與虛擬終端序列
+  - [x] `std::ostream&` (`std::cout`, `std::cerr`) 智慧轉導向至 UTF-8 控制台引擎
+  - [x] 原生支援寬字元/寬字串 (`wchar_t`, `std::wstring`, `char16_t`, `char32_t`, `char8_t`) 至 UTF-8 轉換
+  - [x] 雙位元組字元集（如 Big5 許功蓋尾碼 0x7B / 0x7D）防護與容錯
+  - [x] 完成 Windows MSVC (C++14~latest)、Linux WSL GCC (C++11~26)、Mac 模擬 WSL Clang++ (C++11~26) 矩陣測試全數通過
+- [x] External Project Integration Phase: 解決 `CPP-Compat-test` 專案中文亂碼問題
+  - [x] 在 `SelfPrint.hpp` 的 `MultiByteToWideChar` 加入 `MB_ERR_INVALID_CHARS`，確保非 UTF-8 能夠正確觸發 `CP_ACP` fallback
+  - [x] 重新打包 `dist/compat.hpp` 與 `dist/compat.ixx`
+  - [x] 在 `CPP-Compat-test.vcxproj` 的所有組態設定中加入 `/utf-8` 編譯器選項
+  - [x] 同步最新版單頭檔至 `CPP-Compat-test`，在 MSVC x64 Debug 與 Release 下驗證文字與格式化發牌輸出完全正確
+
 
 
 ## 子代理派發紀錄表

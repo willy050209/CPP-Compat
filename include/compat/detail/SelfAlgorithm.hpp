@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 #include "../Optional.hpp"
@@ -1565,19 +1565,20 @@ namespace compat {
                           typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 O operator()(I first, S last, O out, iter_difference_t<I> n, Gen&& g) const {
                     if (n <= 0) return out;
+                    using diff_t = typename std::iterator_traits<O>::difference_type;
                     iter_difference_t<I> k = 0;
                     for (; first != last && k < n; ++first, ++k) {
-                        out[k] = *first;
+                        *(out + static_cast<diff_t>(k)) = *first;
                     }
-                    iter_difference_t<I> count = k;
-                    for (; first != last; ++first, ++count) {
-                        std::uniform_int_distribution<iter_difference_t<I>> dist(0, count);
+                    iter_difference_t<I> sample_count = k;
+                    for (; first != last; ++first, ++sample_count) {
+                        std::uniform_int_distribution<iter_difference_t<I>> dist(0, sample_count);
                         auto idx = dist(g);
                         if (idx < n) {
-                            out[idx] = *first;
+                            *(out + static_cast<diff_t>(idx)) = *first;
                         }
                     }
-                    return out + k;
+                    return out + static_cast<diff_t>(k);
                 }
 
                 template <typename R, typename O, typename Gen,
