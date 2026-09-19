@@ -63,8 +63,13 @@ namespace compat {
         using std::ranges::filter_view;
         using std::ranges::transform_view;
         using std::ranges::take_view;
+        using std::ranges::take_while_view;
         using std::ranges::drop_view;
+        using std::ranges::drop_while_view;
         using std::ranges::reverse_view;
+
+        using detail::self_ranges::ranges::sentinel_for;
+        using detail::self_ranges::ranges::sized_sentinel_for;
 
 #  if COMPAT_HAS_STD_VIEWS_CONCAT
         using std::ranges::concat_view;
@@ -81,6 +86,11 @@ namespace compat {
 #  else
         using detail::self_ranges::ranges::as_const_view;
 #  endif
+#  if COMPAT_HAS_STD_RANGES_TO
+        using std::ranges::to;
+#  else
+        using detail::self_ranges::ranges::to;
+#  endif
     } // namespace ranges
 
     namespace views {
@@ -92,7 +102,9 @@ namespace compat {
         using std::views::filter;
         using std::views::transform;
         using std::views::take;
+        using std::views::take_while;
         using std::views::drop;
+        using std::views::drop_while;
         using std::views::reverse;
 
 #  if COMPAT_HAS_STD_VIEWS_CONCAT
@@ -116,6 +128,19 @@ namespace compat {
         namespace views = compat::views;
     }
 
+#  if COMPAT_HAS_STD_RANGES_TO
+    using std::from_range_t;
+    using std::from_range;
+#  else
+    using ::compat::detail::self_ranges::ranges::from_range_t;
+    using ::compat::detail::self_ranges::ranges::from_range;
+#  endif
+
+    namespace ranges {
+        using ::compat::from_range_t;
+        using ::compat::from_range;
+    }
+
 #  if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__cpp_lib_common_reference)
     using std::common_reference;
     using std::common_reference_t;
@@ -126,11 +151,14 @@ namespace compat {
 } // namespace compat
 #else
 namespace compat {
+    using ::compat::detail::self_ranges::ranges::from_range_t;
+    using ::compat::detail::self_ranges::ranges::from_range;
+
     namespace ranges {
-        using namespace detail::self_ranges::ranges;
+        using namespace ::compat::detail::self_ranges::ranges;
     }
     namespace views {
-        using namespace detail::self_ranges::views;
+        using namespace ::compat::detail::self_ranges::views;
     }
     namespace ranges {
         namespace views = compat::views;

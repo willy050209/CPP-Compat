@@ -34,11 +34,13 @@
   - 當編譯器支援現代標準（如 C++20/23/26）時，直接透傳至原生 `std`，享受極致零負擔編譯器最佳化。
   - 當編譯環境為舊版（C++11/14/17）或缺乏原生庫支援時，無縫切換至純自研、輕量級且型別安全之 Fallback 實作。
 - **向下相容至 C++11**：舊標準缺乏 `<variant>`、`<string_view>`、`<format>`、`<ranges>` 時，自動啟用基於 C++11 無限制聯合體（Tagged Unrestricted Union）之 `expected`、自研 `string_view`、自研串流格式化引擎與純自研 Ranges / Algorithms 模組。
-- **ISO C++26 前沿特性**：
-  - `compat::views::concat` (P2542R8 / N4984)：前綴長度儲存、雙向狀態機、跳過空區間與 $O(1)$ 下標跳轉階梯。
-  - `compat::views::cache_latest` (P3138R5)：嚴格的 `non-propagating-cache` 快取語意。
-  - `compat::ranges::constant_range` (P2728R6)：唯讀範圍概念合約。
-- **受約束範圍演算法全家族**：40+ 個全套 `compat::ranges::*` 演算法，支援 Niebloid 呼叫防護、投影（PMF/PMD 成員指標）與標籤結果型別（`in_out_result` 等）。
+- **ISO C++23 & C++26 前沿特性**：
+  - `compat::ranges::to` (C++23 / P1206R7)：將任意 Range 轉為容器（支援管線語法 `r | to<vector>()`、樣板引數推導與 Fallback Emplace/Insert 迭代）。
+  - `compat::views::concat` (C++26 / P2542R8 / N4984)：前綴長度儲存、雙向狀態機、跳過空區間與 $O(1)$ 下標跳轉階梯。
+  - `compat::views::cache_latest` (C++26 / P3138R5)：嚴格的 `non-propagating-cache` 快取語意。
+  - `compat::ranges::constant_range` (C++26 / P2728R6)：唯讀範圍概念合約。
+  - `compat::views::take_while` / `compat::views::drop_while` (C++20)：條件式截取與略過視圖適配器。
+- **受約束範圍演算法全家族**：40+ 個全套 `compat::ranges::*` 演算法，支援 Niebloid 呼叫防護、投影（PMF/PMD 成員指標）與標籤結果型別（`in_out_result` 等）；重載嚴格約束 `sentinel_for<S, I>`，徹底杜絕自訂 Lambda 與成員指針在 MSVC/GCC/Clang 上的多載解析衝突（Overload Ambiguity）。
 - **自訂型別格式化**：`compat::formatter<T>` 擴充介面，完全相容 `std::formatter<T>` 語意。
 - **Windows UTF-8 終端支援**：透過 `WriteConsoleW` 直寫通道正確輸出 Unicode，徹底杜絕亂碼，無需 `SetConsoleOutputCP(65001)`。
 - **強型別字串解析 `parse<T>`**：純函數、無例外、Fail-fast 安全轉換（支援 `int8_t`~`uint64_t`、`float`、`double`、`bool`、`string`）。

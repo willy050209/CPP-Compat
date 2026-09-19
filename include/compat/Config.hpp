@@ -135,6 +135,7 @@ namespace detail {
 #  define COMPAT_HAS_STD_RANGES_CONTAINS    0
 #  define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
 #  define COMPAT_HAS_STD_RANGES_FOLD        0
+#  define COMPAT_HAS_STD_RANGES_TO          0
 
 #else
 
@@ -263,6 +264,15 @@ namespace detail {
 #    define COMPAT_HAS_STD_RANGES_FOLD 1
 #  else
 #    define COMPAT_HAS_STD_RANGES_FOLD 0
+#  endif
+
+// Feature detection: std::ranges::to (C++23 / P1206R7)
+#  if defined(__cpp_lib_ranges_to_container) && (__cpp_lib_ranges_to_container >= 202202L)
+#    define COMPAT_HAS_STD_RANGES_TO 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_TO 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_TO 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)

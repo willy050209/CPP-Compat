@@ -39,7 +39,9 @@ auto pipeline = numbers
 | `compat::views::filter(pred)` | `filter_view<V, Pred>` | 依據謂詞 `pred` 惰性過濾元素。快取首個相符元素 (C++20)。 |
 | `compat::views::transform(func)` | `transform_view<V, F>` | 依據轉換函式 `func` 惰性對每個元素進行投影轉換 (C++20)。 |
 | `compat::views::take(n)` | `take_view<V>` | 取出前 `n` 個元素；若不足 `n` 個則取至結尾 (C++20)。 |
+| `compat::views::take_while(pred)` | `take_while_view<V, Pred>` | 依據謂詞 `pred` 條件滿足時截取元素，直至首個不滿足處停止 (C++20)。 |
 | `compat::views::drop(n)` | `drop_view<V>` | 略過前 `n` 個元素，從第 `n+1` 個元素開始遍歷 (C++20)。 |
+| `compat::views::drop_while(pred)` | `drop_while_view<V, Pred>` | 依據謂詞 `pred` 條件滿足時跳過元素，自首個不滿足處開始遍歷 (C++20)。 |
 | `compat::views::reverse` | `reverse_view<V>` | 將雙向 Range 反向逆序遍歷 (C++20)。 |
 
 ### 3. 現代前沿視圖 (C++23 & C++26 Views)

@@ -21,9 +21,19 @@
   - 成員變數指標（Pointer to Member Data, PMD）。
 
 ```cpp
-// 投影範例：依照結構體中的 age 欄位進行排序
+// 投影範例 1：依照結構體中的 age 欄位進行預設升冪排序
 compat::ranges::sort(people, {}, &Person::age);
+
+// 投影範例 2：直接傳入自訂 Comparator Lambda 與投影（完全無歧義匹配）
+compat::ranges::sort(users, [](int a, int b) { return a > b; }, &User::score);
+
+// 投影範例 3：find_if 搭配條件 Lambda 與投影
+auto it = compat::ranges::find_if(users, [](int s) { return s >= 90; }, &User::score);
 ```
+
+> [!TIP]
+> **多載重載解析保證 (Overload Resolution Guarantee)**  
+> 所有支援迭代器對與 Range 重載的演算法（如 `sort`、`find_if` 等），其迭代器版本均嚴格約束 `sentinel_for<S, I> && !range<decay<I>>`。當傳入 `(container, lambda, projection)` 呼叫時，由於 lambda/述詞無法與容器迭代器比對，迭代器重載將精準被 SFINAE 剔除，保證 100% 直達 Range 重載，徹底消除 MSVC/GCC/Clang 上的函式重載歧義（Overload Ambiguity / C2668 / E0308）。
 
 ---
 

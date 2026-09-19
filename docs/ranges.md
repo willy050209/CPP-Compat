@@ -38,6 +38,8 @@ graph TD
 | `contiguous_range<R>` | 元素在記憶體中連續儲存（可透過 `ranges::data(r)` 取得實體指標）。 |
 | `borrowed_range<R>` | 當 R 為右值臨時物件時，自其取得的迭代器不會懸空（如 `std::string_view` 或 `subrange`）。 |
 | `constant_range<R>` | **ISO C++26 (P2728R6)**：迭代器解參考回傳唯讀 const 參考。 |
+| `sentinel_for<S, I>` | **ISO C++20**：指定型別 S 是迭代器型別 I 的哨兵（可透過 `it == s` 與 `it != s` 比較）。 |
+| `sized_sentinel_for<S, I>` | **ISO C++20**：指定哨兵 S 與迭代器 I 支援常數時間差值計算（`s - it` 與 `it - s`）。 |
 
 ---
 
@@ -51,6 +53,22 @@ template <typename R> using range_reference_t = decltype(*std::declval<iterator_
 template <typename R> using range_difference_t= typename std::iterator_traits<iterator_t<R>>::difference_type;
 template <typename R> using range_rvalue_reference_t = /* 右值參考 */;
 ```
+
+---
+
+## 範圍轉換函式與標記 (ISO C++23: `ranges::to` & `from_range`)
+
+### 1. `compat::ranges::to<C>(r, [args...])`
+將任意 Range 物件直接轉換、蒐集並構造為指定容器：
+- **容器建構優先序**：
+  1. 若容器支援 `C(from_range, r, args...)` 則優先呼叫（ISO C++23 Range 建構式）。
+  2. 若為 `common_range` 且支援 `C(begin, end, args...)` 則透過迭代器區間建構。
+  3. 預設建構容器並自動保留空間（`c.reserve(size(r))`），依序呼叫 `emplace_back` / `push_back` / `emplace` / `insert` 追加元素。
+- **樣板容器型別推導**：支援 `to<std::vector>(r)`、`to<std::set>(r)`、`to<std::list>(r)` 等樣板樣板引數推導；鍵值對（Pair Range）自動推導 `std::map<K, V>`。
+- **管線管道語法**：支援以管線運算子串接：`r | compat::ranges::to<std::vector>()`。
+
+### 2. `compat::from_range_t` 與 `compat::from_range`
+ISO C++23 容器範圍建構式的專用分派標記型別與全域常數實體（`std::from_range` 對齊）。
 
 ---
 

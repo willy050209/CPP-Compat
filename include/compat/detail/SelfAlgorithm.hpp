@@ -187,10 +187,16 @@ namespace compat {
             namespace range_detail = compat::detail::self_ranges::ranges::detail;
             using namespace compat::detail::self_ranges::ranges;
 
+            template <typename I, typename S>
+            struct is_iterator_sentinel_pair : std::integral_constant<bool,
+                sentinel_for<S, I>::value && !range<typename std::decay<I>::type>::value
+            > {};
+
             // --- Non-modifying Sequence Algorithms ---
 
             struct all_of_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -208,7 +214,8 @@ namespace compat {
             };
 
             struct any_of_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -226,7 +233,8 @@ namespace compat {
             };
 
             struct none_of_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -244,7 +252,8 @@ namespace compat {
             };
 
             struct for_each_fn {
-                template <typename I, typename S, typename F, typename Proj = compat::identity>
+                template <typename I, typename S, typename F, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 for_each_result<I, F> operator()(I first, S last, F f, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         compat::detail::invoke(f, compat::detail::invoke(proj, *first));
@@ -270,7 +279,8 @@ namespace compat {
             };
 
             struct count_fn {
-                template <typename I, typename S, typename T, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 iter_difference_t<I> operator()(I first, S last, const T& value, Proj proj = {}) const {
                     iter_difference_t<I> counter = 0;
                     for (; first != last; ++first) {
@@ -289,7 +299,8 @@ namespace compat {
             };
 
             struct count_if_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 iter_difference_t<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     iter_difference_t<I> counter = 0;
                     for (; first != last; ++first) {
@@ -310,7 +321,8 @@ namespace compat {
             struct mismatch_fn {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 mismatch_result<I1, I2> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                                              Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     while (first1 != last1 && first2 != last2 &&
@@ -337,7 +349,8 @@ namespace compat {
             struct equal_fn {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
@@ -363,7 +376,8 @@ namespace compat {
             struct lexicographical_compare_fn {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Comp = compat::detail::less_fn,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; (first1 != last1) && (first2 != last2); ++first1, ++first2) {
@@ -392,7 +406,7 @@ namespace compat {
 
             struct find_fn {
                 template <typename I, typename S, typename T, typename Proj = compat::identity,
-                          typename = typename std::enable_if<!range<I>::value>::type>
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(proj, *first) == value) {
@@ -410,7 +424,8 @@ namespace compat {
             };
 
             struct find_if_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -428,7 +443,8 @@ namespace compat {
             };
 
             struct find_if_not_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -446,7 +462,8 @@ namespace compat {
             };
 
             struct adjacent_find_fn {
-                template <typename I, typename S, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I next = first;
@@ -470,7 +487,8 @@ namespace compat {
             struct search_fn {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I1> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                                   Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     if (first2 == last2) return {first1, first1};
@@ -501,7 +519,8 @@ namespace compat {
             };
 
             struct contains_fn {
-                template <typename I, typename S, typename T, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, const T& value, Proj proj = {}) const {
                     return find_fn{}(first, last, value, std::move(proj)) != last;
                 }
@@ -516,7 +535,8 @@ namespace compat {
             struct starts_with_fn {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
@@ -542,7 +562,8 @@ namespace compat {
             struct ends_with_fn {
                 template <typename I1, typename S1, typename I2, typename S2,
                           typename Pred = compat::detail::equal_to_fn,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                           Pred pred = {}, Proj1 proj1 = {}, Proj2 proj2 = {}) const {
                     // 若為雙向迭代器則從尾部往前回溯
@@ -571,7 +592,8 @@ namespace compat {
             };
 
             struct fold_left_fn {
-                template <typename I, typename S, typename T, typename F>
+                template <typename I, typename S, typename T, typename F,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 T operator()(I first, S last, T init, F f) const {
                     for (; first != last; ++first) {
                         init = compat::detail::invoke(f, std::move(init), *first);
@@ -589,7 +611,8 @@ namespace compat {
             // --- Modifying Sequence Algorithms ---
 
             struct copy_fn {
-                template <typename I, typename S, typename O>
+                template <typename I, typename S, typename O,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 copy_result<I, O> operator()(I first, S last, O result) const {
                     for (; first != last; ++first, ++result) {
                         *result = *first;
@@ -605,7 +628,8 @@ namespace compat {
             };
 
             struct copy_if_fn {
-                template <typename I, typename S, typename O, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename O, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 copy_result<I, O> operator()(I first, S last, O result, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -634,7 +658,8 @@ namespace compat {
             };
 
             struct copy_backward_fn {
-                template <typename I1, typename S1, typename I2>
+                template <typename I1, typename S1, typename I2,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value>::type>
                 COMPAT_CONSTEXPR_14 copy_result<I1, I2> operator()(I1 first1, S1 last1, I2 last2) const {
                     I1 it = last1;
                     while (it != first1) {
@@ -653,7 +678,8 @@ namespace compat {
             };
 
             struct move_fn {
-                template <typename I, typename S, typename O>
+                template <typename I, typename S, typename O,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 move_result<I, O> operator()(I first, S last, O result) const {
                     for (; first != last; ++first, ++result) {
                         *result = std::move(*first);
@@ -669,7 +695,8 @@ namespace compat {
             };
 
             struct move_backward_fn {
-                template <typename I1, typename S1, typename I2>
+                template <typename I1, typename S1, typename I2,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value>::type>
                 COMPAT_CONSTEXPR_14 move_result<I1, I2> operator()(I1 first1, S1 last1, I2 last2) const {
                     I1 it = last1;
                     while (it != first1) {
@@ -688,7 +715,8 @@ namespace compat {
             };
 
             struct fill_fn {
-                template <typename T, typename I, typename S>
+                template <typename T, typename I, typename S,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value) const {
                     for (; first != last; ++first) {
                         *first = value;
@@ -716,7 +744,7 @@ namespace compat {
             struct transform_fn {
                 // 單元變換 (Unary)
                 template <typename I, typename S, typename O, typename F, typename Proj = compat::identity,
-                          typename = typename std::enable_if<!range<I>::value>::type>
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 unary_transform_result<I, O> operator()(I first, S last, O result, F op, Proj proj = {}) const {
                     for (; first != last; ++first, ++result) {
                         *result = compat::detail::invoke(op, compat::detail::invoke(proj, *first));
@@ -732,7 +760,8 @@ namespace compat {
 
                 // 二元變換 (Binary)
                 template <typename I1, typename S1, typename I2, typename S2, typename O, typename F,
-                          typename Proj1 = compat::identity, typename Proj2 = compat::identity>
+                          typename Proj1 = compat::identity, typename Proj2 = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 binary_transform_result<I1, I2, O> operator()(I1 first1, S1 last1, I2 first2, S2 last2,
                                                                         O result, F op,
                                                                         Proj1 proj1 = {}, Proj2 proj2 = {}) const {
@@ -755,7 +784,8 @@ namespace compat {
             };
 
             struct generate_fn {
-                template <typename I, typename S, typename F>
+                template <typename I, typename S, typename F,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, F gen) const {
                     for (; first != last; ++first) {
                         *first = gen();
@@ -781,7 +811,8 @@ namespace compat {
             };
 
             struct remove_if_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     first = find_if_fn{}(first, last, pred, proj);
                     if (first != last) {
@@ -804,7 +835,8 @@ namespace compat {
             };
 
             struct remove_fn {
-                template <typename I, typename S, typename T, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, const T& value, Proj proj = {}) const {
                     return remove_if_fn{}(first, last, [&value](const T& x) { return x == value; }, std::move(proj));
                 }
@@ -817,7 +849,8 @@ namespace compat {
             };
 
             struct replace_if_fn {
-                template <typename I, typename S, typename Pred, typename T, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename T, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, const T& new_value, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) {
@@ -835,7 +868,8 @@ namespace compat {
             };
 
             struct replace_fn {
-                template <typename I, typename S, typename T1, typename T2, typename Proj = compat::identity>
+                template <typename I, typename S, typename T1, typename T2, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T1& old_value, const T2& new_value, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (compat::detail::invoke(proj, *first) == old_value) {
@@ -853,7 +887,8 @@ namespace compat {
             };
 
             struct swap_ranges_fn {
-                template <typename I1, typename S1, typename I2, typename S2>
+                template <typename I1, typename S1, typename I2, typename S2,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I1, S1>::value && is_iterator_sentinel_pair<I2, S2>::value>::type>
                 COMPAT_CONSTEXPR_14 swap_ranges_result<I1, I2> operator()(I1 first1, S1 last1, I2 first2, S2 last2) const {
                     for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
                         using std::swap;
@@ -872,7 +907,8 @@ namespace compat {
             };
 
             struct reverse_fn {
-                template <typename I, typename S>
+                template <typename I, typename S,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last) const {
                     I end_it = last;
                     while (first != end_it && first != --end_it) {
@@ -891,7 +927,8 @@ namespace compat {
             };
 
             struct reverse_copy_fn {
-                template <typename I, typename S, typename O>
+                template <typename I, typename S, typename O,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 reverse_copy_result<I, O> operator()(I first, S last, O result) const {
                     I it = last;
                     while (it != first) {
@@ -910,7 +947,8 @@ namespace compat {
             };
 
             struct rotate_fn {
-                template <typename I, typename S>
+                template <typename I, typename S,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, I middle, S last) const {
                     I next = middle;
                     while (first != next) {
@@ -933,7 +971,8 @@ namespace compat {
             };
 
             struct unique_fn {
-                template <typename I, typename S, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred = compat::detail::equal_to_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, Pred pred = {}, Proj proj = {}) const {
                     if (first == last) return {first, first};
                     I dest = first;
@@ -961,7 +1000,8 @@ namespace compat {
             // --- Partitioning Operations ---
 
             struct is_partitioned_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     for (; first != last; ++first) {
                         if (!compat::detail::invoke(pred, compat::detail::invoke(proj, *first))) break;
@@ -980,7 +1020,8 @@ namespace compat {
             };
 
             struct partition_point_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     auto len = std::distance(first, last);
                     while (len > 0) {
@@ -1005,7 +1046,8 @@ namespace compat {
             };
 
             struct partition_fn {
-                template <typename I, typename S, typename Pred, typename Proj = compat::identity>
+                template <typename I, typename S, typename Pred, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, Pred pred, Proj proj = {}) const {
                     first = find_if_not_fn{}(first, last, pred, proj);
                     if (first == last) return {first, first};
@@ -1029,7 +1071,8 @@ namespace compat {
             // --- Sorting & Binary Search Operations ---
 
             struct is_sorted_until_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I next = first;
@@ -1050,7 +1093,8 @@ namespace compat {
             };
 
             struct is_sorted_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     return is_sorted_until_fn{}(first, last, std::move(comp), std::move(proj)) == last;
                 }
@@ -1063,7 +1107,8 @@ namespace compat {
             };
 
             struct sort_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     std::sort(first, last, [&comp, &proj](const decltype(*first)& a, const decltype(*first)& b) {
                         return compat::detail::invoke(comp, compat::detail::invoke(proj, a),
@@ -1080,7 +1125,8 @@ namespace compat {
             };
 
             struct stable_sort_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     std::stable_sort(first, last, [&comp, &proj](const decltype(*first)& a, const decltype(*first)& b) {
                         return compat::detail::invoke(comp, compat::detail::invoke(proj, a),
@@ -1097,7 +1143,8 @@ namespace compat {
             };
 
             struct lower_bound_fn {
-                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     auto len = std::distance(first, last);
                     while (len > 0) {
@@ -1122,7 +1169,8 @@ namespace compat {
             };
 
             struct upper_bound_fn {
-                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     auto len = std::distance(first, last);
                     while (len > 0) {
@@ -1147,7 +1195,8 @@ namespace compat {
             };
 
             struct equal_range_fn {
-                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 subrange<I> operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     return {lower_bound_fn{}(first, last, value, comp, proj),
                             upper_bound_fn{}(first, last, value, comp, proj)};
@@ -1161,7 +1210,8 @@ namespace compat {
             };
 
             struct binary_search_fn {
-                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename T, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 bool operator()(I first, S last, const T& value, Comp comp = {}, Proj proj = {}) const {
                     I it = lower_bound_fn{}(first, last, value, comp, proj);
                     return it != last && !compat::detail::invoke(comp, value, compat::detail::invoke(proj, *it));
@@ -1177,7 +1227,8 @@ namespace compat {
             // --- Min/Max Operations ---
 
             struct min_element_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I smallest = first;
@@ -1199,7 +1250,8 @@ namespace compat {
             };
 
             struct max_element_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 I operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     if (first == last) return first;
                     I largest = first;
@@ -1221,7 +1273,8 @@ namespace compat {
             };
 
             struct minmax_element_fn {
-                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity>
+                template <typename I, typename S, typename Comp = compat::detail::less_fn, typename Proj = compat::identity,
+                          typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
                 COMPAT_CONSTEXPR_14 minmax_element_result<I> operator()(I first, S last, Comp comp = {}, Proj proj = {}) const {
                     I min_it = first;
                     I max_it = first;

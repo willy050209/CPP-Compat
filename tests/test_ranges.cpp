@@ -4,6 +4,10 @@
 
 #include <vector>
 #include <string>
+#include <list>
+#include <set>
+#include <map>
+#include <utility>
 #include <type_traits>
 #include <memory>
 
@@ -245,6 +249,78 @@ namespace {
         TEST_ASSERT(*piped4.begin() == 100);
     }
 
+    void test_views_take_while_and_drop_while() {
+        std::vector<int> v = {1, 2, 3, 4, 5, 6};
+
+        // take_while
+        auto tw = v | compat::views::take_while([](int x) { return x < 4; });
+        std::vector<int> tw_res;
+        for (auto it = tw.begin(); it != tw.end(); ++it) {
+            tw_res.push_back(*it);
+        }
+        TEST_ASSERT(tw_res.size() == 3);
+        TEST_ASSERT(tw_res[0] == 1 && tw_res[1] == 2 && tw_res[2] == 3);
+
+        // drop_while
+        auto dw = v | compat::views::drop_while([](int x) { return x < 4; });
+        std::vector<int> dw_res;
+        for (auto it = dw.begin(); it != dw.end(); ++it) {
+            dw_res.push_back(*it);
+        }
+        TEST_ASSERT(dw_res.size() == 3);
+        TEST_ASSERT(dw_res[0] == 4 && dw_res[1] == 5 && dw_res[2] == 6);
+    }
+
+    void test_ranges_to() {
+        std::vector<int> v = {1, 2, 3, 4, 5};
+        auto tw = v | compat::views::take_while([](int x) { return x <= 3; });
+
+        // 1. Concrete container: to<std::vector<int>>(r)
+        auto vec1 = compat::ranges::to<std::vector<int>>(tw);
+        TEST_ASSERT(vec1.size() == 3);
+        TEST_ASSERT(vec1[0] == 1 && vec1[1] == 2 && vec1[2] == 3);
+
+        // 2. Concrete container pipe: r | to<std::vector<int>>()
+        auto vec2 = tw | compat::ranges::to<std::vector<int>>();
+        TEST_ASSERT(vec2.size() == 3);
+        TEST_ASSERT(vec2[0] == 1 && vec2[1] == 2 && vec2[2] == 3);
+
+        // 3. Template template deduction: to<std::vector>(r)
+        auto vec3 = compat::ranges::to<std::vector>(tw);
+        TEST_ASSERT(vec3.size() == 3);
+        TEST_ASSERT(vec3[0] == 1 && vec3[1] == 2 && vec3[2] == 3);
+
+        // 4. Template template pipe: r | to<std::vector>()
+        auto vec4 = tw | compat::ranges::to<std::vector>();
+        TEST_ASSERT(vec4.size() == 3);
+        TEST_ASSERT(vec4[0] == 1 && vec4[1] == 2 && vec4[2] == 3);
+
+        // 5. Deduce std::list
+        auto lst = tw | compat::ranges::to<std::list>();
+        TEST_ASSERT(lst.size() == 3);
+        TEST_ASSERT(lst.front() == 1 && lst.back() == 3);
+
+        // 6. Deduce std::set
+        auto st = tw | compat::ranges::to<std::set>();
+        TEST_ASSERT(st.size() == 3);
+        TEST_ASSERT(st.count(1) == 1 && st.count(3) == 1);
+
+        // 7. Deduce std::map from key-value pairs
+        std::vector<std::pair<int, std::string>> pairs = {
+            {10, "ten"},
+            {20, "twenty"}
+        };
+        auto m = compat::ranges::to<std::map>(pairs);
+        TEST_ASSERT(m.size() == 2);
+        TEST_ASSERT(m[10] == "ten");
+        TEST_ASSERT(m[20] == "twenty");
+
+        // 8. Pipe to std::map
+        auto m_pipe = pairs | compat::ranges::to<std::map>();
+        TEST_ASSERT(m_pipe.size() == 2);
+        TEST_ASSERT(m_pipe[20] == "twenty");
+    }
+
 } // namespace
 
 void run_test_ranges() {
@@ -259,5 +335,7 @@ void run_test_ranges() {
     test_views_cache_latest();
     test_views_as_const();
     test_pipeline_syntax();
+    test_views_take_while_and_drop_while();
+    test_ranges_to();
     std::cout << "  test_ranges passed." << std::endl;
 }

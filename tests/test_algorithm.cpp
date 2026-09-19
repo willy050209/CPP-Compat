@@ -270,6 +270,39 @@ namespace {
         TEST_ASSERT(dr_res[2] == 8);
     }
 
+    struct User {
+        int id;
+        std::string name;
+        int score;
+    };
+
+    void test_user_overload_resolution() {
+        std::vector<User> users = {
+            {1, "Alice", 85},
+            {2, "Bob", 95},
+            {3, "Charlie", 70}
+        };
+
+        // User's exact case: sort(users, lambda, &User::score)
+        compat::ranges::sort(users, [](int a, int b) { return a > b; }, &User::score);
+        TEST_ASSERT(users[0].name == "Bob" && users[0].score == 95);
+        TEST_ASSERT(users[1].name == "Alice" && users[1].score == 85);
+        TEST_ASSERT(users[2].name == "Charlie" && users[2].score == 70);
+
+        // find_if(users, lambda, &User::score)
+        auto it = compat::ranges::find_if(users, [](int s) { return s == 85; }, &User::score);
+        TEST_ASSERT(it != users.end() && it->name == "Alice");
+
+        // Raw array with lambda and projection
+        User arr[3] = {
+            {1, "Alice", 85},
+            {2, "Bob", 95},
+            {3, "Charlie", 70}
+        };
+        compat::ranges::sort(arr, [](int a, int b) { return a < b; }, &User::score);
+        TEST_ASSERT(arr[0].score == 70 && arr[2].score == 95);
+    }
+
 } // namespace
 
 void run_test_algorithm() {
@@ -280,5 +313,6 @@ void run_test_algorithm() {
     test_projections();
     test_min_max_algorithms();
     test_views_pipeline_and_composition();
+    test_user_overload_resolution();
     std::cout << "  test_algorithm passed." << std::endl;
 }

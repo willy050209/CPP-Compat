@@ -614,6 +614,68 @@ namespace self_ranges {
             range<R>::value && (borrowed_range<R>::value || view<remove_cvref_t<R>>::value)
         > {};
 
+        /// <summary>
+        /// ISO C++23 範圍建構式標記型別 (對齊 std::from_range_t)。
+        /// </summary>
+        struct from_range_t {
+            explicit from_range_t() = default;
+        };
+
+        /// <summary>
+        /// ISO C++23 範圍建構式標記常數實體 (對齊 std::from_range)。
+        /// </summary>
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+        inline constexpr from_range_t from_range{};
+#else
+        namespace {
+            constexpr const from_range_t& from_range = static_const<from_range_t>::value;
+        }
+#endif
+
+        namespace detail {
+            template <typename S, typename I>
+            struct is_sentinel_for {
+            private:
+                template <typename U, typename V>
+                static auto test(int) -> decltype(
+                    std::declval<const V&>() == std::declval<const U&>(),
+                    std::declval<const V&>() != std::declval<const U&>(),
+                    std::true_type{}
+                );
+                template <typename, typename>
+                static std::false_type test(...);
+            public:
+                static constexpr bool value = decltype(test<S, I>(0))::value;
+            };
+
+            template <typename S, typename I>
+            struct is_sized_sentinel_for {
+            private:
+                template <typename U, typename V>
+                static auto test(int) -> decltype(
+                    std::declval<const U&>() - std::declval<const V&>(),
+                    std::declval<const V&>() - std::declval<const U&>(),
+                    std::true_type{}
+                );
+                template <typename, typename>
+                static std::false_type test(...);
+            public:
+                static constexpr bool value = is_sentinel_for<S, I>::value && decltype(test<S, I>(0))::value;
+            };
+        } // namespace detail
+
+        /// <summary>
+        /// ISO C++20 哨兵概念特性萃取 (對齊 std::sentinel_for<S, I>)。
+        /// </summary>
+        template <typename S, typename I>
+        struct sentinel_for : std::integral_constant<bool, detail::is_sentinel_for<S, I>::value> {};
+
+        /// <summary>
+        /// ISO C++20 定長哨兵概念特性萃取 (對齊 std::sized_sentinel_for<S, I>)。
+        /// </summary>
+        template <typename S, typename I>
+        struct sized_sentinel_for : std::integral_constant<bool, detail::is_sized_sentinel_for<S, I>::value> {};
+
         // --- Pipeline Machinery & Adaptor Closures ---
         template <typename Derived>
         struct range_adaptor_closure;
@@ -1285,6 +1347,85 @@ namespace self_ranges {
             }
         };
 
+        // --- take_while_view ---
+        /// <summary>
+        /// 條件滿足時截取元素 View (對齊 C++20 std::ranges::take_while_view)。
+        /// </summary>
+        template <typename V, typename Pred>
+        class take_while_view : public view_interface<take_while_view<V, Pred>> {
+        private:
+            V base_{};
+            Pred pred_{};
+
+            template <bool IsConst>
+            class sentinel_impl {
+            private:
+                using BaseSent = typename maybe_const_sent<V, IsConst && range<const V>::value>::type;
+                BaseSent end_{};
+                const Pred* pred_{nullptr};
+            public:
+                sentinel_impl() = default;
+                explicit sentinel_impl(BaseSent end, const Pred* pred) : end_(std::move(end)), pred_(pred) {}
+
+                BaseSent base() const { return end_; }
+
+                template <typename Iter, typename = typename std::enable_if<
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<V>>::value ||
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<const V>>::value
+                >::type>
+                friend bool operator==(const Iter& it, const sentinel_impl& s) {
+                    return it == s.end_ || !bool((*s.pred_)(*it));
+                }
+                template <typename Iter, typename = typename std::enable_if<
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<V>>::value ||
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<const V>>::value
+                >::type>
+                friend bool operator==(const sentinel_impl& s, const Iter& it) {
+                    return it == s;
+                }
+                template <typename Iter, typename = typename std::enable_if<
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<V>>::value ||
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<const V>>::value
+                >::type>
+                friend bool operator!=(const Iter& it, const sentinel_impl& s) {
+                    return !(it == s);
+                }
+                template <typename Iter, typename = typename std::enable_if<
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<V>>::value ||
+                    std::is_same<typename std::decay<Iter>::type, iterator_t<const V>>::value
+                >::type>
+                friend bool operator!=(const sentinel_impl& s, const Iter& it) {
+                    return !(it == s);
+                }
+            };
+
+        public:
+            take_while_view() = default;
+            take_while_view(V base, Pred pred) : base_(std::move(base)), pred_(std::move(pred)) {}
+
+            V base() const & { return base_; }
+            V base() && { return std::move(base_); }
+            const Pred& pred() const { return pred_; }
+
+            auto begin() -> decltype(detail::begin_fn{}(base_)) {
+                return detail::begin_fn{}(base_);
+            }
+
+            template <typename VV = const V, typename = typename std::enable_if<range<VV>::value>::type>
+            auto begin() const -> decltype(detail::begin_fn{}(std::declval<const VV&>())) {
+                return detail::begin_fn{}(base_);
+            }
+
+            sentinel_impl<false> end() {
+                return sentinel_impl<false>(detail::end_fn{}(base_), std::addressof(pred_));
+            }
+
+            template <typename VV = const V, typename = typename std::enable_if<range<VV>::value>::type>
+            sentinel_impl<true> end() const {
+                return sentinel_impl<true>(detail::end_fn{}(base_), std::addressof(pred_));
+            }
+        };
+
         // --- drop_view ---
         /// <summary>
         /// 跳過前 N 個元素 View (對齊 C++20 std::ranges::drop_view)。
@@ -1326,6 +1467,38 @@ namespace self_ranges {
                 auto s = ranges::size(base_);
                 auto c = static_cast<size_t>(count_ > 0 ? count_ : 0);
                 return s > c ? s - c : 0;
+            }
+        };
+
+        // --- drop_while_view ---
+        /// <summary>
+        /// 條件滿足時跳過元素 View (對齊 C++20 std::ranges::drop_while_view)。
+        /// </summary>
+        template <typename V, typename Pred>
+        class drop_while_view : public view_interface<drop_while_view<V, Pred>> {
+        private:
+            V base_{};
+            Pred pred_{};
+
+        public:
+            drop_while_view() = default;
+            drop_while_view(V base, Pred pred) : base_(std::move(base)), pred_(std::move(pred)) {}
+
+            V base() const & { return base_; }
+            V base() && { return std::move(base_); }
+            const Pred& pred() const { return pred_; }
+
+            auto begin() -> decltype(detail::begin_fn{}(base_)) {
+                auto it = detail::begin_fn{}(base_);
+                auto last = detail::end_fn{}(base_);
+                while (it != last && bool(pred_(*it))) {
+                    ++it;
+                }
+                return it;
+            }
+
+            auto end() -> decltype(detail::end_fn{}(base_)) {
+                return detail::end_fn{}(base_);
             }
         };
 
@@ -1425,6 +1598,28 @@ namespace self_ranges {
                 }
             };
 
+            template <typename Pred>
+            struct take_while_closure : ranges::range_adaptor_closure<take_while_closure<Pred>> {
+                Pred pred_{};
+                constexpr explicit take_while_closure(Pred pred) : pred_(std::move(pred)) {}
+
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::take_while_view<all_t<R>, Pred> {
+                    return ranges::take_while_view<all_t<R>, Pred>(all(std::forward<R>(r)), pred_);
+                }
+            };
+
+            struct take_while_fn {
+                template <typename Pred>
+                constexpr take_while_closure<typename std::decay<Pred>::type> operator()(Pred&& pred) const {
+                    return take_while_closure<typename std::decay<Pred>::type>(std::forward<Pred>(pred));
+                }
+                template <typename R, typename Pred>
+                auto operator()(R&& r, Pred&& pred) const -> ranges::take_while_view<all_t<R>, typename std::decay<Pred>::type> {
+                    return ranges::take_while_view<all_t<R>, typename std::decay<Pred>::type>(all(std::forward<R>(r)), std::forward<Pred>(pred));
+                }
+            };
+
             struct drop_closure : ranges::range_adaptor_closure<drop_closure> {
                 std::ptrdiff_t count_;
                 constexpr explicit drop_closure(std::ptrdiff_t count) noexcept : count_(count) {}
@@ -1441,6 +1636,28 @@ namespace self_ranges {
                 template <typename R>
                 auto operator()(R&& r, std::ptrdiff_t count) const -> ranges::drop_view<all_t<R>> {
                     return ranges::drop_view<all_t<R>>(all(std::forward<R>(r)), count);
+                }
+            };
+
+            template <typename Pred>
+            struct drop_while_closure : ranges::range_adaptor_closure<drop_while_closure<Pred>> {
+                Pred pred_{};
+                constexpr explicit drop_while_closure(Pred pred) : pred_(std::move(pred)) {}
+
+                template <typename R>
+                auto operator()(R&& r) const -> ranges::drop_while_view<all_t<R>, Pred> {
+                    return ranges::drop_while_view<all_t<R>, Pred>(all(std::forward<R>(r)), pred_);
+                }
+            };
+
+            struct drop_while_fn {
+                template <typename Pred>
+                constexpr drop_while_closure<typename std::decay<Pred>::type> operator()(Pred&& pred) const {
+                    return drop_while_closure<typename std::decay<Pred>::type>(std::forward<Pred>(pred));
+                }
+                template <typename R, typename Pred>
+                auto operator()(R&& r, Pred&& pred) const -> ranges::drop_while_view<all_t<R>, typename std::decay<Pred>::type> {
+                    return ranges::drop_while_view<all_t<R>, typename std::decay<Pred>::type>(all(std::forward<R>(r)), std::forward<Pred>(pred));
                 }
             };
 
@@ -1462,14 +1679,18 @@ namespace self_ranges {
         inline constexpr detail::filter_fn filter{};
         inline constexpr detail::transform_fn transform{};
         inline constexpr detail::take_fn take{};
+        inline constexpr detail::take_while_fn take_while{};
         inline constexpr detail::drop_fn drop{};
+        inline constexpr detail::drop_while_fn drop_while{};
         inline constexpr detail::reverse_fn reverse{};
 #else
         namespace {
             constexpr const detail::filter_fn& filter = static_const<detail::filter_fn>::value;
             constexpr const detail::transform_fn& transform = static_const<detail::transform_fn>::value;
             constexpr const detail::take_fn& take = static_const<detail::take_fn>::value;
+            constexpr const detail::take_while_fn& take_while = static_const<detail::take_while_fn>::value;
             constexpr const detail::drop_fn& drop = static_const<detail::drop_fn>::value;
+            constexpr const detail::drop_while_fn& drop_while = static_const<detail::drop_while_fn>::value;
             constexpr const detail::reverse_fn& reverse = static_const<detail::reverse_fn>::value;
         }
 #endif
@@ -2469,6 +2690,211 @@ namespace self_ranges {
         template <typename... Views>
         COMPAT_CONSTEXPR_14 bool enable_borrowed_range<concat_view<Views...>> = false;
 #endif
+
+        // --- ranges::to (ISO C++23 / P1206R7) ---
+        namespace detail {
+
+            template <typename C, typename R, typename... Args>
+            struct can_construct_from_range {
+            private:
+                template <typename CC, typename RR, typename... AA>
+                static auto test(int) -> decltype(CC(from_range, std::declval<RR>(), std::declval<AA>()...), std::true_type{});
+                template <typename, typename, typename...>
+                static std::false_type test(...);
+            public:
+                static constexpr bool value = decltype(test<C, R, Args...>(0))::value;
+            };
+
+            template <typename C, typename R, typename... Args>
+            struct can_construct_from_iter_pair {
+            private:
+                template <typename CC, typename RR, typename... AA>
+                static auto test(int) -> decltype(CC(ranges::begin(std::declval<RR&>()), ranges::end(std::declval<RR&>()), std::declval<AA>()...), std::true_type{});
+                template <typename, typename, typename...>
+                static std::false_type test(...);
+            public:
+                static constexpr bool value = common_range<typename std::decay<R>::type>::value && decltype(test<C, R, Args...>(0))::value;
+            };
+
+            template <typename C, typename R>
+            auto reserve_if_possible(C& c, R&& r, int)
+                -> decltype(c.reserve(ranges::size(r)), void()) {
+                c.reserve(ranges::size(r));
+            }
+            template <typename C, typename R>
+            void reserve_if_possible(C&, R&&, ...) {}
+
+            template <typename C, typename E>
+            auto append_to_container(C& c, E&& elem, int)
+                -> decltype(c.emplace_back(std::forward<E>(elem)), void()) {
+                c.emplace_back(std::forward<E>(elem));
+            }
+
+            template <typename C, typename E>
+            auto append_to_container(C& c, E&& elem, long)
+                -> decltype(c.push_back(std::forward<E>(elem)), void()) {
+                c.push_back(std::forward<E>(elem));
+            }
+
+            template <typename C, typename E>
+            auto append_to_container(C& c, E&& elem, float)
+                -> decltype(c.emplace(std::forward<E>(elem)), void()) {
+                c.emplace(std::forward<E>(elem));
+            }
+
+            template <typename C, typename E>
+            auto append_to_container(C& c, E&& elem, ...)
+                -> decltype(c.insert(std::forward<E>(elem)), void()) {
+                c.insert(std::forward<E>(elem));
+            }
+
+            template <typename C, typename R, typename... Args>
+            typename std::enable_if<can_construct_from_range<C, R, Args...>::value, C>::type
+            to_dispatch(R&& r, int, Args&&... args) {
+                return C(from_range, std::forward<R>(r), std::forward<Args>(args)...);
+            }
+
+            template <typename C, typename R, typename... Args>
+            typename std::enable_if<!can_construct_from_range<C, R, Args...>::value &&
+                                    can_construct_from_iter_pair<C, R, Args...>::value, C>::type
+            to_dispatch(R&& r, long, Args&&... args) {
+                return C(ranges::begin(r), ranges::end(r), std::forward<Args>(args)...);
+            }
+
+            template <typename C, typename R, typename... Args>
+            typename std::enable_if<!can_construct_from_range<C, R, Args...>::value &&
+                                    !can_construct_from_iter_pair<C, R, Args...>::value, C>::type
+            to_dispatch(R&& r, float, Args&&... args) {
+                C c(std::forward<Args>(args)...);
+                reserve_if_possible(c, r, 0);
+                auto it = ranges::begin(r);
+                auto last = ranges::end(r);
+                for (; it != last; ++it) {
+                    append_to_container(c, *it, 0);
+                }
+                return c;
+            }
+
+            template <typename T, typename = void>
+            struct has_first_and_second : std::false_type {};
+            template <typename T>
+            struct has_first_and_second<T, compat::detail::void_t<
+                typename T::first_type,
+                typename T::second_type
+            >> : std::true_type {};
+
+            template <template <typename...> class C, typename R, bool IsPair = has_first_and_second<range_value_t<R>>::value>
+            struct deduce_container {
+                using type = C<range_value_t<R>>;
+            };
+
+            template <template <typename...> class C, typename R>
+            struct deduce_container<C, R, true> {
+                using Pair = range_value_t<R>;
+                using K = typename std::remove_const<typename Pair::first_type>::type;
+                using V = typename Pair::second_type;
+                template <template <typename...> class CC, typename T1, typename T2, typename = void>
+                struct map_test {
+                    using type = CC<Pair>;
+                };
+                template <template <typename...> class CC, typename T1, typename T2>
+                struct map_test<CC, T1, T2, compat::detail::void_t<CC<T1, T2>>> {
+                    using type = CC<T1, T2>;
+                };
+                using type = typename map_test<C, K, V>::type;
+            };
+
+            template <typename... Args>
+            struct first_arg_is_range : std::false_type {};
+            template <typename First, typename... Rest>
+            struct first_arg_is_range<First, Rest...> : range<typename std::decay<First>::type> {};
+
+        } // namespace detail
+
+        /// <summary>
+        /// 容器管線介面閉包 (具名容器型別特化)。
+        /// </summary>
+        template <typename C, typename... Args>
+        struct to_container_closure : range_adaptor_closure<to_container_closure<C, Args...>> {
+            std::tuple<typename std::decay<Args>::type...> args_;
+            constexpr to_container_closure() = default;
+            template <typename Dummy = void, typename = typename std::enable_if<(sizeof...(Args) > 0), Dummy>::type>
+            constexpr explicit to_container_closure(Args&&... args)
+                : args_(std::forward<Args>(args)...) {}
+
+            template <typename R>
+            C operator()(R&& r) const {
+                return call_impl(std::forward<R>(r), compat::detail::make_index_sequence<sizeof...(Args)>{});
+            }
+
+        private:
+            template <typename R, size_t... Is>
+            C call_impl(R&& r, compat::detail::index_sequence<Is...>) const {
+                return detail::to_dispatch<C>(std::forward<R>(r), 0, std::get<Is>(args_)...);
+            }
+        };
+
+        /// <summary>
+        /// 容器管線介面閉包 (樣板樣板容器特化)。
+        /// </summary>
+        template <template <typename...> class C, typename... Args>
+        struct to_template_container_closure : range_adaptor_closure<to_template_container_closure<C, Args...>> {
+            std::tuple<typename std::decay<Args>::type...> args_;
+            constexpr to_template_container_closure() = default;
+            template <typename Dummy = void, typename = typename std::enable_if<(sizeof...(Args) > 0), Dummy>::type>
+            constexpr explicit to_template_container_closure(Args&&... args)
+                : args_(std::forward<Args>(args)...) {}
+
+            template <typename R>
+            auto operator()(R&& r) const -> typename detail::deduce_container<C, typename std::decay<R>::type>::type {
+                using ContainerType = typename detail::deduce_container<C, typename std::decay<R>::type>::type;
+                return call_impl<ContainerType>(std::forward<R>(r), compat::detail::make_index_sequence<sizeof...(Args)>{});
+            }
+
+        private:
+            template <typename ContainerType, typename R, size_t... Is>
+            ContainerType call_impl(R&& r, compat::detail::index_sequence<Is...>) const {
+                return detail::to_dispatch<ContainerType>(std::forward<R>(r), 0, std::get<Is>(args_)...);
+            }
+        };
+
+        /// <summary>
+        /// 將 Range 轉換為指定容器型別 C (對齊 ISO C++23 std::ranges::to)。
+        /// </summary>
+        template <typename C, typename R, typename... Args,
+                  typename = typename std::enable_if<range<typename std::decay<R>::type>::value>::type>
+        C to(R&& r, Args&&... args) {
+            return detail::to_dispatch<C>(std::forward<R>(r), 0, std::forward<Args>(args)...);
+        }
+
+        /// <summary>
+        /// 產生將 Range 轉換為容器 C 的管線閉包物件 (對齊 ISO C++23 std::ranges::to)。
+        /// </summary>
+        template <typename C, typename... Args,
+                  typename = typename std::enable_if<!detail::first_arg_is_range<Args...>::value>::type>
+        to_container_closure<C, typename std::decay<Args>::type...> to(Args&&... args) {
+            return to_container_closure<C, typename std::decay<Args>::type...>(std::forward<Args>(args)...);
+        }
+
+        /// <summary>
+        /// 將 Range 轉換為推導之樣板容器型別 C (對齊 ISO C++23 std::ranges::to)。
+        /// </summary>
+        template <template <typename...> class C, typename R, typename... Args,
+                  typename = typename std::enable_if<range<typename std::decay<R>::type>::value>::type>
+        auto to(R&& r, Args&&... args)
+            -> typename detail::deduce_container<C, typename std::decay<R>::type>::type {
+            using ContainerType = typename detail::deduce_container<C, typename std::decay<R>::type>::type;
+            return detail::to_dispatch<ContainerType>(std::forward<R>(r), 0, std::forward<Args>(args)...);
+        }
+
+        /// <summary>
+        /// 產生將 Range 轉換為樣板容器 C 的管線閉包物件 (對齊 ISO C++23 std::ranges::to)。
+        /// </summary>
+        template <template <typename...> class C, typename... Args,
+                  typename = typename std::enable_if<!detail::first_arg_is_range<Args...>::value>::type>
+        to_template_container_closure<C, typename std::decay<Args>::type...> to(Args&&... args) {
+            return to_template_container_closure<C, typename std::decay<Args>::type...>(std::forward<Args>(args)...);
+        }
 
     } // namespace ranges
 
