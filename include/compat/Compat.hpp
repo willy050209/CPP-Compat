@@ -5,11 +5,13 @@
 
 #include "Config.hpp"
 #include "StringView.hpp"
+#include "Optional.hpp"
 #include "Expected.hpp"
 #include "Format.hpp"
 #include "Print.hpp"
 #include "Parse.hpp"
 #include "Ranges.hpp"
+#include "Memory.hpp"
 #include "View.hpp"
 #include "Algorithm.hpp"
 

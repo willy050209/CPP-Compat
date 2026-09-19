@@ -1,11 +1,14 @@
 ﻿#include "test_helpers.hpp"
 #include <compat/Algorithm.hpp>
 #include <compat/Ranges.hpp>
+#include <compat/Memory.hpp>
+#include <compat/Optional.hpp>
 
 #include <vector>
 #include <string>
 #include <numeric>
 #include <utility>
+#include <random>
 
 namespace {
 
@@ -270,6 +273,228 @@ namespace {
         TEST_ASSERT(dr_res[2] == 8);
     }
 
+    void test_search_and_find_algorithms() {
+        std::vector<int> haystack = {1, 2, 3, 2, 3, 4};
+        std::vector<int> needle = {2, 3};
+
+        TEST_ASSERT(compat::ranges::contains_subrange(haystack, needle));
+
+        std::vector<int> not_found = {9, 8};
+        TEST_ASSERT(!compat::ranges::contains_subrange(haystack, not_found));
+
+        auto last_sub = compat::ranges::find_end(haystack, needle);
+        TEST_ASSERT(!last_sub.empty() && std::distance(haystack.begin(), last_sub.begin()) == 3);
+
+        auto fl = compat::ranges::find_last(haystack, 3);
+        TEST_ASSERT(!fl.empty() && *fl.begin() == 3 && std::distance(haystack.begin(), fl.begin()) == 4);
+
+        auto fl_if = compat::ranges::find_last_if(haystack, [](int x) { return x < 3; });
+        TEST_ASSERT(!fl_if.empty() && *fl_if.begin() == 2 && std::distance(haystack.begin(), fl_if.begin()) == 3);
+
+        auto fl_not = compat::ranges::find_last_if_not(haystack, [](int x) { return x >= 3; });
+        TEST_ASSERT(!fl_not.empty() && *fl_not.begin() == 2 && std::distance(haystack.begin(), fl_not.begin()) == 3);
+
+        std::vector<int> targets = {9, 3};
+        auto fo = compat::ranges::find_first_of(haystack, targets);
+        TEST_ASSERT(fo != haystack.end() && *fo == 3 && std::distance(haystack.begin(), fo) == 2);
+
+        std::vector<int> repeat_vec = {1, 2, 2, 2, 3};
+        auto sn = compat::ranges::search_n(repeat_vec, 3, 2);
+        TEST_ASSERT(!sn.empty() && std::distance(repeat_vec.begin(), sn.begin()) == 1);
+    }
+
+    void test_folds() {
+        std::vector<int> vals = {1, 2, 3, 4};
+
+        auto fl_res = compat::ranges::fold_left(vals, 0, [](int a, int b) { return a + b; });
+        TEST_ASSERT(fl_res == 10);
+
+        auto flf_res = compat::ranges::fold_left_first(vals, [](int a, int b) { return a + b; });
+        TEST_ASSERT(flf_res.has_value() && *flf_res == 10);
+
+        std::vector<int> empty_vals;
+        auto flf_empty = compat::ranges::fold_left_first(empty_vals, [](int a, int b) { return a + b; });
+        TEST_ASSERT(!flf_empty.has_value());
+
+        // fold_right: 1 - (2 - (3 - (4 - 0))) = 1 - (2 - (-1)) = 1 - 3 = -2
+        auto fr_res = compat::ranges::fold_right(vals, 0, [](int a, int b) { return a - b; });
+        TEST_ASSERT(fr_res == -2);
+
+        auto frl_res = compat::ranges::fold_right_last(vals, [](int a, int b) { return a - b; });
+        TEST_ASSERT(frl_res.has_value() && *frl_res == -2);
+
+        auto flw_res = compat::ranges::fold_left_with_iter(vals, 0, [](int a, int b) { return a + b; });
+        TEST_ASSERT(flw_res.in == vals.end() && flw_res.value == 10);
+
+        auto flfw_res = compat::ranges::fold_left_first_with_iter(vals, [](int a, int b) { return a + b; });
+        TEST_ASSERT(flfw_res.in == vals.end() && flfw_res.value.has_value() && *flfw_res.value == 10);
+    }
+
+    void test_copy_and_modifying() {
+        std::vector<int> src = {1, 2, 3, 2, 1};
+        std::vector<int> dst(5);
+
+        compat::ranges::replace_copy(src, dst.begin(), 2, 99);
+        TEST_ASSERT(dst[1] == 99 && dst[3] == 99 && dst[0] == 1);
+
+        compat::ranges::replace_copy_if(src, dst.begin(), [](int x) { return x > 2; }, 0);
+        TEST_ASSERT(dst[2] == 0 && dst[0] == 1);
+
+        std::vector<int> rem_dst(3);
+        compat::ranges::remove_copy(src, rem_dst.begin(), 2);
+        TEST_ASSERT(rem_dst[0] == 1 && rem_dst[1] == 3 && rem_dst[2] == 1);
+
+        std::vector<int> rem_if_dst(3);
+        compat::ranges::remove_copy_if(src, rem_if_dst.begin(), [](int x) { return x % 2 == 0; });
+        TEST_ASSERT(rem_if_dst[0] == 1 && rem_if_dst[1] == 3 && rem_if_dst[2] == 1);
+
+        std::vector<int> dup = {1, 1, 2, 2, 3, 3};
+        std::vector<int> u_dst(3);
+        compat::ranges::unique_copy(dup, u_dst.begin());
+        TEST_ASSERT(u_dst[0] == 1 && u_dst[1] == 2 && u_dst[2] == 3);
+
+        std::vector<int> r_src = {1, 2, 3, 4, 5};
+        std::vector<int> r_dst(5);
+        compat::ranges::rotate_copy(r_src, r_src.begin() + 2, r_dst.begin());
+        TEST_ASSERT(r_dst[0] == 3 && r_dst[1] == 4 && r_dst[2] == 5 && r_dst[3] == 1 && r_dst[4] == 2);
+
+        std::vector<int> sh_vec = {1, 2, 3, 4, 5};
+        auto sh_it = compat::ranges::shift_left(sh_vec, 2);
+        TEST_ASSERT(std::distance(sh_it.begin(), sh_it.end()) == 3 && sh_vec[0] == 3 && sh_vec[1] == 4 && sh_vec[2] == 5);
+
+        std::vector<int> sh_r_vec = {1, 2, 3, 4, 5};
+        auto sh_r_it = compat::ranges::shift_right(sh_r_vec, 2);
+        TEST_ASSERT(std::distance(sh_r_it.begin(), sh_r_it.end()) == 3 && sh_r_vec[2] == 1 && sh_r_vec[3] == 2 && sh_r_vec[4] == 3);
+
+        std::vector<int> shuf_vec = {1, 2, 3, 4, 5};
+        std::mt19937 g(1234);
+        compat::ranges::shuffle(shuf_vec, g);
+        TEST_ASSERT(compat::ranges::is_permutation(shuf_vec, std::vector<int>{1, 2, 3, 4, 5}));
+
+        std::vector<int> sample_src = {10, 20, 30, 40, 50};
+        std::vector<int> sample_out(3);
+        compat::ranges::sample(sample_src, sample_out.begin(), 3, g);
+        TEST_ASSERT(sample_out.size() == 3);
+    }
+
+    void test_partition_and_partial_sort() {
+        std::vector<int> nums = {1, 2, 3, 4, 5, 6};
+        std::vector<int> evens(3);
+        std::vector<int> odds(3);
+        compat::ranges::partition_copy(nums, evens.begin(), odds.begin(), [](int x) { return x % 2 == 0; });
+        TEST_ASSERT(evens[0] == 2 && evens[1] == 4 && evens[2] == 6);
+        TEST_ASSERT(odds[0] == 1 && odds[1] == 3 && odds[2] == 5);
+
+        std::vector<int> sp_vec = {1, 2, 3, 4, 5, 6};
+        compat::ranges::stable_partition(sp_vec, [](int x) { return x % 2 == 0; });
+        TEST_ASSERT(sp_vec[0] == 2 && sp_vec[1] == 4 && sp_vec[2] == 6 && sp_vec[3] == 1 && sp_vec[4] == 3 && sp_vec[5] == 5);
+
+        std::vector<int> ps_vec = {5, 7, 4, 2, 8, 6, 1, 9, 0, 3};
+        compat::ranges::partial_sort(ps_vec, ps_vec.begin() + 3);
+        TEST_ASSERT(ps_vec[0] == 0 && ps_vec[1] == 1 && ps_vec[2] == 2);
+
+        std::vector<int> psc_src = {5, 7, 4, 2, 8, 6, 1, 9, 0, 3};
+        std::vector<int> psc_dst(3);
+        compat::ranges::partial_sort_copy(psc_src, psc_dst);
+        TEST_ASSERT(psc_dst[0] == 0 && psc_dst[1] == 1 && psc_dst[2] == 2);
+
+        std::vector<int> nth_vec = {5, 6, 4, 3, 2, 6, 7, 9, 3};
+        compat::ranges::nth_element(nth_vec, nth_vec.begin() + 4);
+        TEST_ASSERT(nth_vec[4] == 5);
+    }
+
+    void test_heaps() {
+        std::vector<int> heap = {3, 1, 4, 1, 5, 9};
+        compat::ranges::make_heap(heap);
+        TEST_ASSERT(compat::ranges::is_heap(heap));
+
+        heap.push_back(6);
+        compat::ranges::push_heap(heap);
+        TEST_ASSERT(compat::ranges::is_heap(heap));
+
+        compat::ranges::pop_heap(heap);
+        TEST_ASSERT(heap.back() == 9);
+        heap.pop_back();
+
+        compat::ranges::sort_heap(heap);
+        TEST_ASSERT(compat::ranges::is_sorted(heap));
+    }
+
+    void test_sets_and_merges() {
+        std::vector<int> s1 = {1, 2, 3, 4, 5};
+        std::vector<int> s2 = {2, 4};
+        TEST_ASSERT(compat::ranges::includes(s1, s2));
+
+        std::vector<int> a = {1, 2, 4};
+        std::vector<int> b = {2, 3, 5};
+
+        std::vector<int> u(5);
+        auto u_res = compat::ranges::set_union(a, b, u.begin());
+        TEST_ASSERT(std::distance(u.begin(), u_res.out) == 5);
+        TEST_ASSERT(u[0] == 1 && u[1] == 2 && u[2] == 3 && u[3] == 4 && u[4] == 5);
+
+        std::vector<int> inter(1);
+        auto i_res = compat::ranges::set_intersection(a, b, inter.begin());
+        TEST_ASSERT(std::distance(inter.begin(), i_res.out) == 1 && inter[0] == 2);
+
+        std::vector<int> diff(2);
+        auto d_res = compat::ranges::set_difference(a, b, diff.begin());
+        TEST_ASSERT(std::distance(diff.begin(), d_res.out) == 2 && diff[0] == 1 && diff[1] == 4);
+
+        std::vector<int> symm(4);
+        auto sd_res = compat::ranges::set_symmetric_difference(a, b, symm.begin());
+        TEST_ASSERT(std::distance(symm.begin(), sd_res.out) == 4 && symm[0] == 1 && symm[1] == 3 && symm[2] == 4 && symm[3] == 5);
+
+        std::vector<int> m_out(6);
+        compat::ranges::merge(a, b, m_out.begin());
+        TEST_ASSERT(compat::ranges::is_sorted(m_out));
+
+        std::vector<int> ipm = {1, 3, 5, 2, 4, 6};
+        compat::ranges::inplace_merge(ipm, ipm.begin() + 3);
+        TEST_ASSERT(compat::ranges::is_sorted(ipm));
+    }
+
+    void test_permutations() {
+        std::vector<int> p1 = {1, 2, 3};
+        std::vector<int> p2 = {3, 1, 2};
+        TEST_ASSERT(compat::ranges::is_permutation(p1, p2));
+
+        auto np = compat::ranges::next_permutation(p1);
+        TEST_ASSERT(np.found && p1[0] == 1 && p1[1] == 3 && p1[2] == 2);
+
+        auto pp = compat::ranges::prev_permutation(p1);
+        TEST_ASSERT(pp.found && p1[0] == 1 && p1[1] == 2 && p1[2] == 3);
+    }
+
+    void test_numeric_and_random() {
+        std::vector<int> iota_v(5);
+        compat::ranges::iota(iota_v, 10);
+        TEST_ASSERT(iota_v[0] == 10 && iota_v[4] == 14);
+
+        std::vector<int> rand_v(5);
+        std::mt19937 rng(42);
+        compat::ranges::generate_random(rand_v, rng);
+        TEST_ASSERT(rand_v.size() == 5);
+    }
+
+    void test_uninitialized_memory() {
+        alignas(alignof(std::string)) char buf[sizeof(std::string) * 3];
+        std::string* p = reinterpret_cast<std::string*>(buf);
+
+        compat::ranges::construct_at(p, "hello");
+        TEST_ASSERT(*p == "hello");
+        compat::ranges::destroy_at(p);
+
+        std::vector<std::string> src_strs;
+        src_strs.push_back("alpha");
+        src_strs.push_back("beta");
+        src_strs.push_back("gamma");
+
+        compat::ranges::uninitialized_copy(src_strs.begin(), src_strs.end(), p, p + 3);
+        TEST_ASSERT(p[0] == "alpha" && p[1] == "beta" && p[2] == "gamma");
+        compat::ranges::destroy_n(p, 3);
+    }
+
     struct User {
         int id;
         std::string name;
@@ -313,6 +538,15 @@ void run_test_algorithm() {
     test_projections();
     test_min_max_algorithms();
     test_views_pipeline_and_composition();
+    test_search_and_find_algorithms();
+    test_folds();
+    test_copy_and_modifying();
+    test_partition_and_partial_sort();
+    test_heaps();
+    test_sets_and_merges();
+    test_permutations();
+    test_numeric_and_random();
+    test_uninitialized_memory();
     test_user_overload_resolution();
     std::cout << "  test_algorithm passed." << std::endl;
 }

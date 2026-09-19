@@ -134,8 +134,12 @@ namespace detail {
 #  define COMPAT_HAS_STD_CONSTANT_RANGE     0
 #  define COMPAT_HAS_STD_RANGES_CONTAINS    0
 #  define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
-#  define COMPAT_HAS_STD_RANGES_FOLD        0
-#  define COMPAT_HAS_STD_RANGES_TO          0
+#  define COMPAT_HAS_STD_RANGES_FOLD            0
+#  define COMPAT_HAS_STD_RANGES_TO              0
+#  define COMPAT_HAS_STD_RANGES_FIND_LAST       0
+#  define COMPAT_HAS_STD_RANGES_IOTA            0
+#  define COMPAT_HAS_STD_RANGES_SHIFT           0
+#  define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
 
 #else
 
@@ -242,7 +246,7 @@ namespace detail {
 // Feature detection: std::ranges::contains (C++23+)
 #  if defined(__cpp_lib_ranges_contains) && (__cpp_lib_ranges_contains >= 202207L)
 #    define COMPAT_HAS_STD_RANGES_CONTAINS 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
 #    define COMPAT_HAS_STD_RANGES_CONTAINS 1
 #  else
 #    define COMPAT_HAS_STD_RANGES_CONTAINS 0
@@ -251,7 +255,7 @@ namespace detail {
 // Feature detection: std::ranges::starts_with / ends_with (C++23+)
 #  if defined(__cpp_lib_ranges_starts_ends_with) && (__cpp_lib_ranges_starts_ends_with >= 202106L)
 #    define COMPAT_HAS_STD_RANGES_STARTS_WITH 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
 #    define COMPAT_HAS_STD_RANGES_STARTS_WITH 1
 #  else
 #    define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
@@ -260,19 +264,55 @@ namespace detail {
 // Feature detection: std::ranges::fold_left etc. (C++23+)
 #  if defined(__cpp_lib_ranges_fold) && (__cpp_lib_ranges_fold >= 202207L)
 #    define COMPAT_HAS_STD_RANGES_FOLD 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
 #    define COMPAT_HAS_STD_RANGES_FOLD 1
 #  else
 #    define COMPAT_HAS_STD_RANGES_FOLD 0
 #  endif
 
 // Feature detection: std::ranges::to (C++23 / P1206R7)
-#  if defined(__cpp_lib_ranges_to_container) && (__cpp_lib_ranges_to_container >= 202202L)
+// Note: GCC 14 libstdc++ has a known bug (Bugzilla 115200) in std::ranges::to calling
+// __c.emplace(__c.end(), *__it) instead of emplace_hint for associative containers.
+#  if defined(__cpp_lib_ranges_to_container) && (__cpp_lib_ranges_to_container >= 202202L) && !defined(__GLIBCXX__)
 #    define COMPAT_HAS_STD_RANGES_TO 1
 #  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
 #    define COMPAT_HAS_STD_RANGES_TO 1
 #  else
 #    define COMPAT_HAS_STD_RANGES_TO 0
+#  endif
+
+// Feature detection: std::ranges::find_last (C++23+)
+#  if defined(__cpp_lib_ranges_find_last) && (__cpp_lib_ranges_find_last >= 202207L)
+#    define COMPAT_HAS_STD_RANGES_FIND_LAST 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_FIND_LAST 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_FIND_LAST 0
+#  endif
+
+// Feature detection: std::ranges::iota (C++23+)
+#  if defined(__cpp_lib_ranges_iota) && (__cpp_lib_ranges_iota >= 202202L)
+#    define COMPAT_HAS_STD_RANGES_IOTA 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_IOTA 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_IOTA 0
+#  endif
+
+// Feature detection: std::ranges::shift_left / shift_right (C++23+)
+#  if defined(__cpp_lib_ranges_shift) && (__cpp_lib_ranges_shift >= 202202L)
+#    define COMPAT_HAS_STD_RANGES_SHIFT 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
+#    define COMPAT_HAS_STD_RANGES_SHIFT 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_SHIFT 0
+#  endif
+
+// Feature detection: std::ranges::generate_random (C++26+)
+#  if defined(__cpp_lib_ranges_generate_random) && (__cpp_lib_ranges_generate_random >= 202403L)
+#    define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 1
+#  else
+#    define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
