@@ -17,6 +17,7 @@
 - 📚 [**API 參考首頁與導覽 (docs/README.md)**](docs/README.md)
 - ⚙️ [**特性檢測與配置 (docs/config.md)**](docs/config.md)：標準方言常數、特性探測巨集、雙軌開關
 - 🔤 [**字串檢視 (docs/string_view.md)**](docs/string_view.md)：`compat::string_view`、`std::hash` 特化
+- 🎁 [**選用值容器 (docs/optional.md)**](docs/optional.md)：`compat::optional<T>`、`nullopt`、`bad_optional_access`
 - 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作
 - 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、`formatter<T>` 自訂型別擴充
 - 🖨️ [**終端列印 (docs/print.md)**](docs/print.md)：`print`、`println`、Windows UTF-8 `WriteConsoleW` 直寫管線
@@ -24,6 +25,7 @@
 - 🔄 [**範圍基礎與概念 (docs/ranges.md)**](docs/ranges.md)：Range Concepts、CPO (`begin`, `end`, `size` 等)、`subrange`、`dangling`
 - 🌊 [**視圖適配器 (docs/views.md)**](docs/views.md)：管道語法 (`|`)、C++20 視圖、C++23 `as_const`、C++26 `concat` 與 `cache_latest`
 - ⚡ [**受約束範圍演算法 (docs/algorithms.md)**](docs/algorithms.md)：Niebloids、投影支援 (`&Item::id`)、標籤結果型別 (`in_out_result`)
+- 📦 [**未初始化記憶體演算法 (docs/memory.md)**](docs/memory.md)：`construct_at`、`destroy_at`、`uninitialized_copy/fill/move` 等 RAII 物件生命週期演算法
 
 ---
 
@@ -33,22 +35,22 @@
 - **透明條件編譯對接**：
   - 當編譯器支援現代標準（如 C++20/23/26）時，直接透傳至原生 `std`，享受極致零負擔編譯器最佳化。
   - 當編譯環境為舊版（C++11/14/17）或缺乏原生庫支援時，無縫切換至純自研、輕量級且型別安全之 Fallback 實作。
-- **向下相容至 C++11**：舊標準缺乏 `<variant>`、`<string_view>`、`<format>`、`<ranges>` 時，自動啟用基於 C++11 無限制聯合體（Tagged Unrestricted Union）之 `expected`、自研 `string_view`、自研串流格式化引擎與純自研 Ranges / Algorithms 模組。
+- **向下相容至 C++11**：舊標準缺乏 `<variant>`、`<string_view>`、`<format>`、`<ranges>`、`<optional>` 時，自動啟用基於 C++11 無限制聯合體（Tagged Unrestricted Union）之 `expected`、`optional`、自研 `string_view`、自研串流格式化引擎與純自研 Ranges / Algorithms 模組。
 - **ISO C++23 & C++26 前沿特性**：
   - `compat::ranges::to` (C++23 / P1206R7)：將任意 Range 轉為容器（支援管線語法 `r | to<vector>()`、樣板引數推導與 Fallback Emplace/Insert 迭代）。
   - `compat::views::concat` (C++26 / P2542R8 / N4984)：前綴長度儲存、雙向狀態機、跳過空區間與 $O(1)$ 下標跳轉階梯。
   - `compat::views::cache_latest` (C++26 / P3138R5)：嚴格的 `non-propagating-cache` 快取語意。
   - `compat::ranges::constant_range` (C++26 / P2728R6)：唯讀範圍概念合約。
   - `compat::views::take_while` / `compat::views::drop_while` (C++20)：條件式截取與略過視圖適配器。
-- **受約束範圍演算法全家族**：40+ 個全套 `compat::ranges::*` 演算法，支援 Niebloid 呼叫防護、投影（PMF/PMD 成員指標）與標籤結果型別（`in_out_result` 等）；重載嚴格約束 `sentinel_for<S, I>`，徹底杜絕自訂 Lambda 與成員指針在 MSVC/GCC/Clang 上的多載解析衝突（Overload Ambiguity）。
+- **受約束範圍演算法全家族**：全套 50+ 個 `compat::ranges::*` 演算法，支援 Niebloid 呼叫防護、投影（PMF/PMD 成員指標）與標籤結果型別（`in_out_result` 等）；重載嚴格約束 `sentinel_for<S, I>`，徹底杜絕自訂 Lambda 與成員指針在 MSVC/GCC/Clang 上的多載解析衝突（Overload Ambiguity）。
 - **自訂型別格式化**：`compat::formatter<T>` 擴充介面，完全相容 `std::formatter<T>` 語意。
 - **Windows UTF-8 終端支援**：透過 `WriteConsoleW` 直寫通道正確輸出 Unicode，徹底杜絕亂碼，無需 `SetConsoleOutputCP(65001)`。
 - **強型別字串解析 `parse<T>`**：純函數、無例外、Fail-fast 安全轉換（支援 `int8_t`~`uint64_t`、`float`、`double`、`bool`、`string`）。
 - **`-fno-exceptions` 安全**：`COMPAT_THROW_OR_ABORT` 巨集在無例外環境中自動降階為 `std::abort()`。
 - **ABI 隔離**：`COMPAT_ABI_TAG` inline namespace 防止跨編譯單元混用時的 ODR 衝突。
 - **自動化發行工具**：
-  - 一鍵打包單一標頭檔：`dist/compat.hpp`（10,341 行，含 `#undef` 清除）
-  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（10,354 行，支援 `import compat;`）
+  - 一鍵打包單一標頭檔：`dist/compat.hpp`（12,845 行，含 `#undef` 清除）
+  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（12,856 行，支援 `import compat;`）
 
 ---
 
@@ -58,6 +60,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **特性檢測** | `<compat/Config.hpp>` | `compat`, `compat::detail` | 探測 `__cpp_lib_*` | `COMPAT_FORCE_SELF_IMPLEMENTATION` / `COMPAT_FORCE_STD_IMPLEMENTATION` |
 | **字串檢視** | `<compat/StringView.hpp>` | `compat` | `std::string_view` (C++17+) | 自研 `compat::string_view`（constexpr、`std::hash`）|
+| **選用值容器** | `<compat/Optional.hpp>` | `compat` | `std::optional` (C++17+) | 自研 `compat::optional<T>` (Tagged Union, constexpr) |
 | **期望值/錯誤** | `<compat/Expected.hpp>` | `compat` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union |
 | **格式化輸出** | `<compat/Format.hpp>` | `compat` | `std::format` (C++20+) | 自研 `{}` 佔位符替換引擎 + `compat::formatter<T>` |
 | **終端列印** | `<compat/Print.hpp>` | `compat` | `std::print`, `std::println` | 自研引擎 + Windows UTF-8 WriteConsoleW 直寫 |
@@ -65,6 +68,7 @@
 | **範圍概念/CPO**| `<compat/Ranges.hpp>` | `compat::ranges` | `std::ranges` (C++20+) | 自研 CPO (`begin`/`end`/`size`)、`subrange`、Concepts 萃取器 |
 | **視圖適配器** | `<compat/View.hpp>` | `compat::views` | `std::views` (C++20+) | 自研管道 (`\|`)、核心 Views、C++26 `concat` 與 `cache_latest` |
 | **範圍演算法** | `<compat/Algorithm.hpp>`| `compat::ranges` | `std::ranges::*` (C++20+) | 自研 Niebloids、投影支援、標籤結果型別 (`in_out_result` 等) |
+| **記憶體演算法**| `<compat/Memory.hpp>` | `compat::ranges` | `std::ranges::*` (C++20+) | 自研未初始化物件建構/銷毀、RAII 回滾保護、標籤結果型別 |
 | **總括標頭** | `<compat/Compat.hpp>` | 全部聚合 | 聚合所有模組 | 聚合所有模組 |
 
 ---
@@ -215,11 +219,11 @@ target_compile_definitions(my_target PRIVATE COMPAT_FORCE_SELF_IMPLEMENTATION)
 ```bash
 # 1. 自動拓撲排序打包為單一標頭檔（含 #undef 清除內部巨集）
 python scripts/bundle_header.py
-# 產出: dist/compat.hpp (10,341 行，UTF-8 BOM 驗證)
+# 產出: dist/compat.hpp (12,845 行，UTF-8 BOM 驗證)
 
 # 2. 自動導出為標準 C++20 Module 介面單元
 python scripts/export_module.py
-# 產出: dist/compat.ixx (10,354 行，支援 import compat;)
+# 產出: dist/compat.ixx (12,856 行，支援 import compat;)
 ```
 
 ---
@@ -262,15 +266,15 @@ cmake --build build-clang-cxx11
 
 | 平臺 / 編譯器 | 語言標準 | 執行模式 | 斷言總數 | 測試狀態 |
 | :--- | :--- | :--- | :---: | :---: |
-| **Ubuntu Clang 18.1** | C++11 (`-Wall -Wextra -Werror`) | Self-contained | 388 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++11 (`-pedantic-errors`) | Self-contained | 388 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++14 / C++17 | Self-contained | 388 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++20 | Native STL | 385 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 388 | **PASSED** |
-| **Windows MSVC 19.51** | C++14 / C++17 | Fallback | 388 | **PASSED** |
-| **Windows MSVC 19.51** | C++20 | Native STL | 385 | **PASSED** |
-| **Windows MSVC 19.51** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 388 | **PASSED** |
-| **macOS Apple Clang** | C++11 ~ C++23 | Auto + Fallback | 388 | **PASSED** |
+| **Ubuntu Clang 18.1** | C++11 (`-Wall -Wextra -Werror`) | Self-contained | 464 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++11 (`-pedantic-errors`) | Self-contained | 464 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++14 / C++17 | Self-contained | 464 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++20 | Native STL | 461 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 464 | **PASSED** |
+| **Windows MSVC 19.51** | C++14 / C++17 | Fallback | 464 | **PASSED** |
+| **Windows MSVC 19.51** | C++20 | Native STL | 461 | **PASSED** |
+| **Windows MSVC 19.51** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 464 | **PASSED** |
+| **macOS Apple Clang** | C++11 ~ C++23 | Auto + Fallback | 464 | **PASSED** |
 
 ---
 

@@ -39,6 +39,7 @@
 
 | 特性巨集 | 檢測依據與標準版本 | 說明 |
 | :--- | :--- | :--- |
+| `COMPAT_HAS_STD_OPTIONAL` | `__has_include(<optional>)` (C++17) | 是否支援原生 `std::optional` / `std::nullopt` |
 | `COMPAT_HAS_STD_STRING_VIEW` | `__cpp_lib_string_view >= 201606L` (C++17) | 是否支援原生 `std::string_view` |
 | `COMPAT_HAS_STD_VARIANT` | `__cpp_lib_variant >= 201606L` (C++17) | 是否支援原生 `std::variant` |
 | `COMPAT_HAS_STD_FORMAT` | `__cpp_lib_format >= 201907L` (C++20) | 是否支援原生 `std::format` |
@@ -52,6 +53,12 @@
 | `COMPAT_HAS_STD_RANGES_CONTAINS` | `__cpp_lib_ranges_contains >= 202207L` (C++23) | 是否支援原生 `std::ranges::contains` |
 | `COMPAT_HAS_STD_RANGES_STARTS_WITH` | `__cpp_lib_ranges_starts_with >= 202207L` (C++23) | 是否支援原生 `std::ranges::starts_with` / `ends_with` |
 | `COMPAT_HAS_STD_RANGES_FOLD` | `__cpp_lib_ranges_fold >= 202207L` (C++23) | 是否支援原生 `std::ranges::fold_left` (C++23) |
+| `COMPAT_HAS_STD_RANGES_TO` | `__cpp_lib_ranges_to_container >= 202202L` (C++23) | 是否支援原生 `std::ranges::to` (P1206R7，規避 GCC 14 Bugzilla 115200) |
+| `COMPAT_HAS_STD_RANGES_FIND_LAST` | `__cpp_lib_ranges_find_last >= 202207L` (C++23) | 是否支援原生 `std::ranges::find_last` / `find_last_if` |
+| `COMPAT_HAS_STD_RANGES_IOTA` | `__cpp_lib_ranges_iota >= 202202L` (C++23) | 是否支援原生 `std::ranges::iota` 演算法 |
+| `COMPAT_HAS_STD_RANGES_SHIFT` | `__cpp_lib_ranges_shift >= 202202L` (C++23) | 是否支援原生 `std::ranges::shift_left` / `shift_right` |
+| `COMPAT_HAS_STD_RANGES_GENERATE_RANDOM` | `__cpp_lib_ranges_generate_random >= 202403L` (C++26) | 是否支援原生 `std::ranges::generate_random` |
+
 
 ---
 

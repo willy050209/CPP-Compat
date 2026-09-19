@@ -1,4 +1,4 @@
-# 受約束範圍演算法 (compat::ranges algorithms)
+﻿# 受約束範圍演算法 (compat::ranges algorithms)
 
 定義於標頭檔 [`<compat/Algorithm.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Algorithm.hpp)（或 [`<compat/Ranges.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Ranges.hpp)）。  
 所屬命名空間：`compat::ranges`。
