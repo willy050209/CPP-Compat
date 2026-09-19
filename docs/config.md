@@ -42,7 +42,7 @@
 | `COMPAT_HAS_STD_OPTIONAL` | `__has_include(<optional>)` (C++17) | 是否支援原生 `std::optional` / `std::nullopt` |
 | `COMPAT_HAS_STD_STRING_VIEW` | `__cpp_lib_string_view >= 201606L` (C++17) | 是否支援原生 `std::string_view` |
 | `COMPAT_HAS_STD_VARIANT` | `__cpp_lib_variant >= 201606L` (C++17) | 是否支援原生 `std::variant` |
-| `COMPAT_HAS_STD_FORMAT` | `__cpp_lib_format >= 201907L` (C++20) | 是否支援原生 `std::format` |
+| `COMPAT_HAS_STD_FORMAT` | `__cpp_lib_format >= 201907L` (C++20)<br>（libstdc++ 需 $\ge 14$） | 是否支援原生 `std::format`（GCC 13 因未實作 P1868R2 東亞寬度且會截斷 UTF-8 字節，自動降階使用高品質自研實作） |
 | `COMPAT_HAS_STD_EXPECTED` | `__cpp_lib_expected >= 202202L` (C++23) | 是否支援原生 `std::expected` / `std::unexpected` |
 | `COMPAT_HAS_STD_PRINT` | `__cpp_lib_print >= 202207L` (C++23) | 是否支援原生 `std::print` / `std::println` |
 | `COMPAT_HAS_STD_RANGES` | `__cpp_lib_ranges >= 201911L` (C++20) | 是否支援原生 `std::ranges` 核心基礎設施 |

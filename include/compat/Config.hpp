@@ -162,10 +162,16 @@ namespace detail {
 #  endif
 
 // Feature detection: std::format (C++20+)
+// Note: libstdc++ prior to GCC 14 does not implement P1868R2 (Unicode East Asian Width / UAX #11)
+// and corrupts multibyte UTF-8 characters when truncating with precision specifications.
 #  if defined(__cpp_lib_format) && (__cpp_lib_format >= 201907L)
-#    define COMPAT_HAS_STD_FORMAT 1
+#    if defined(_GLIBCXX_RELEASE) && (_GLIBCXX_RELEASE < 14)
+#      define COMPAT_HAS_STD_FORMAT 0
+#    else
+#      define COMPAT_HAS_STD_FORMAT 1
+#    endif
 #  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__has_include)
-#    if __has_include(<format>)
+#    if __has_include(<format>) && (!defined(_GLIBCXX_RELEASE) || (_GLIBCXX_RELEASE >= 14))
 #      define COMPAT_HAS_STD_FORMAT 1
 #    else
 #      define COMPAT_HAS_STD_FORMAT 0

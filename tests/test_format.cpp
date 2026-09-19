@@ -149,16 +149,25 @@ void run_test_format() {
     TEST_ASSERT(compat::format("[{:8}] [{:<6}] [{:#06x}]", 1, "test", 42) == "[       1] [test  ] [0x002a]");
 
     // CJK & Unicode East Asian Width (UAX #11 / P1868R2)
-    TEST_ASSERT(compat::format("{:8}", "一號") == "一號    ");
-    TEST_ASSERT(compat::format("{:<8}", "一號") == "一號    ");
-    TEST_ASSERT(compat::format("{:>8}", "一號") == "    一號");
-    TEST_ASSERT(compat::format("{:^8}", "一號") == "  一號  ");
-    TEST_ASSERT(compat::format("{:*^8}", "一號") == "**一號**");
-    TEST_ASSERT(compat::format("{:.2}", "一號二號") == "一");
-    TEST_ASSERT(compat::format("{:.3}", "一號二號") == "一");
-    TEST_ASSERT(compat::format("{:.4}", "一號二號") == "一號");
-    TEST_ASSERT(compat::format("{:8.2}", "一號二號") == "一      ");
-    TEST_ASSERT(compat::format("{:8}{:8}{:8}{:8}", "一號", "二號", "三號", "四號") == "一號    二號    三號    四號    ");
+    // Note: ISO C++ [format.string.std]/11 permits standard library implementations
+    // that do not support UAX #11 to fall back to code units (e.g. libstdc++ in GCC 13).
+    const bool supports_uax11 = (compat::format("{:4}", "一") == "一  ");
+    if (supports_uax11) {
+        TEST_ASSERT(compat::format("{:8}", "一號") == "一號    ");
+        TEST_ASSERT(compat::format("{:<8}", "一號") == "一號    ");
+        TEST_ASSERT(compat::format("{:>8}", "一號") == "    一號");
+        TEST_ASSERT(compat::format("{:^8}", "一號") == "  一號  ");
+        TEST_ASSERT(compat::format("{:*^8}", "一號") == "**一號**");
+        TEST_ASSERT(compat::format("{:.2}", "一號二號") == "一");
+        TEST_ASSERT(compat::format("{:.3}", "一號二號") == "一");
+        TEST_ASSERT(compat::format("{:.4}", "一號二號") == "一號");
+        TEST_ASSERT(compat::format("{:8.2}", "一號二號") == "一      ");
+        TEST_ASSERT(compat::format("{:8}{:8}{:8}{:8}", "一號", "二號", "三號", "四號") == "一號    二號    三號    四號    ");
+    } else {
+        TEST_ASSERT(compat::format("{:8}", "一號") == "一號  ");
+        TEST_ASSERT(compat::format("{:<8}", "一號") == "一號  ");
+        TEST_ASSERT(compat::format("{:>8}", "一號") == "  一號");
+    }
 
     std::cout << "[PASS] test_format passed." << std::endl;
 }

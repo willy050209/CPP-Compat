@@ -808,7 +808,6 @@ inline std::size_t TruncateUtf8ByDisplayWidth(compat::string_view s, std::size_t
     const unsigned char* last_safe = start;
 
     while (p < end) {
-        const unsigned char* prev = p;
         std::size_t cp_width = 0;
         if (*p < 0x80) {
             if (*p >= 0x20 && *p != 0x7F) {

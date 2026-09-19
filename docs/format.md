@@ -6,6 +6,9 @@
 `compat::format` 提供型別安全、高效且符合現代 C++ 標準的字串格式化能力，完全對齊 **ISO C++20 `std::format`** 語意。  
 在 C++20 及以上支援環境直接轉發至原生 `std::format`（Zero Overhead）；在 C++11/14/17 環境下無縫切換為純自研格式化引擎，完整支援 **標準格式化規格語法**、**Unicode 東亞寬度 (UAX #11)**、佔位符替換、轉義字元與 `compat::formatter<T>` 自訂型別擴充。
 
+> [!NOTE]
+> 在 GCC 13 (`_GLIBCXX_RELEASE < 14`) 環境下，因 libstdc++ 初始版本的 `std::format` 尚未支援 P1868R2 (東亞寬度計算) 且在精度截斷時會直接切斷多位元組 UTF-8 字節，`CPP-Compat` 會自動將 `COMPAT_HAS_STD_FORMAT` 設為 `0` 並切換至自研 Fallback 引擎，確保所有平台（Windows / Linux / macOS）字串排版與安全性表現完全一致。
+
 ---
 
 ## 函式樣板宣告 (Declaration)
