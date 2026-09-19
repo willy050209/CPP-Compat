@@ -15,8 +15,8 @@ CPP-Compat 採完全解耦與模組化設計。您可以包含總括標頭 `<com
 | [**字串檢視 (String View)**](string_view.md) | `<compat/StringView.hpp>` | `compat` | `compat::string_view`, `std::hash<compat::string_view>` | C++17 |
 | [**選擇性值 (Optional)**](optional.md) | `<compat/Optional.hpp>` | `compat` | `optional<T>`, `nullopt`, `bad_optional_access`, `make_optional` | C++17 |
 | [**期望值與錯誤處理 (Expected)**](expected.md) | `<compat/Expected.hpp>` | `compat` | `expected<T, E>`, `expected<void, E>`, `unexpected<E>`, `bad_expected_access`, Monadic 操作 | C++23 |
-| [**格式化輸出 (Format)**](format.md) | `<compat/Format.hpp>` | `compat` | `format`, `formatter<T>` 自訂型別特化擴充介面 | C++20 |
-| [**終端列印 (Print)**](print.md) | `<compat/Print.hpp>` | `compat` | `print`, `println`, 檔案串流輸出, Windows UTF-8 `WriteConsoleW` 直寫 | C++23 |
+| [**格式化輸出 (Format)**](format.md) | `<compat/Format.hpp>` | `compat` | `format`, `formatter<T>` 自訂擴充, 標準格式規格語法 (`[[fill]align][sign][#][0][width][.precision][type]`), Unicode 東亞寬度 (UAX #11 / P1868R2), 寬字串支援 | C++20 |
+| [**終端列印 (Print)**](print.md) | `<compat/Print.hpp>` | `compat` | `print`, `println`, `std::ostream&` 串流路由, Windows UTF-8 `WriteConsoleW` 直寫, 東亞多欄排版對齊, 換行重載 | C++23 |
 | [**強型別解析 (Parse)**](parse.md) | `<compat/Parse.hpp>` | `compat` | `parse<T>`, `from_chars`（整數 2~36 進位、浮點數、NaN/Inf、零堆積） | C++17 |
 | [**範圍基礎與概念 (Ranges)**](ranges.md) | `<compat/Ranges.hpp>` | `compat::ranges` | Range Concepts, CPO (`begin`, `end`, `size` 等), `subrange`, `dangling`, `ranges::to` (C++23) | C++20 / C++23 / C++26 |
 | [**視圖適配器 (Views)**](views.md) | `<compat/View.hpp>` | `compat::views` | 管道運算子 (`\|`), C++20 核心視圖 (`iota`, `filter`, `transform` 等), C++23/26 視圖 (`as_const`, `cache_latest`, `concat`) | C++20 / C++23 / C++26 |

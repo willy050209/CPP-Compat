@@ -19,8 +19,8 @@
 - 🔤 [**字串檢視 (docs/string_view.md)**](docs/string_view.md)：`compat::string_view`、`std::hash` 特化
 - 🎁 [**選用值容器 (docs/optional.md)**](docs/optional.md)：`compat::optional<T>`、`nullopt`、`bad_optional_access`
 - 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作
-- 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、`formatter<T>` 自訂型別擴充
-- 🖨️ [**終端列印 (docs/print.md)**](docs/print.md)：`print`、`println`、Windows UTF-8 `WriteConsoleW` 直寫管線
+- 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、標準格式規格語法（`[[fill]align][sign][#][0][width][.precision][type]`）、Unicode 東亞寬度 (UAX #11 / P1868R2)、`formatter<T>` 自訂型別擴充
+- 🖨️ [**終端列印 (docs/print.md)**](docs/print.md)：`print`、`println`、`std::ostream&` 串流路由、Windows UTF-8 `WriteConsoleW` 直寫管線、東亞多欄表格對齊
 - 🔢 [**強型別解析 (docs/parse.md)**](docs/parse.md)：`parse<T>`、零堆積 `from_chars`（整數 2~36 進位、浮點數、NaN/Inf）
 - 🔄 [**範圍基礎與概念 (docs/ranges.md)**](docs/ranges.md)：Range Concepts、CPO (`begin`, `end`, `size` 等)、`subrange`、`dangling`
 - 🌊 [**視圖適配器 (docs/views.md)**](docs/views.md)：管道語法 (`|`)、C++20 視圖、C++23 `as_const`、C++26 `concat` 與 `cache_latest`
@@ -43,14 +43,18 @@
   - `compat::ranges::constant_range` (C++26 / P2728R6)：唯讀範圍概念合約。
   - `compat::views::take_while` / `compat::views::drop_while` (C++20)：條件式截取與略過視圖適配器。
 - **受約束範圍演算法全家族**：全套 50+ 個 `compat::ranges::*` 演算法，支援 Niebloid 呼叫防護、投影（PMF/PMD 成員指標）與標籤結果型別（`in_out_result` 等）；重載嚴格約束 `sentinel_for<S, I>`，徹底杜絕自訂 Lambda 與成員指針在 MSVC/GCC/Clang 上的多載解析衝突（Overload Ambiguity）。
+- **標準格式化規格與 Unicode 東亞寬度 (East Asian Width)**：
+  - `compat::format` 與 `compat::print` 完整支援 ISO C++20 格式規格語法（`[[fill]align][sign][#][0][width][.precision][type]`），涵蓋對齊（`<`/`>`/`^`）、自訂填充字元、前導零（`#010x`）、正負號（`+`/`-`/` `）、進位前綴與浮點數精度控制。
+  - 嚴格實作 Unicode UAX #11 與 P1868R2 終端估計欄位寬度（Display Columns），CJK 全形字元精確計算為 2 欄位，保證多欄位終端表格完美對齊（如 `compat::println("{:8}{:8}", "一號", "二號")`）與精度安全截斷。
+  - 原生支援寬字元與寬字串（`wchar_t`, `std::wstring`）即時轉譯至 UTF-8。
+- **Windows UTF-8 終端支援與串流路由**：透過 `WriteConsoleW` 直寫通道正確輸出 Unicode，徹底杜絕亂碼，無需 `SetConsoleOutputCP(65001)`；`std::cout` 與 `std::cerr` 自動路由轉譯防護。
 - **自訂型別格式化**：`compat::formatter<T>` 擴充介面，完全相容 `std::formatter<T>` 語意。
-- **Windows UTF-8 終端支援**：透過 `WriteConsoleW` 直寫通道正確輸出 Unicode，徹底杜絕亂碼，無需 `SetConsoleOutputCP(65001)`。
 - **強型別字串解析 `parse<T>`**：純函數、無例外、Fail-fast 安全轉換（支援 `int8_t`~`uint64_t`、`float`、`double`、`bool`、`string`）。
 - **`-fno-exceptions` 安全**：`COMPAT_THROW_OR_ABORT` 巨集在無例外環境中自動降階為 `std::abort()`。
 - **ABI 隔離**：`COMPAT_ABI_TAG` inline namespace 防止跨編譯單元混用時的 ODR 衝突。
 - **自動化發行工具**：
-  - 一鍵打包單一標頭檔：`dist/compat.hpp`（12,845 行，含 `#undef` 清除）
-  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（12,856 行，支援 `import compat;`）
+  - 一鍵打包單一標頭檔：`dist/compat.hpp`（14,332 行，含 `#undef` 清除）
+  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（14,343 行，支援 `import compat;`）
 
 ---
 
@@ -62,8 +66,8 @@
 | **字串檢視** | `<compat/StringView.hpp>` | `compat` | `std::string_view` (C++17+) | 自研 `compat::string_view`（constexpr、`std::hash`）|
 | **選用值容器** | `<compat/Optional.hpp>` | `compat` | `std::optional` (C++17+) | 自研 `compat::optional<T>` (Tagged Union, constexpr) |
 | **期望值/錯誤** | `<compat/Expected.hpp>` | `compat` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union |
-| **格式化輸出** | `<compat/Format.hpp>` | `compat` | `std::format` (C++20+) | 自研 `{}` 佔位符替換引擎 + `compat::formatter<T>` |
-| **終端列印** | `<compat/Print.hpp>` | `compat` | `std::print`, `std::println` | 自研引擎 + Windows UTF-8 WriteConsoleW 直寫 |
+| **格式化輸出** | `<compat/Format.hpp>` | `compat` | `std::format` (C++20+) | 自研格式化規格引擎（對齊/填充/進位/精度/東亞寬度）+ `compat::formatter<T>` |
+| **終端列印** | `<compat/Print.hpp>` | `compat` | `std::print`, `std::println` (C++23+) | 自研引擎 + Windows UTF-8 WriteConsoleW 直寫 + `std::ostream` 路由 |
 | **強型別解析** | `<compat/Parse.hpp>` | `compat` | 原生或自研 `from_chars` | 自研零堆積、零 locale、基數 2~36 數值解析 |
 | **範圍概念/CPO**| `<compat/Ranges.hpp>` | `compat::ranges` | `std::ranges` (C++20+) | 自研 CPO (`begin`/`end`/`size`)、`subrange`、Concepts 萃取器 |
 | **視圖適配器** | `<compat/View.hpp>` | `compat::views` | `std::views` (C++20+) | 自研管道 (`\|`)、核心 Views、C++26 `concat` 與 `cache_latest` |
