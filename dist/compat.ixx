@@ -11993,6 +11993,726 @@ COMPAT_ALWAYS_INLINE char* FormatIntToBuffer(char* end_ptr, int64_t val) noexcep
     return p;
 }
 
+/// <summary>
+/// Parsed standard format specification conforming to C++20 format string syntax:
+/// [[fill]align][sign][#][0][width][.precision][type]
+/// </summary>
+struct FormatSpec {
+    char fill;
+    char align;
+    char sign;
+    bool alternate;
+    bool zero_pad;
+    int32_t width;
+    int32_t precision;
+    char type;
+
+    /// <summary>
+    /// Constructs a default FormatSpec with empty/default settings.
+    /// </summary>
+    COMPAT_ALWAYS_INLINE constexpr FormatSpec() noexcept
+        : fill(' '), align('\0'), sign('-'), alternate(false), zero_pad(false), width(0), precision(-1), type('\0') {}
+};
+
+/// <summary>
+/// Parses standard format specification from a format specification string view.
+/// </summary>
+/// <param name="sv">Format specifier string view (e.g. ":8", ":*^10", ":#08x").</param>
+/// <returns>Parsed FormatSpec structure.</returns>
+inline FormatSpec ParseFormatSpec(compat::string_view sv) noexcept {
+    FormatSpec spec;
+    if (sv.empty()) {
+        return spec;
+    }
+
+    std::size_t colon_pos = sv.find(':');
+    if (colon_pos != compat::string_view::npos) {
+        sv = sv.substr(colon_pos + 1);
+    } else {
+        bool all_digits = true;
+        for (std::size_t j = 0; j < sv.size(); ++j) {
+            if (sv[j] < '0' || sv[j] > '9') {
+                all_digits = false;
+                break;
+            }
+        }
+        if (all_digits) {
+            return spec;
+        }
+    }
+
+    if (sv.empty()) {
+        return spec;
+    }
+
+    const char* ptr = sv.data();
+    const char* end = sv.data() + sv.size();
+
+    // 1. [fill]align
+    if (end - ptr >= 2 && (ptr[1] == '<' || ptr[1] == '>' || ptr[1] == '^')) {
+        spec.fill = ptr[0];
+        spec.align = ptr[1];
+        ptr += 2;
+    } else if (ptr < end && (*ptr == '<' || *ptr == '>' || *ptr == '^')) {
+        spec.align = *ptr;
+        ptr += 1;
+    }
+
+    // 2. sign: '+', '-', ' '
+    if (ptr < end && (*ptr == '+' || *ptr == '-' || *ptr == ' ')) {
+        spec.sign = *ptr;
+        ptr += 1;
+    }
+
+    // 3. '#' alternate form
+    if (ptr < end && *ptr == '#') {
+        spec.alternate = true;
+        ptr += 1;
+    }
+
+    // 4. '0' zero padding
+    if (ptr < end && *ptr == '0') {
+        spec.zero_pad = true;
+        ptr += 1;
+    }
+
+    // 5. width
+    if (ptr < end && *ptr >= '0' && *ptr <= '9') {
+        int32_t w = 0;
+        while (ptr < end && *ptr >= '0' && *ptr <= '9') {
+            w = w * 10 + static_cast<int32_t>(*ptr - '0');
+            ++ptr;
+        }
+        spec.width = w;
+    }
+
+    // 6. .precision
+    if (ptr < end && *ptr == '.') {
+        ++ptr;
+        int32_t p = 0;
+        while (ptr < end && *ptr >= '0' && *ptr <= '9') {
+            p = p * 10 + static_cast<int32_t>(*ptr - '0');
+            ++ptr;
+        }
+        spec.precision = p;
+    }
+
+    // 7. type
+    if (ptr < end) {
+        spec.type = *ptr;
+        ++ptr;
+    }
+
+    return spec;
+}
+
+/// <summary>
+/// Decodes a single UTF-8 code point and advances pointer.
+/// </summary>
+/// <param name="p">Reference to current byte pointer.</param>
+/// <param name="end">Pointer to end of buffer.</param>
+/// <returns>Decoded Unicode code point or 0xFFFD on invalid sequence.</returns>
+inline uint32_t DecodeUtf8CodePoint(const unsigned char*& p, const unsigned char* end) noexcept {
+    unsigned char c = *p++;
+    if (c < 0x80) {
+        return c;
+    }
+    if ((c & 0xE0) == 0xC0 && p < end) {
+        unsigned char c2 = *p;
+        if ((c2 & 0xC0) == 0x80) {
+            ++p;
+            return ((static_cast<uint32_t>(c) & 0x1F) << 6) |
+                    (static_cast<uint32_t>(c2) & 0x3F);
+        }
+    } else if ((c & 0xF0) == 0xE0 && p + 1 < end) {
+        unsigned char c2 = p[0];
+        unsigned char c3 = p[1];
+        if ((c2 & 0xC0) == 0x80 && (c3 & 0xC0) == 0x80) {
+            p += 2;
+            return ((static_cast<uint32_t>(c) & 0x0F) << 12) |
+                   ((static_cast<uint32_t>(c2) & 0x3F) << 6) |
+                    (static_cast<uint32_t>(c3) & 0x3F);
+        }
+    } else if ((c & 0xF8) == 0xF0 && p + 2 < end) {
+        unsigned char c2 = p[0];
+        unsigned char c3 = p[1];
+        unsigned char c4 = p[2];
+        if ((c2 & 0xC0) == 0x80 && (c3 & 0xC0) == 0x80 && (c4 & 0xC0) == 0x80) {
+            p += 3;
+            return ((static_cast<uint32_t>(c) & 0x07) << 18) |
+                   ((static_cast<uint32_t>(c2) & 0x3F) << 12) |
+                   ((static_cast<uint32_t>(c3) & 0x3F) << 6) |
+                    (static_cast<uint32_t>(c4) & 0x3F);
+        }
+    }
+    return 0xFFFD;
+}
+
+/// <summary>
+/// Returns estimated display column width for a Unicode code point according to UAX #11 East Asian Width.
+/// </summary>
+/// <param name="cp">Unicode code point.</param>
+/// <returns>Display column width (0, 1, or 2).</returns>
+inline std::size_t CodePointDisplayWidth(uint32_t cp) noexcept {
+    if (cp < 0x20 || (cp >= 0x7F && cp < 0xA0)) return 0;
+    if (cp == 0x00AD) return 0;
+    if (cp >= 0x0300 && cp <= 0x036F) return 0;
+    if (cp >= 0x0483 && cp <= 0x0489) return 0;
+    if (cp >= 0x0591 && cp <= 0x05BD) return 0;
+    if (cp >= 0x05BF && cp <= 0x05C5) return 0;
+    if (cp >= 0x05C7 && cp <= 0x05C7) return 0;
+    if (cp >= 0x0610 && cp <= 0x061A) return 0;
+    if (cp >= 0x064B && cp <= 0x065F) return 0;
+    if (cp >= 0x200B && cp <= 0x200F) return 0;
+    if (cp >= 0x202A && cp <= 0x202E) return 0;
+    if (cp >= 0x2060 && cp <= 0x206F) return 0;
+    if (cp >= 0xFE00 && cp <= 0xFE0F) return 0;
+    if (cp >= 0xE0100 && cp <= 0xE01EF) return 0;
+
+    // East Asian Wide / Fullwidth and Emojis
+    if (cp >= 0x1100 && (cp <= 0x115F || cp == 0x2329 || cp == 0x232A)) return 2;
+    if (cp >= 0x2E80 && cp <= 0x303E) return 2;
+    if (cp >= 0x3040 && cp <= 0xA4CF) return 2;
+    if (cp >= 0xAC00 && cp <= 0xD7A3) return 2;
+    if (cp >= 0xF900 && cp <= 0xFAFF) return 2;
+    if (cp >= 0xFE10 && cp <= 0xFE19) return 2;
+    if (cp >= 0xFE30 && cp <= 0xFE6F) return 2;
+    if (cp >= 0xFF01 && cp <= 0xFF60) return 2;
+    if (cp >= 0xFFE0 && cp <= 0xFFE6) return 2;
+    if (cp >= 0x16FE0 && cp <= 0x18AFF) return 2;
+    if (cp >= 0x1B000 && cp <= 0x1B2FF) return 2;
+    if (cp >= 0x1F300 && cp <= 0x1F64F) return 2;
+    if (cp >= 0x1F680 && cp <= 0x1F6FF) return 2;
+    if (cp >= 0x1F900 && cp <= 0x1FAFF) return 2;
+    if (cp >= 0x20000 && cp <= 0x3FFFF) return 2;
+
+    return 1;
+}
+
+/// <summary>
+/// Computes total estimated display column width for a UTF-8 string view.
+/// </summary>
+/// <param name="s">UTF-8 string view.</param>
+/// <returns>Total estimated display column width.</returns>
+inline std::size_t ComputeUtf8DisplayWidth(compat::string_view s) noexcept {
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
+    const unsigned char* end = p + s.size();
+    std::size_t width = 0;
+    while (p < end) {
+        if (*p < 0x80) {
+            if (*p >= 0x20 && *p != 0x7F) {
+                ++width;
+            }
+            ++p;
+        } else {
+            uint32_t cp = DecodeUtf8CodePoint(p, end);
+            width += CodePointDisplayWidth(cp);
+        }
+    }
+    return width;
+}
+
+/// <summary>
+/// Truncates a UTF-8 string view so that its estimated display width does not exceed max_width.
+/// </summary>
+/// <param name="s">Source UTF-8 string view.</param>
+/// <param name="max_width">Maximum allowed display width.</param>
+/// <param name="actual_width">Output parameter receiving actual display width of truncated substring.</param>
+/// <returns>Byte length of truncated substring.</returns>
+inline std::size_t TruncateUtf8ByDisplayWidth(compat::string_view s, std::size_t max_width, std::size_t& actual_width) noexcept {
+    const unsigned char* start = reinterpret_cast<const unsigned char*>(s.data());
+    const unsigned char* p = start;
+    const unsigned char* end = start + s.size();
+    std::size_t current_width = 0;
+    const unsigned char* last_safe = start;
+
+    while (p < end) {
+        const unsigned char* prev = p;
+        std::size_t cp_width = 0;
+        if (*p < 0x80) {
+            if (*p >= 0x20 && *p != 0x7F) {
+                cp_width = 1;
+            }
+            ++p;
+        } else {
+            uint32_t cp = DecodeUtf8CodePoint(p, end);
+            cp_width = CodePointDisplayWidth(cp);
+        }
+        if (current_width + cp_width > max_width) {
+            break;
+        }
+        current_width += cp_width;
+        last_safe = p;
+    }
+    actual_width = current_width;
+    return static_cast<std::size_t>(last_safe - start);
+}
+
+/// <summary>
+/// Pads and appends formatted content with optional prefix into stack_buffer according to FormatSpec and display width.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="prefix">Prefix string (e.g. "-", "+", "0x", "0b").</param>
+/// <param name="prefix_len">Length of prefix string.</param>
+/// <param name="content">Main content string.</param>
+/// <param name="content_len">Byte length of main content string.</param>
+/// <param name="display_width">Estimated display column width of main content.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+/// <param name="default_align">Default alignment if not explicitly specified in spec ('<' or '>').</param>
+template <std::size_t Capacity>
+inline void PadAndAppend(stack_buffer<Capacity>& buf,
+                         const char* prefix, std::size_t prefix_len,
+                         const char* content, std::size_t content_len,
+                         std::size_t display_width,
+                         const FormatSpec& spec, char default_align) {
+    std::size_t total_display_width = prefix_len + display_width;
+    char align = (spec.align != '\0') ? spec.align : default_align;
+    std::size_t target_width = (spec.width > 0) ? static_cast<std::size_t>(spec.width) : 0;
+
+    if (total_display_width >= target_width) {
+        if (prefix_len > 0) {
+            buf.append(prefix, prefix_len);
+        }
+        if (content_len > 0) {
+            buf.append(content, content_len);
+        }
+        return;
+    }
+
+    std::size_t pad = target_width - total_display_width;
+
+    if (spec.zero_pad && spec.align == '\0') {
+        if (prefix_len > 0) {
+            buf.append(prefix, prefix_len);
+        }
+        for (std::size_t k = 0; k < pad; ++k) {
+            buf.push_back('0');
+        }
+        if (content_len > 0) {
+            buf.append(content, content_len);
+        }
+    } else if (align == '<') {
+        if (prefix_len > 0) {
+            buf.append(prefix, prefix_len);
+        }
+        if (content_len > 0) {
+            buf.append(content, content_len);
+        }
+        for (std::size_t k = 0; k < pad; ++k) {
+            buf.push_back(spec.fill);
+        }
+    } else if (align == '^') {
+        std::size_t left_pad = pad / 2;
+        std::size_t right_pad = pad - left_pad;
+        for (std::size_t k = 0; k < left_pad; ++k) {
+            buf.push_back(spec.fill);
+        }
+        if (prefix_len > 0) {
+            buf.append(prefix, prefix_len);
+        }
+        if (content_len > 0) {
+            buf.append(content, content_len);
+        }
+        for (std::size_t k = 0; k < right_pad; ++k) {
+            buf.push_back(spec.fill);
+        }
+    } else {
+        for (std::size_t k = 0; k < pad; ++k) {
+            buf.push_back(spec.fill);
+        }
+        if (prefix_len > 0) {
+            buf.append(prefix, prefix_len);
+        }
+        if (content_len > 0) {
+            buf.append(content, content_len);
+        }
+    }
+}
+
+/// <summary>
+/// Overload of PadAndAppend defaulting display_width to content_len.
+/// </summary>
+template <std::size_t Capacity>
+inline void PadAndAppend(stack_buffer<Capacity>& buf,
+                         const char* prefix, std::size_t prefix_len,
+                         const char* content, std::size_t content_len,
+                         const FormatSpec& spec, char default_align) {
+    PadAndAppend(buf, prefix, prefix_len, content, content_len, content_len, spec, default_align);
+}
+
+/// <summary>
+/// Formats an unsigned 64-bit integer with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="uval">Unsigned 64-bit integer value.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatUIntWithSpec(stack_buffer<Capacity>& buf, uint64_t uval, const FormatSpec& spec) {
+    if (spec.type == 'c') {
+        char ch = static_cast<char>(uval);
+        PadAndAppend(buf, "", 0, &ch, 1, spec, '<');
+        return;
+    }
+
+    char prefix_buf[8];
+    std::size_t prefix_len = 0;
+    if (spec.sign == '+') {
+        prefix_buf[prefix_len++] = '+';
+    } else if (spec.sign == ' ') {
+        prefix_buf[prefix_len++] = ' ';
+    }
+
+    char num_buf[70];
+    char* end = num_buf + sizeof(num_buf);
+    char* start = end;
+
+    if (spec.type == 'x' || spec.type == 'X') {
+        if (spec.alternate) {
+            prefix_buf[prefix_len++] = '0';
+            prefix_buf[prefix_len++] = spec.type;
+        }
+        if (uval == 0) {
+            *--start = '0';
+        } else {
+            static const char hex_lower[] = "0123456789abcdef";
+            static const char hex_upper[] = "0123456789ABCDEF";
+            const char* hex_digits = (spec.type == 'X') ? hex_upper : hex_lower;
+            while (uval > 0) {
+                *--start = hex_digits[uval & 0x0F];
+                uval >>= 4;
+            }
+        }
+    } else if (spec.type == 'b' || spec.type == 'B') {
+        if (spec.alternate) {
+            prefix_buf[prefix_len++] = '0';
+            prefix_buf[prefix_len++] = spec.type;
+        }
+        if (uval == 0) {
+            *--start = '0';
+        } else {
+            while (uval > 0) {
+                *--start = static_cast<char>('0' + (uval & 1));
+                uval >>= 1;
+            }
+        }
+    } else if (spec.type == 'o') {
+        if (spec.alternate && uval != 0) {
+            prefix_buf[prefix_len++] = '0';
+        }
+        if (uval == 0) {
+            *--start = '0';
+        } else {
+            while (uval > 0) {
+                *--start = static_cast<char>('0' + (uval & 0x07));
+                uval >>= 3;
+            }
+        }
+    } else {
+        start = FormatUIntToBuffer(end, uval);
+    }
+
+    PadAndAppend(buf, prefix_buf, prefix_len, start, static_cast<std::size_t>(end - start), spec, '>');
+}
+
+/// <summary>
+/// Formats a signed 64-bit integer with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">Signed 64-bit integer value.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatIntWithSpec(stack_buffer<Capacity>& buf, int64_t val, const FormatSpec& spec) {
+    if (spec.type == 'c') {
+        char ch = static_cast<char>(val);
+        PadAndAppend(buf, "", 0, &ch, 1, spec, '<');
+        return;
+    }
+
+    char prefix_buf[8];
+    std::size_t prefix_len = 0;
+    uint64_t uval = 0;
+
+    if (val < 0) {
+        prefix_buf[prefix_len++] = '-';
+        uval = static_cast<uint64_t>(-(val + 1)) + 1;
+    } else {
+        if (spec.sign == '+') {
+            prefix_buf[prefix_len++] = '+';
+        } else if (spec.sign == ' ') {
+            prefix_buf[prefix_len++] = ' ';
+        }
+        uval = static_cast<uint64_t>(val);
+    }
+
+    char num_buf[70];
+    char* end = num_buf + sizeof(num_buf);
+    char* start = end;
+
+    if (spec.type == 'x' || spec.type == 'X') {
+        if (spec.alternate) {
+            prefix_buf[prefix_len++] = '0';
+            prefix_buf[prefix_len++] = spec.type;
+        }
+        if (uval == 0) {
+            *--start = '0';
+        } else {
+            static const char hex_lower[] = "0123456789abcdef";
+            static const char hex_upper[] = "0123456789ABCDEF";
+            const char* hex_digits = (spec.type == 'X') ? hex_upper : hex_lower;
+            while (uval > 0) {
+                *--start = hex_digits[uval & 0x0F];
+                uval >>= 4;
+            }
+        }
+    } else if (spec.type == 'b' || spec.type == 'B') {
+        if (spec.alternate) {
+            prefix_buf[prefix_len++] = '0';
+            prefix_buf[prefix_len++] = spec.type;
+        }
+        if (uval == 0) {
+            *--start = '0';
+        } else {
+            while (uval > 0) {
+                *--start = static_cast<char>('0' + (uval & 1));
+                uval >>= 1;
+            }
+        }
+    } else if (spec.type == 'o') {
+        if (spec.alternate && uval != 0) {
+            prefix_buf[prefix_len++] = '0';
+        }
+        if (uval == 0) {
+            *--start = '0';
+        } else {
+            while (uval > 0) {
+                *--start = static_cast<char>('0' + (uval & 0x07));
+                uval >>= 3;
+            }
+        }
+    } else {
+        start = FormatUIntToBuffer(end, uval);
+    }
+
+    PadAndAppend(buf, prefix_buf, prefix_len, start, static_cast<std::size_t>(end - start), spec, '>');
+}
+
+/// <summary>
+/// Formats a double-precision floating-point number with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">Floating-point value.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const FormatSpec& spec) {
+    char fmt_pattern[32];
+    char* fp = fmt_pattern;
+    *fp++ = '%';
+    if (spec.sign == '+' && val >= 0.0) {
+        *fp++ = '+';
+    } else if (spec.sign == ' ' && val >= 0.0) {
+        *fp++ = ' ';
+    }
+    if (spec.alternate) {
+        *fp++ = '#';
+    }
+    if (spec.precision >= 0) {
+        *fp++ = '.';
+        char prec_buf[16];
+        int prec_len = std::snprintf(prec_buf, sizeof(prec_buf), "%d", spec.precision);
+        for (int k = 0; k < prec_len; ++k) {
+            *fp++ = prec_buf[k];
+        }
+    }
+    char conv = spec.type;
+    if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
+        conv = (spec.precision >= 0) ? 'f' : 'g';
+    }
+    *fp++ = conv;
+    *fp = '\0';
+
+    char raw_buf[128];
+    int raw_len = std::snprintf(raw_buf, sizeof(raw_buf), fmt_pattern, val);
+    if (raw_len < 0) {
+        return;
+    }
+
+    const char* prefix = "";
+    std::size_t prefix_len = 0;
+    const char* content = raw_buf;
+    std::size_t content_len = static_cast<std::size_t>(raw_len);
+
+    if (content_len > 0 && (raw_buf[0] == '-' || raw_buf[0] == '+' || raw_buf[0] == ' ')) {
+        prefix = raw_buf;
+        prefix_len = 1;
+        content = raw_buf + 1;
+        content_len -= 1;
+    }
+
+    PadAndAppend(buf, prefix, prefix_len, content, content_len, spec, '>');
+}
+
+/// <summary>
+/// Formats a long double floating-point number with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">Long double floating-point value.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatLongDoubleWithSpec(stack_buffer<Capacity>& buf, long double val, const FormatSpec& spec) {
+    char fmt_pattern[32];
+    char* fp = fmt_pattern;
+    *fp++ = '%';
+    if (spec.sign == '+' && val >= 0.0L) {
+        *fp++ = '+';
+    } else if (spec.sign == ' ' && val >= 0.0L) {
+        *fp++ = ' ';
+    }
+    if (spec.alternate) {
+        *fp++ = '#';
+    }
+    if (spec.precision >= 0) {
+        *fp++ = '.';
+        char prec_buf[16];
+        int prec_len = std::snprintf(prec_buf, sizeof(prec_buf), "%d", spec.precision);
+        for (int k = 0; k < prec_len; ++k) {
+            *fp++ = prec_buf[k];
+        }
+    }
+    *fp++ = 'L';
+    char conv = spec.type;
+    if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
+        conv = (spec.precision >= 0) ? 'f' : 'g';
+    }
+    *fp++ = conv;
+    *fp = '\0';
+
+    char raw_buf[128];
+    int raw_len = std::snprintf(raw_buf, sizeof(raw_buf), fmt_pattern, val);
+    if (raw_len < 0) {
+        return;
+    }
+
+    const char* prefix = "";
+    std::size_t prefix_len = 0;
+    const char* content = raw_buf;
+    std::size_t content_len = static_cast<std::size_t>(raw_len);
+
+    if (content_len > 0 && (raw_buf[0] == '-' || raw_buf[0] == '+' || raw_buf[0] == ' ')) {
+        prefix = raw_buf;
+        prefix_len = 1;
+        content = raw_buf + 1;
+        content_len -= 1;
+    }
+
+    PadAndAppend(buf, prefix, prefix_len, content, content_len, spec, '>');
+}
+
+/// <summary>
+/// Formats a string view with FormatSpec options into stack_buffer using Unicode display width.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">String view to format.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatStringWithSpec(stack_buffer<Capacity>& buf, compat::string_view val, const FormatSpec& spec) {
+    std::size_t content_len = 0;
+    std::size_t display_width = 0;
+    if (spec.precision >= 0) {
+        content_len = TruncateUtf8ByDisplayWidth(val, static_cast<std::size_t>(spec.precision), display_width);
+    } else {
+        content_len = val.size();
+        display_width = ComputeUtf8DisplayWidth(val);
+    }
+    PadAndAppend(buf, "", 0, val.data(), content_len, display_width, spec, '<');
+}
+
+/// <summary>
+/// Formats a boolean value with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">Boolean value to format.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatBoolWithSpec(stack_buffer<Capacity>& buf, bool val, const FormatSpec& spec) {
+    if (spec.type == 'd' || spec.type == 'x' || spec.type == 'X' || spec.type == 'b' || spec.type == 'B' || spec.type == 'o') {
+        FormatIntWithSpec(buf, val ? 1 : 0, spec);
+    } else {
+        const char* s = val ? "true" : "false";
+        std::size_t len = val ? 4 : 5;
+        PadAndAppend(buf, "", 0, s, len, spec, '<');
+    }
+}
+
+/// <summary>
+/// Formats a character value with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">Character value to format.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatCharWithSpec(stack_buffer<Capacity>& buf, char val, const FormatSpec& spec) {
+    if (spec.type == 'd' || spec.type == 'x' || spec.type == 'X' || spec.type == 'b' || spec.type == 'B' || spec.type == 'o') {
+        FormatIntWithSpec(buf, static_cast<int64_t>(static_cast<unsigned char>(val)), spec);
+    } else {
+        PadAndAppend(buf, "", 0, &val, 1, spec, '<');
+    }
+}
+
+/// <summary>
+/// Formats a pointer value with FormatSpec options into stack_buffer.
+/// </summary>
+/// <typeparam name="Capacity">Stack buffer capacity.</typeparam>
+/// <param name="buf">Target stack buffer.</param>
+/// <param name="val">Pointer address to format.</param>
+/// <param name="spec">Parsed FormatSpec.</param>
+template <std::size_t Capacity>
+inline void FormatPtrWithSpec(stack_buffer<Capacity>& buf, const void* val, const FormatSpec& spec) {
+    char ptr_buf[32];
+    int len = std::snprintf(ptr_buf, sizeof(ptr_buf), "%p", val);
+    if (len > 0) {
+        PadAndAppend(buf, "", 0, ptr_buf, static_cast<std::size_t>(len), spec, '>');
+    }
+}
+
+/// <summary>
+/// Base formatter providing format specification parsing for primitive types.
+/// </summary>
+/// <typeparam name="CharT">Character type, defaults to char.</typeparam>
+template <typename CharT = char>
+struct base_primitive_formatter {
+    FormatSpec spec;
+
+    /// <summary>
+    /// Parses format specification context.
+    /// </summary>
+    /// <typeparam name="ParseContext">Format parse context type.</typeparam>
+    /// <param name="ctx">Format parse context reference.</param>
+    /// <returns>Iterator to position after parsed format specification.</returns>
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
+        auto it = ctx.begin();
+        auto end = ctx.end();
+        if (it != end && *it == ':') {
+            ++it;
+        }
+        if (it != end) {
+            compat::string_view sv(it, static_cast<std::size_t>(end - it));
+            spec = ParseFormatSpec(sv);
+            it = end;
+        }
+        ctx.advance_to(it);
+        return it;
+    }
+};
+
 } // namespace detail
 
 #if !COMPAT_HAS_STD_FORMAT
@@ -12003,12 +12723,14 @@ COMPAT_ALWAYS_INLINE char* FormatIntToBuffer(char* end_ptr, int64_t val) noexcep
 /// Formatter specialization for std::string.
 /// </summary>
 template <>
-struct formatter<std::string, char> {
+struct formatter<std::string, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(const std::string& val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        detail::stack_buffer<256> tmp;
+        detail::FormatStringWithSpec(tmp, compat::string_view(val.data(), val.size()), spec);
         auto it = ctx.out();
-        for (char c : val) {
-            *it++ = c;
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12019,12 +12741,14 @@ struct formatter<std::string, char> {
 /// Formatter specialization for compat::string_view.
 /// </summary>
 template <>
-struct formatter<compat::string_view, char> {
+struct formatter<compat::string_view, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(compat::string_view val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        detail::stack_buffer<256> tmp;
+        detail::FormatStringWithSpec(tmp, val, spec);
         auto it = ctx.out();
-        for (std::size_t i = 0; i < val.size(); ++i) {
-            *it++ = val[i];
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12035,14 +12759,14 @@ struct formatter<compat::string_view, char> {
 /// Formatter specialization for const char*.
 /// </summary>
 template <>
-struct formatter<const char*, char> {
+struct formatter<const char*, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(const char* val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        detail::stack_buffer<256> tmp;
+        detail::FormatStringWithSpec(tmp, val ? compat::string_view(val) : compat::string_view{}, spec);
         auto it = ctx.out();
-        if (val != nullptr) {
-            while (*val != '\0') {
-                *it++ = *val++;
-            }
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12053,11 +12777,13 @@ struct formatter<const char*, char> {
 /// Formatter specialization for char* (non-const).
 /// </summary>
 template <>
-struct formatter<char*, char> {
+struct formatter<char*, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(char* val, FormatContext& ctx) const -> decltype(ctx.out()) {
         const char* p = val;
-        return formatter<const char*, char>{}.format(p, ctx);
+        formatter<const char*, char> f;
+        f.spec = spec;
+        return f.format(p, ctx);
     }
 };
 
@@ -12065,11 +12791,15 @@ struct formatter<char*, char> {
 /// Formatter specialization for single char.
 /// </summary>
 template <>
-struct formatter<char, char> {
+struct formatter<char, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(char val, FormatContext& ctx) const -> decltype(ctx.out()) {
+        detail::stack_buffer<32> tmp;
+        detail::FormatCharWithSpec(tmp, val, spec);
         auto it = ctx.out();
-        *it++ = val;
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
+        }
         ctx.advance_to(it);
         return it;
     }
@@ -12079,11 +12809,17 @@ struct formatter<char, char> {
 /// Formatter specialization for bool.
 /// </summary>
 template <>
-struct formatter<bool, char> {
+struct formatter<bool, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(bool val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        const char* s = val ? "true" : "false";
-        return formatter<const char*, char>{}.format(s, ctx);
+        detail::stack_buffer<32> tmp;
+        detail::FormatBoolWithSpec(tmp, val, spec);
+        auto it = ctx.out();
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
+        }
+        ctx.advance_to(it);
+        return it;
     }
 };
 
@@ -12091,14 +12827,14 @@ struct formatter<bool, char> {
 /// Formatter specialization for const void*.
 /// </summary>
 template <>
-struct formatter<const void*, char> {
+struct formatter<const void*, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(const void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        char buf[32];
-        int len = std::snprintf(buf, sizeof(buf), "%p", val);
+        detail::stack_buffer<64> tmp;
+        detail::FormatPtrWithSpec(tmp, val, spec);
         auto it = ctx.out();
-        for (int i = 0; i < len; ++i) {
-            *it++ = buf[i];
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12109,16 +12845,40 @@ struct formatter<const void*, char> {
 /// Formatter specialization for void*.
 /// </summary>
 template <>
-struct formatter<void*, char> {
+struct formatter<void*, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(void* val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        return formatter<const void*, char>{}.format(val, ctx);
+        formatter<const void*, char> f;
+        f.spec = spec;
+        return f.format(val, ctx);
     }
 };
 
-#define COMPAT_DEFINE_UINT_FORMATTER(Type) template <> struct formatter<Type, char> {     template <typename FormatContext>     auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) {         char buf[32];         char* end = buf + sizeof(buf);         char* start = detail::FormatUIntToBuffer(end, static_cast<uint64_t>(val));         auto it = ctx.out();         for (char* p = start; p < end; ++p) {             *it++ = *p;         }         ctx.advance_to(it);         return it;     } };
+#define COMPAT_DEFINE_UINT_FORMATTER(Type) \
+template <> struct formatter<Type, char> : detail::base_primitive_formatter<char> { \
+    template <typename FormatContext> \
+    auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) { \
+        detail::stack_buffer<128> tmp; \
+        detail::FormatUIntWithSpec(tmp, static_cast<uint64_t>(val), spec); \
+        auto it = ctx.out(); \
+        for (std::size_t i = 0; i < tmp.size(); ++i) { *it++ = tmp.data()[i]; } \
+        ctx.advance_to(it); \
+        return it; \
+    } \
+};
 
-#define COMPAT_DEFINE_SINT_FORMATTER(Type) template <> struct formatter<Type, char> {     template <typename FormatContext>     auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) {         char buf[32];         char* end = buf + sizeof(buf);         char* start = detail::FormatIntToBuffer(end, static_cast<int64_t>(val));         auto it = ctx.out();         for (char* p = start; p < end; ++p) {             *it++ = *p;         }         ctx.advance_to(it);         return it;     } };
+#define COMPAT_DEFINE_SINT_FORMATTER(Type) \
+template <> struct formatter<Type, char> : detail::base_primitive_formatter<char> { \
+    template <typename FormatContext> \
+    auto format(Type val, FormatContext& ctx) const -> decltype(ctx.out()) { \
+        detail::stack_buffer<128> tmp; \
+        detail::FormatIntWithSpec(tmp, static_cast<int64_t>(val), spec); \
+        auto it = ctx.out(); \
+        for (std::size_t i = 0; i < tmp.size(); ++i) { *it++ = tmp.data()[i]; } \
+        ctx.advance_to(it); \
+        return it; \
+    } \
+};
 
 COMPAT_DEFINE_SINT_FORMATTER(short)
 COMPAT_DEFINE_UINT_FORMATTER(unsigned short)
@@ -12136,14 +12896,14 @@ COMPAT_DEFINE_UINT_FORMATTER(unsigned long long)
 /// Formatter specialization for float.
 /// </summary>
 template <>
-struct formatter<float, char> {
+struct formatter<float, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(float val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        char buf[64];
-        int len = std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(val));
+        detail::stack_buffer<128> tmp;
+        detail::FormatFloatWithSpec(tmp, static_cast<double>(val), spec);
         auto it = ctx.out();
-        for (int i = 0; i < len; ++i) {
-            *it++ = buf[i];
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12154,14 +12914,14 @@ struct formatter<float, char> {
 /// Formatter specialization for double.
 /// </summary>
 template <>
-struct formatter<double, char> {
+struct formatter<double, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(double val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        char buf[64];
-        int len = std::snprintf(buf, sizeof(buf), "%g", val);
+        detail::stack_buffer<128> tmp;
+        detail::FormatFloatWithSpec(tmp, val, spec);
         auto it = ctx.out();
-        for (int i = 0; i < len; ++i) {
-            *it++ = buf[i];
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12172,14 +12932,14 @@ struct formatter<double, char> {
 /// Formatter specialization for long double.
 /// </summary>
 template <>
-struct formatter<long double, char> {
+struct formatter<long double, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(long double val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        char buf[64];
-        int len = std::snprintf(buf, sizeof(buf), "%Lg", val);
+        detail::stack_buffer<128> tmp;
+        detail::FormatLongDoubleWithSpec(tmp, val, spec);
         auto it = ctx.out();
-        for (int i = 0; i < len; ++i) {
-            *it++ = buf[i];
+        for (std::size_t i = 0; i < tmp.size(); ++i) {
+            *it++ = tmp.data()[i];
         }
         ctx.advance_to(it);
         return it;
@@ -12190,10 +12950,12 @@ struct formatter<long double, char> {
 /// Formatter specialization for signed char (printed as integer).
 /// </summary>
 template <>
-struct formatter<signed char, char> {
+struct formatter<signed char, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(signed char val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        return formatter<int, char>{}.format(static_cast<int>(val), ctx);
+        formatter<int, char> f;
+        f.spec = spec;
+        return f.format(static_cast<int>(val), ctx);
     }
 };
 
@@ -12201,10 +12963,12 @@ struct formatter<signed char, char> {
 /// Formatter specialization for unsigned char (printed as integer).
 /// </summary>
 template <>
-struct formatter<unsigned char, char> {
+struct formatter<unsigned char, char> : detail::base_primitive_formatter<char> {
     template <typename FormatContext>
     auto format(unsigned char val, FormatContext& ctx) const -> decltype(ctx.out()) {
-        return formatter<unsigned int, char>{}.format(static_cast<unsigned int>(val), ctx);
+        formatter<unsigned int, char> f;
+        f.spec = spec;
+        return f.format(static_cast<unsigned int>(val), ctx);
     }
 };
 
@@ -12226,6 +12990,216 @@ template <std::size_t N>
 struct format_arg_traits<const char[N]> {
     using type = const char*;
 };
+
+// Forward declarations for concrete FormatArgToBuffer overloads
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::string& val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, compat::string_view val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, bool val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, signed char val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned char val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, short val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned short val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, int val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned int val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned long val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long long val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned long long val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, float val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, double val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long double val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const void* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, void* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::wstring& val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char16_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u16string& val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char32_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u32string& val);
+#if defined(__cpp_char8_t)
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char8_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t* val);
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u8string& val);
+#endif
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t (&val)[N]) {
+    const wchar_t* p = val;
+    std::size_t len = (N > 0 && val[N - 1] == L'\0') ? N - 1 : N;
+#if defined(_WIN32)
+    AppendUtf16ToBuffer(buf, p, p + len);
+#else
+    AppendUtf32ToBuffer(buf, p, p + len);
+#endif
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t (&val)[N]) {
+    FormatArgToBuffer(buf, static_cast<const wchar_t (&)[N]>(val));
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char (&val)[N]) {
+    std::size_t len = (N > 0 && val[N - 1] == '\0') ? N - 1 : N;
+    buf.append(val, len);
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char (&val)[N]) {
+    FormatArgToBuffer(buf, static_cast<const char (&)[N]>(val));
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::wstring& arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const wchar_t* arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t* arg, compat::string_view spec) {
+    FormatArgToBufferWithSpec(buf, static_cast<const wchar_t*>(arg), spec);
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+template <std::size_t N>
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const wchar_t (&arg)[N], compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+template <std::size_t N>
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t (&arg)[N], compat::string_view spec) {
+    FormatArgToBufferWithSpec(buf, static_cast<const wchar_t (&)[N]>(arg), spec);
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u16string& arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char16_t* arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char16_t arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u32string& arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char32_t* arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char32_t arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+#if defined(__cpp_char8_t)
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u8string& arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char8_t* arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+
+inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char8_t arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        stack_buffer<512> utf8_buf;
+        FormatArgToBuffer(utf8_buf, arg);
+        FormatStringWithSpec(buf, utf8_buf.view(), ParseFormatSpec(spec));
+    }
+}
+#endif
 
 #if COMPAT_HAS_STD_FORMAT
 
@@ -12273,8 +13247,16 @@ FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_v
 
 template <typename T>
 inline typename std::enable_if<!has_std_formatter<T>::value, void>::type
-FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view /*spec*/) {
-    FormatArgToBuffer(buf, arg);
+FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+    } else {
+        FormatSpec fspec = ParseFormatSpec(spec);
+        std::ostringstream oss;
+        oss << arg;
+        std::string s = oss.str();
+        PadAndAppend(buf, "", 0, s.data(), s.size(), fspec, '<');
+    }
 }
 
 #else
@@ -12306,58 +13288,6 @@ template <typename F, typename PC>
 inline typename std::enable_if<!has_parse_member<F, PC>::value, void>::type
 CallFormatterParse(F&, PC&) {}
 
-// Forward declarations for concrete FormatArgToBuffer overloads
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::string& val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, compat::string_view val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::wstring& val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char16_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char16_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u16string& val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char32_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char32_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u32string& val);
-#if defined(__cpp_char8_t)
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char8_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char8_t* val);
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const std::u8string& val);
-#endif
-
-template <std::size_t N>
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const wchar_t (&val)[N]) {
-    const wchar_t* p = val;
-    std::size_t len = (N > 0 && val[N - 1] == L'\0') ? N - 1 : N;
-#if defined(_WIN32)
-    AppendUtf16ToBuffer(buf, p, p + len);
-#else
-    AppendUtf32ToBuffer(buf, p, p + len);
-#endif
-}
-
-template <std::size_t N>
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, wchar_t (&val)[N]) {
-    FormatArgToBuffer(buf, static_cast<const wchar_t (&)[N]>(val));
-}
-
-template <std::size_t N>
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const char (&val)[N]) {
-    std::size_t len = (N > 0 && val[N - 1] == '\0') ? N - 1 : N;
-    buf.append(val, len);
-}
-
-template <std::size_t N>
-COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, char (&val)[N]) {
-    FormatArgToBuffer(buf, static_cast<const char (&)[N]>(val));
-}
-
 template <typename T>
 inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
 FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
@@ -12378,70 +13308,208 @@ FormatArgToBuffer(stack_buffer<512>& buf, const T& arg) {
     buf.append(s.data(), s.size());
 }
 
+// Concrete overloads of FormatArgToBufferWithSpec for standard primitive types
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::string& val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatStringWithSpec(buf, compat::string_view(val.data(), val.size()), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, compat::string_view val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatStringWithSpec(buf, val, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char* val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatStringWithSpec(buf, val ? compat::string_view(val) : compat::string_view{}, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char* val, compat::string_view spec) {
+    FormatArgToBufferWithSpec(buf, static_cast<const char*>(val), spec);
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char (&val)[N], compat::string_view spec) {
+    std::size_t len = (N > 0 && val[N - 1] == '\0') ? N - 1 : N;
+    if (spec.empty()) {
+        buf.append(val, len);
+    } else {
+        FormatStringWithSpec(buf, compat::string_view(val, len), ParseFormatSpec(spec));
+    }
+}
+
+template <std::size_t N>
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char (&val)[N], compat::string_view spec) {
+    FormatArgToBufferWithSpec(buf, static_cast<const char (&)[N]>(val), spec);
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char val, compat::string_view spec) {
+    if (spec.empty()) {
+        buf.push_back(val);
+    } else {
+        FormatCharWithSpec(buf, val, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, bool val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatBoolWithSpec(buf, val, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, signed char val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatIntWithSpec(buf, static_cast<int64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, unsigned char val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatUIntWithSpec(buf, static_cast<uint64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, short val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatIntWithSpec(buf, static_cast<int64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, unsigned short val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatUIntWithSpec(buf, static_cast<uint64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, int val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatIntWithSpec(buf, static_cast<int64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, unsigned int val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatUIntWithSpec(buf, static_cast<uint64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, long val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatIntWithSpec(buf, static_cast<int64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, unsigned long val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatUIntWithSpec(buf, static_cast<uint64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, long long val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatIntWithSpec(buf, static_cast<int64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, unsigned long long val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatUIntWithSpec(buf, static_cast<uint64_t>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, float val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatFloatWithSpec(buf, static_cast<double>(val), ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, double val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatFloatWithSpec(buf, val, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, long double val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatLongDoubleWithSpec(buf, val, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const void* val, compat::string_view spec) {
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, val);
+    } else {
+        FormatPtrWithSpec(buf, val, ParseFormatSpec(spec));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBufferWithSpec(stack_buffer<512>& buf, void* val, compat::string_view spec) {
+    FormatArgToBufferWithSpec(buf, static_cast<const void*>(val), spec);
+}
+
 template <typename T>
 inline typename std::enable_if<has_compat_formatter<T>::value, void>::type
 FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_view spec) {
-    buffer_appender<stack_buffer<512>> app(buf);
-    basic_format_context<buffer_appender<stack_buffer<512>>, char> ctx(app);
+    if (spec.empty()) {
+        FormatArgToBuffer(buf, arg);
+        return;
+    }
     using FormatterType = typename format_arg_traits<T>::type;
     formatter<FormatterType, char> fmt_obj;
-    if (!spec.empty()) {
+    FormatterType formatted_arg = static_cast<FormatterType>(arg);
+
+    if (has_parse_member<formatter<FormatterType, char>, format_parse_context>::value) {
+        buffer_appender<stack_buffer<512>> app(buf);
+        basic_format_context<buffer_appender<stack_buffer<512>>, char> ctx(app);
         format_parse_context pctx(spec);
         CallFormatterParse(fmt_obj, pctx);
+        fmt_obj.format(formatted_arg, ctx);
+    } else {
+        stack_buffer<256> tmp;
+        buffer_appender<stack_buffer<256>> tmp_app(tmp);
+        basic_format_context<buffer_appender<stack_buffer<256>>, char> tmp_ctx(tmp_app);
+        fmt_obj.format(formatted_arg, tmp_ctx);
+        PadAndAppend(buf, "", 0, tmp.data(), tmp.size(), ParseFormatSpec(spec), '<');
     }
-    FormatterType formatted_arg = static_cast<FormatterType>(arg);
-    fmt_obj.format(formatted_arg, ctx);
 }
-
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::wstring& arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const wchar_t* arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t* arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-template <std::size_t N>
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const wchar_t (&arg)[N], compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-template <std::size_t N>
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, wchar_t (&arg)[N], compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u16string& arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char16_t* arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char16_t arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u32string& arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char32_t* arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char32_t arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-#if defined(__cpp_char8_t)
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const std::u8string& arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, const char8_t* arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-inline void FormatArgToBufferWithSpec(stack_buffer<512>& buf, char8_t arg, compat::string_view) {
-    FormatArgToBuffer(buf, arg);
-}
-#endif
 
 template <typename T>
 inline typename std::enable_if<!has_compat_formatter<T>::value, void>::type
@@ -12449,10 +13517,11 @@ FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_v
     if (spec.empty()) {
         FormatArgToBuffer(buf, arg);
     } else {
+        FormatSpec fspec = ParseFormatSpec(spec);
         std::ostringstream oss;
         oss << arg;
         std::string s = oss.str();
-        buf.append(s.data(), s.size());
+        PadAndAppend(buf, "", 0, s.data(), s.size(), fspec, '<');
     }
 }
 
@@ -12677,6 +13746,18 @@ COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long double 
     if (len > 0) {
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, const void* val) {
+    char ptr_buf[32];
+    int len = std::snprintf(ptr_buf, sizeof(ptr_buf), "%p", val);
+    if (len > 0) {
+        buf.append(ptr_buf, static_cast<std::size_t>(len));
+    }
+}
+
+COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, void* val) {
+    FormatArgToBuffer(buf, static_cast<const void*>(val));
 }
 
 /// <summary>

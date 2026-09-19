@@ -166,5 +166,34 @@ void run_test_print() {
     compat::print(oss_eu, "Accents: {} {} {} {} {}", "é", "ö", "ñ", "ç", "ü");
     TEST_ASSERT(oss_eu.str() == "Accents: é ö ñ ç ü");
 
+    // 18. 測試 compat::print 與 compat::println 格式化規格 (寬度、對齊、填充、零填充、進位制、浮點數)
+    std::ostringstream oss_spec1;
+    compat::print(oss_spec1, "{:8}", 1);
+    TEST_ASSERT(oss_spec1.str() == "       1");
+
+    std::ostringstream oss_spec2;
+    compat::print(oss_spec2, "{:<8}", 1);
+    TEST_ASSERT(oss_spec2.str() == "1       ");
+
+    std::ostringstream oss_spec3;
+    compat::print(oss_spec3, "{:#010x}", 255);
+    TEST_ASSERT(oss_spec3.str() == "0x000000ff");
+
+    std::ostringstream oss_spec4;
+    compat::print(oss_spec4, "{:8.2f}", 3.14159);
+    TEST_ASSERT(oss_spec4.str() == "    3.14");
+
+    std::ostringstream oss_spec5;
+    compat::println(oss_spec5, "{:10}", "compat");
+    TEST_ASSERT(oss_spec5.str() == "compat    \n");
+
+    std::ostringstream oss_spec6;
+    compat::print(oss_spec6, "[{:8}] [{:*^10}] [{:+08d}]", 42, "center", 123);
+    TEST_ASSERT(oss_spec6.str() == "[      42] [**center**] [+0000123]");
+
+    std::ostringstream oss_spec7;
+    compat::println(oss_spec7, "{:8}{:8}{:8}{:8}", "一號", "二號", "三號", "四號");
+    TEST_ASSERT(oss_spec7.str() == "一號    二號    三號    四號    \n");
+
     std::cout << "[PASS] test_print passed." << std::endl;
 }

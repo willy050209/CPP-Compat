@@ -111,6 +111,55 @@ void run_test_format() {
 #  endif
 #endif
 
+    // 10. 格式化規格測試：寬度、對齊、填充、零填充、進位制、正負號、精度、截斷
+    TEST_ASSERT(compat::format("{:8}", 1) == "       1");
+    TEST_ASSERT(compat::format("{:<8}", 1) == "1       ");
+    TEST_ASSERT(compat::format("{:>8}", 1) == "       1");
+    TEST_ASSERT(compat::format("{:^8}", 1) == "   1    ");
+    TEST_ASSERT(compat::format("{:*^8}", 1) == "***1****");
+    TEST_ASSERT(compat::format("{:+}", 1) == "+1");
+    TEST_ASSERT(compat::format("{:+}", -1) == "-1");
+    TEST_ASSERT(compat::format("{: }", 1) == " 1");
+    TEST_ASSERT(compat::format("{: }", -1) == "-1");
+    TEST_ASSERT(compat::format("{:-}", 1) == "1");
+    TEST_ASSERT(compat::format("{:08}", 1) == "00000001");
+    TEST_ASSERT(compat::format("{:08d}", 42) == "00000042");
+    TEST_ASSERT(compat::format("{:+08d}", 42) == "+0000042");
+    TEST_ASSERT(compat::format("{:08d}", -42) == "-0000042");
+    TEST_ASSERT(compat::format("{:x}", 255) == "ff");
+    TEST_ASSERT(compat::format("{:X}", 255) == "FF");
+    TEST_ASSERT(compat::format("{:#x}", 255) == "0xff");
+    TEST_ASSERT(compat::format("{:#X}", 255) == "0XFF");
+    TEST_ASSERT(compat::format("{:#b}", 5) == "0b101");
+    TEST_ASSERT(compat::format("{:#B}", 5) == "0B101");
+    TEST_ASSERT(compat::format("{:#o}", 64) == "0100");
+    TEST_ASSERT(compat::format("{:.2f}", 3.14159) == "3.14");
+    TEST_ASSERT(compat::format("{:8.2f}", 3.14159) == "    3.14");
+    TEST_ASSERT(compat::format("{:<8.2f}", 3.14159) == "3.14    ");
+    TEST_ASSERT(compat::format("{:+8.2f}", 3.14159) == "   +3.14");
+    TEST_ASSERT(compat::format("{:8}", "hello") == "hello   ");
+    TEST_ASSERT(compat::format("{:>8}", "hello") == "   hello");
+    TEST_ASSERT(compat::format("{:.3s}", "hello") == "hel");
+    TEST_ASSERT(compat::format("{:8.3s}", "hello") == "hel     ");
+    TEST_ASSERT(compat::format("{:6}", true) == "true  ");
+    TEST_ASSERT(compat::format("{:d}", true) == "1");
+    TEST_ASSERT(compat::format("{:d}", false) == "0");
+    TEST_ASSERT(compat::format("{:4}", 'a') == "a   ");
+    TEST_ASSERT(compat::format("{:>4}", 'a') == "   a");
+    TEST_ASSERT(compat::format("[{:8}] [{:<6}] [{:#06x}]", 1, "test", 42) == "[       1] [test  ] [0x002a]");
+
+    // CJK & Unicode East Asian Width (UAX #11 / P1868R2)
+    TEST_ASSERT(compat::format("{:8}", "一號") == "一號    ");
+    TEST_ASSERT(compat::format("{:<8}", "一號") == "一號    ");
+    TEST_ASSERT(compat::format("{:>8}", "一號") == "    一號");
+    TEST_ASSERT(compat::format("{:^8}", "一號") == "  一號  ");
+    TEST_ASSERT(compat::format("{:*^8}", "一號") == "**一號**");
+    TEST_ASSERT(compat::format("{:.2}", "一號二號") == "一");
+    TEST_ASSERT(compat::format("{:.3}", "一號二號") == "一");
+    TEST_ASSERT(compat::format("{:.4}", "一號二號") == "一號");
+    TEST_ASSERT(compat::format("{:8.2}", "一號二號") == "一      ");
+    TEST_ASSERT(compat::format("{:8}{:8}{:8}{:8}", "一號", "二號", "三號", "四號") == "一號    二號    三號    四號    ");
+
     std::cout << "[PASS] test_format passed." << std::endl;
 }
 
