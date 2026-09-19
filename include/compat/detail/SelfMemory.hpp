@@ -35,7 +35,7 @@ namespace ranges {
         using compat::detail::self_algo::ranges::detail::is_iterator_sentinel_pair;
 
         template <typename T>
-        constexpr void destroy_at_impl(T* p) noexcept {
+        COMPAT_CONSTEXPR_20 void destroy_at_impl(T* p) noexcept {
             p->~T();
         }
 
@@ -46,7 +46,7 @@ namespace ranges {
             O current;
             bool active;
 
-            constexpr rollback_guard(O f) : first(f), current(f), active(true) {}
+            rollback_guard(O f) : first(f), current(f), active(true) {}
             ~rollback_guard() {
                 if (active) {
                     for (; first != current; ++first) {
@@ -61,7 +61,7 @@ namespace ranges {
 
         struct construct_at_fn {
             template <typename T, typename... Args>
-            constexpr auto operator()(T* p, Args&&... args) const
+            COMPAT_CONSTEXPR_20 auto operator()(T* p, Args&&... args) const
                 -> decltype(::new (static_cast<void*>(p)) T(std::forward<Args>(args)...)) {
                 return ::new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
             }
@@ -69,7 +69,7 @@ namespace ranges {
 
         struct destroy_at_fn {
             template <typename T>
-            constexpr void operator()(T* p) const noexcept {
+            COMPAT_CONSTEXPR_20 void operator()(T* p) const noexcept {
                 destroy_at_impl(p);
             }
         };
@@ -77,7 +77,7 @@ namespace ranges {
         struct destroy_fn {
             template <typename I, typename S,
                       typename = typename std::enable_if<is_iterator_sentinel_pair<I, S>::value>::type>
-            constexpr I operator()(I first, S last) const noexcept {
+            COMPAT_CONSTEXPR_20 I operator()(I first, S last) const noexcept {
                 for (; first != last; ++first) {
                     destroy_at_fn{}(std::addressof(*first));
                 }
@@ -86,14 +86,14 @@ namespace ranges {
 
             template <typename R,
                       typename = typename std::enable_if<range<R>::value>::type>
-            constexpr borrowed_iterator_t<R> operator()(R&& r) const noexcept {
+            COMPAT_CONSTEXPR_20 borrowed_iterator_t<R> operator()(R&& r) const noexcept {
                 return (*this)(range_detail::begin_fn{}(r), range_detail::end_fn{}(r));
             }
         };
 
         struct destroy_n_fn {
             template <typename I>
-            constexpr I operator()(I first, std::size_t n) const noexcept {
+            COMPAT_CONSTEXPR_20 I operator()(I first, std::size_t n) const noexcept {
                 for (; n > 0; --n, ++first) {
                     destroy_at_fn{}(std::addressof(*first));
                 }
