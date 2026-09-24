@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <compat/Ranges.hpp>
 #include <compat/View.hpp>
 
@@ -48,6 +48,14 @@ namespace {
         // Constant range trait (P2728R6)
         TEST_ASSERT(!compat::ranges::constant_range<std::vector<int>>::value);
         TEST_ASSERT(compat::ranges::constant_range<const std::vector<int>>::value);
+
+        // TEST-RNG-001: single_view must NOT be a borrowed range
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+        static_assert(!compat::ranges::enable_borrowed_range<compat::ranges::single_view<int>>,
+                      "single_view must not be a borrowed range");
+#endif
+        static_assert(!compat::ranges::borrowed_range<compat::ranges::single_view<int>>::value,
+                      "single_view must not satisfy borrowed_range");
     }
 
     void test_views_all_and_owning() {

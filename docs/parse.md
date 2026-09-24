@@ -1,4 +1,4 @@
-﻿# 強型別解析 (compat::parse / from_chars)
+# 強型別解析 (compat::parse / from_chars)
 
 定義於標頭檔 [`<compat/Parse.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Parse.hpp)。  
 所屬命名空間：`compat`。
@@ -50,15 +50,21 @@ namespace compat {
 
 ## 核心演算法與特性保證 (Guarantees & Characteristics)
 
-1. **完全零動態配置 (Zero Heap Allocation)**：  
+1. **失敗輸出不變量 (Failure Output Invariant)**：  
+   `compat::from_chars` 嚴格履行 ISO C++17 標準契約：**當解析失敗（`ec == invalid_argument` 或 `ec == result_out_of_range`）時，輸出參數 `value` 絕不被竄改或賦予中間髒值**，完全保留呼叫端傳入之初始狀態。
+2. **完全零動態配置 (Zero Heap Allocation)**：  
    不呼叫 `malloc` / `new`，純粹以暫存器與有限棧空間進行狀態機解析，完全適合嵌入式微控制器與高頻交易系統。
-2. **完全獨立於 Locale (Locale-Independent)**：  
+3. **完全獨立於 Locale (Locale-Independent)**：  
    不受 `std::setlocale` 影響，小數點永遠強制為 `.`（杜絕歐洲語系小數點 `,` 引發的解析錯誤）。
-3. **整數進位支援 (Radix 2 ~ 36)**：  
+4. **整數進位支援 (Radix 2 ~ 36)**：  
    支援二進位（`base = 2`）、八進位（`base = 8`）、十進位（`base = 10`）、十六進位（`base = 16`，大小寫均可）乃至高達 36 進位的任意字元映射。
-4. **極限溢位保護 (Overflow & Underflow Protection)**：  
+5. **極限溢位保護 (Overflow & Underflow Protection)**：  
    在乘加前預先進行邊界偵測（`value > (max - digit) / base`），精確回報 `std::errc::result_out_of_range`，絕不觸發未定義行為（UB）。
-5. **完整 IEEE 754 浮點支援**：  
+6. **次常態數 (Subnormal / Denorm) 與極限下溢保證**：  
+   - 浮點解析引擎實作了兩階段縮放機制，解決負指數低於 $-256$ 時 `Pow10Positive` 浮點溢位至正無窮大導致數值清零的缺陷。
+   - 完整支援 IEEE 754 次常態數（例如 `1e-320`，介於 $10^{-308}$ 與 $5 \times 10^{-324}$ 之間），精確解析為非零次常態浮點數。
+   - 當數值低於硬體最小可表示次常態數（下溢至 0.0，如 `1e-350`）或超出最大正常表示範圍（如 `1e400`）時，精準回傳 `std::errc::result_out_of_range` 且維持輸出 `value` 原值。
+7. **完整 IEEE 754 浮點支援**：  
    - 支援常規小數與科學記號（`1.234e-5`, `+4.5E+2`）。
    - 支援特殊符號：`NaN`, `nan`, `inf`, `+inf`, `-infinity`。
 
@@ -66,11 +72,11 @@ namespace compat {
 
 ## 錯誤碼映射 (Error Codes)
 
-| 錯誤碼 (`std::errc`) | 發生條件 |
-| :--- | :--- |
-| `std::errc{}` (0) | 解析成功。若使用 `parse<T>`，字串必須整串解析完畢（不可殘留未解析字元）。 |
-| `std::errc::invalid_argument` | 缺少有效數值前綴、無法識別任何合法數字、或字串為空。 |
-| `std::errc::result_out_of_range` | 數值超過目標型別的最小/最大表示範圍（溢位）。 |
+| 錯誤碼 (`std::errc`) | 發生條件 | 輸出 `value` 行為 |
+| :--- | :--- | :--- |
+| `std::errc{}` (0) | 解析成功。若使用 `parse<T>`，字串必須整串解析完畢（不可殘留未解析字元）。 | 賦予成功解析後的數值。 |
+| `std::errc::invalid_argument` | 缺少有效數值前綴、無法識別任何合法數字、或字串為空。 | **維持原值，不被修改**。 |
+| `std::errc::result_out_of_range` | 數值超過目標型別的最小/最大表示範圍（上溢），或非零浮點數下溢至不可表示範圍。 | **維持原值，不被修改**。 |
 
 ---
 

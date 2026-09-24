@@ -1,4 +1,4 @@
-﻿# CPP-Compat（自研 C++ 標準庫向下相容層）
+# CPP-Compat（自研 C++ 標準庫向下相容層）
 
 [![CI Build](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml/badge.svg)](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml)
 [![Standard](https://img.shields.io/badge/C%2B%2B-11%20%7C%2014%20%7C%2017%20%7C%2020%20%7C%2023%20%7C%2026-blue.svg)](#)
@@ -270,15 +270,14 @@ cmake --build build-clang-cxx11
 
 | 平臺 / 編譯器 | 語言標準 | 執行模式 | 斷言總數 | 測試狀態 |
 | :--- | :--- | :--- | :---: | :---: |
-| **Ubuntu Clang 18.1** | C++11 (`-Wall -Wextra -Werror`) | Self-contained | 464 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++11 (`-pedantic-errors`) | Self-contained | 464 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++14 / C++17 | Self-contained | 464 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++20 | Native STL | 461 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 464 | **PASSED** |
-| **Windows MSVC 19.51** | C++14 / C++17 | Fallback | 464 | **PASSED** |
-| **Windows MSVC 19.51** | C++20 | Native STL | 461 | **PASSED** |
-| **Windows MSVC 19.51** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 464 | **PASSED** |
-| **macOS Apple Clang** | C++11 ~ C++23 | Auto + Fallback | 464 | **PASSED** |
+| **Ubuntu Clang 18.1** | C++11 (`-Wall -Wextra -Werror`) | Self-contained | 591 | **PASSED** |
+| **Ubuntu Clang 18.1** | C++14 / C++17 / C++20 / C++23 | Self-contained | 591 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++11 (`-pedantic-errors`) | Self-contained | 591 | **PASSED** |
+| **Ubuntu GCC 14.2** | C++14 / C++17 / C++20 / C++23 | Self-contained | 591 | **PASSED** |
+| **Windows MSVC 19.51** | C++14 / C++17 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 591 | **PASSED** |
+| **Windows MSVC 19.51** | C++20 | Native STL | 588 | **PASSED** |
+| **Windows MSVC 19.51** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 591 | **PASSED** |
+| **macOS Apple Clang** | C++11 ~ C++23 | Auto + Fallback | 591 | **PASSED** |
 
 ---
 

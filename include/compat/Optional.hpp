@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Config.hpp"
 
@@ -39,92 +39,234 @@ namespace compat {
         const char* what() const noexcept override { return "bad optional access"; }
     };
 
-    template <typename T>
-    class optional {
-        bool has_val_;
-        typename std::aligned_storage<sizeof(T), alignof(T)>::type storage_;
+    namespace detail {
 
-        T* ptr() noexcept { return reinterpret_cast<T*>(&storage_); }
-        const T* ptr() const noexcept { return reinterpret_cast<const T*>(&storage_); }
+        template <typename T, bool IsTriviallyDestructible = std::is_trivially_destructible<T>::value>
+        struct optional_storage_base {
+            union Storage {
+                char dummy_;
+                T value_;
+                Storage() noexcept : dummy_{} {}
+                ~Storage() noexcept {}
+            } storage_;
+            bool has_val_;
 
-        void destroy() noexcept {
-            if (has_val_) {
-                ptr()->~T();
+            optional_storage_base() noexcept : storage_{}, has_val_(false) {}
+            explicit optional_storage_base(bool engaged) noexcept : storage_{}, has_val_(engaged) {}
+
+            ~optional_storage_base() {
+                destroy();
+            }
+
+            void destroy() noexcept {
+                if (has_val_) {
+                    storage_.value_.~T();
+                    has_val_ = false;
+                }
+            }
+        };
+
+        template <typename T>
+        struct optional_storage_base<T, true> {
+            union Storage {
+                char dummy_;
+                T value_;
+                Storage() noexcept : dummy_{} {}
+                ~Storage() = default;
+            } storage_;
+            bool has_val_;
+
+            optional_storage_base() noexcept : storage_{}, has_val_(false) {}
+            explicit optional_storage_base(bool engaged) noexcept : storage_{}, has_val_(engaged) {}
+            ~optional_storage_base() = default;
+
+            void destroy() noexcept {
                 has_val_ = false;
             }
-        }
+        };
+
+        template <typename T, bool CanCopy = std::is_copy_constructible<T>::value>
+        struct optional_copy_ctor_base : optional_storage_base<T> {
+            using optional_storage_base<T>::optional_storage_base;
+            optional_copy_ctor_base() = default;
+            optional_copy_ctor_base(const optional_copy_ctor_base& other) : optional_storage_base<T>(false) {
+                if (other.has_val_) {
+                    ::new (static_cast<void*>(&this->storage_.value_)) T(other.storage_.value_);
+                    this->has_val_ = true;
+                }
+            }
+            optional_copy_ctor_base(optional_copy_ctor_base&&) = default;
+            optional_copy_ctor_base& operator=(const optional_copy_ctor_base&) = default;
+            optional_copy_ctor_base& operator=(optional_copy_ctor_base&&) = default;
+        };
+
+        template <typename T>
+        struct optional_copy_ctor_base<T, false> : optional_storage_base<T> {
+            using optional_storage_base<T>::optional_storage_base;
+            optional_copy_ctor_base() = default;
+            optional_copy_ctor_base(const optional_copy_ctor_base&) = delete;
+            optional_copy_ctor_base(optional_copy_ctor_base&&) = default;
+            optional_copy_ctor_base& operator=(const optional_copy_ctor_base&) = default;
+            optional_copy_ctor_base& operator=(optional_copy_ctor_base&&) = default;
+        };
+
+        template <typename T, bool CanMove = std::is_move_constructible<T>::value>
+        struct optional_move_ctor_base : optional_copy_ctor_base<T> {
+            using optional_copy_ctor_base<T>::optional_copy_ctor_base;
+            optional_move_ctor_base() = default;
+            optional_move_ctor_base(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base(optional_move_ctor_base&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : optional_copy_ctor_base<T>(false) {
+                if (other.has_val_) {
+                    ::new (static_cast<void*>(&this->storage_.value_)) T(std::move(other.storage_.value_));
+                    this->has_val_ = true;
+                }
+            }
+            optional_move_ctor_base& operator=(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base& operator=(optional_move_ctor_base&&) = default;
+        };
+
+        template <typename T>
+        struct optional_move_ctor_base<T, false> : optional_copy_ctor_base<T> {
+            using optional_copy_ctor_base<T>::optional_copy_ctor_base;
+            optional_move_ctor_base() = default;
+            optional_move_ctor_base(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base(optional_move_ctor_base&&) = delete;
+            optional_move_ctor_base& operator=(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base& operator=(optional_move_ctor_base&&) = default;
+        };
+
+        template <typename T, bool CanCopyAssign = std::is_copy_constructible<T>::value && std::is_copy_assignable<T>::value>
+        struct optional_copy_assign_base : optional_move_ctor_base<T> {
+            using optional_move_ctor_base<T>::optional_move_ctor_base;
+            optional_copy_assign_base() = default;
+            optional_copy_assign_base(const optional_copy_assign_base&) = default;
+            optional_copy_assign_base(optional_copy_assign_base&&) = default;
+            optional_copy_assign_base& operator=(const optional_copy_assign_base& other) {
+                if (this != &other) {
+                    if (this->has_val_ && other.has_val_) {
+                        this->storage_.value_ = other.storage_.value_;
+                    } else if (this->has_val_) {
+                        this->destroy();
+                    } else if (other.has_val_) {
+                        ::new (static_cast<void*>(&this->storage_.value_)) T(other.storage_.value_);
+                        this->has_val_ = true;
+                    }
+                }
+                return *this;
+            }
+            optional_copy_assign_base& operator=(optional_copy_assign_base&&) = default;
+        };
+
+        template <typename T>
+        struct optional_copy_assign_base<T, false> : optional_move_ctor_base<T> {
+            using optional_move_ctor_base<T>::optional_move_ctor_base;
+            optional_copy_assign_base() = default;
+            optional_copy_assign_base(const optional_copy_assign_base&) = default;
+            optional_copy_assign_base(optional_copy_assign_base&&) = default;
+            optional_copy_assign_base& operator=(const optional_copy_assign_base&) = delete;
+            optional_copy_assign_base& operator=(optional_copy_assign_base&&) = default;
+        };
+
+        template <typename T, bool CanMoveAssign = std::is_move_constructible<T>::value && std::is_move_assignable<T>::value>
+        struct optional_move_assign_base : optional_copy_assign_base<T> {
+            using optional_copy_assign_base<T>::optional_copy_assign_base;
+            optional_move_assign_base() = default;
+            optional_move_assign_base(const optional_move_assign_base&) = default;
+            optional_move_assign_base(optional_move_assign_base&&) = default;
+            optional_move_assign_base& operator=(const optional_move_assign_base&) = default;
+            optional_move_assign_base& operator=(optional_move_assign_base&& other) noexcept(std::is_nothrow_move_assignable<T>::value && std::is_nothrow_move_constructible<T>::value) {
+                if (this != &other) {
+                    if (this->has_val_ && other.has_val_) {
+                        this->storage_.value_ = std::move(other.storage_.value_);
+                    } else if (this->has_val_) {
+                        this->destroy();
+                    } else if (other.has_val_) {
+                        ::new (static_cast<void*>(&this->storage_.value_)) T(std::move(other.storage_.value_));
+                        this->has_val_ = true;
+                    }
+                }
+                return *this;
+            }
+        };
+
+        template <typename T>
+        struct optional_move_assign_base<T, false> : optional_copy_assign_base<T> {
+            using optional_copy_assign_base<T>::optional_copy_assign_base;
+            optional_move_assign_base() = default;
+            optional_move_assign_base(const optional_move_assign_base&) = default;
+            optional_move_assign_base(optional_move_assign_base&&) = default;
+            optional_move_assign_base& operator=(const optional_move_assign_base&) = default;
+            optional_move_assign_base& operator=(optional_move_assign_base&&) = delete;
+        };
+
+    } // namespace detail
+
+    template <typename T>
+    class optional : public detail::optional_move_assign_base<T> {
+        using Base = detail::optional_move_assign_base<T>;
+
+        T* ptr() noexcept { return reinterpret_cast<T*>(&this->storage_.value_); }
+        const T* ptr() const noexcept { return reinterpret_cast<const T*>(&this->storage_.value_); }
+
     public:
-        constexpr optional() noexcept : has_val_(false), storage_{} {}
-        constexpr optional(nullopt_t) noexcept : has_val_(false), storage_{} {}
+        using value_type = T;
 
-        optional(const T& val) : has_val_(true) {
-            ::new (static_cast<void*>(&storage_)) T(val);
+        constexpr optional() noexcept : Base(false) {}
+        constexpr optional(nullopt_t) noexcept : Base(false) {}
+
+        optional(const T& val) : Base(false) {
+            ::new (static_cast<void*>(&this->storage_.value_)) T(val);
+            this->has_val_ = true;
         }
 
-        optional(T&& val) : has_val_(true) {
-            ::new (static_cast<void*>(&storage_)) T(std::move(val));
+        optional(T&& val) : Base(false) {
+            ::new (static_cast<void*>(&this->storage_.value_)) T(std::move(val));
+            this->has_val_ = true;
         }
 
-        optional(const optional& other) : has_val_(other.has_val_) {
-            if (other.has_val_) {
-                ::new (static_cast<void*>(&storage_)) T(*other.ptr());
-            }
+        template <typename... Args>
+        explicit optional(std::piecewise_construct_t, Args&&... args) : Base(false) {
+            ::new (static_cast<void*>(&this->storage_.value_)) T(std::forward<Args>(args)...);
+            this->has_val_ = true;
         }
 
-        optional(optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : has_val_(other.has_val_) {
-            if (other.has_val_) {
-                ::new (static_cast<void*>(&storage_)) T(std::move(*other.ptr()));
-            }
-        }
+        optional(const optional&) = default;
+        optional(optional&&) = default;
+        optional& operator=(const optional&) = default;
+        optional& operator=(optional&&) = default;
 
-        ~optional() { destroy(); }
+        ~optional() = default;
 
         optional& operator=(nullopt_t) noexcept {
-            destroy();
+            this->destroy();
             return *this;
         }
 
-        optional& operator=(const optional& other) {
-            if (this != &other) {
-                if (has_val_ && other.has_val_) {
-                    *ptr() = *other.ptr();
-                } else if (has_val_) {
-                    destroy();
-                } else if (other.has_val_) {
-                    ::new (static_cast<void*>(&storage_)) T(*other.ptr());
-                    has_val_ = true;
-                }
-            }
-            return *this;
-        }
-
-        optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable<T>::value && std::is_nothrow_move_constructible<T>::value) {
-            if (this != &other) {
-                if (has_val_ && other.has_val_) {
-                    *ptr() = std::move(*other.ptr());
-                } else if (has_val_) {
-                    destroy();
-                } else if (other.has_val_) {
-                    ::new (static_cast<void*>(&storage_)) T(std::move(*other.ptr()));
-                    has_val_ = true;
-                }
-            }
-            return *this;
-        }
-
-        template <typename U = T, typename = typename std::enable_if<!std::is_same<typename std::decay<U>::type, optional>::value>::type>
+        template <typename U = T, typename = typename std::enable_if<!std::is_same<typename std::decay<U>::type, optional>::value && std::is_constructible<T, U>::value && std::is_assignable<T&, U>::value>::type>
         optional& operator=(U&& val) {
-            if (has_val_) {
+            if (this->has_val_) {
                 *ptr() = std::forward<U>(val);
             } else {
-                ::new (static_cast<void*>(&storage_)) T(std::forward<U>(val));
-                has_val_ = true;
+                ::new (static_cast<void*>(&this->storage_.value_)) T(std::forward<U>(val));
+                this->has_val_ = true;
             }
             return *this;
         }
 
-        constexpr explicit operator bool() const noexcept { return has_val_; }
-        constexpr bool has_value() const noexcept { return has_val_; }
+        void reset() noexcept {
+            this->destroy();
+        }
+
+        template <typename... Args>
+        T& emplace(Args&&... args) {
+            this->destroy();
+            ::new (static_cast<void*>(&this->storage_.value_)) T(std::forward<Args>(args)...);
+            this->has_val_ = true;
+            return *ptr();
+        }
+
+        constexpr explicit operator bool() const noexcept { return this->has_val_; }
+        constexpr bool has_value() const noexcept { return this->has_val_; }
 
         T& operator*() & noexcept { return *ptr(); }
         const T& operator*() const & noexcept { return *ptr(); }
@@ -135,29 +277,38 @@ namespace compat {
         const T* operator->() const noexcept { return ptr(); }
 
         T& value() & {
-            if (!has_val_) throw bad_optional_access();
+            if (!this->has_val_) {
+                COMPAT_THROW_OR_ABORT(bad_optional_access());
+            }
             return *ptr();
         }
 
         const T& value() const & {
-            if (!has_val_) throw bad_optional_access();
+            if (!this->has_val_) {
+                COMPAT_THROW_OR_ABORT(bad_optional_access());
+            }
             return *ptr();
         }
 
         template <typename U>
         T value_or(U&& default_value) const & {
-            return has_val_ ? *ptr() : static_cast<T>(std::forward<U>(default_value));
+            return this->has_val_ ? *ptr() : static_cast<T>(std::forward<U>(default_value));
         }
 
         template <typename U>
         T value_or(U&& default_value) && {
-            return has_val_ ? std::move(*ptr()) : static_cast<T>(std::forward<U>(default_value));
+            return this->has_val_ ? std::move(*ptr()) : static_cast<T>(std::forward<U>(default_value));
         }
     };
 
     template <typename T>
     inline optional<typename std::decay<T>::type> make_optional(T&& value) {
         return optional<typename std::decay<T>::type>(std::forward<T>(value));
+    }
+
+    template <typename T, typename... Args>
+    inline optional<T> make_optional(Args&&... args) {
+        return optional<T>(std::piecewise_construct, std::forward<Args>(args)...);
     }
 
     template <typename T, typename U>
@@ -188,6 +339,18 @@ namespace compat {
     template <typename T>
     inline bool operator!=(nullopt_t, const optional<T>& opt) noexcept {
         return opt.has_value();
+    }
+
+    template <typename T, typename U>
+    inline bool operator==(const optional<T>& lhs, const optional<U>& rhs) {
+        if (lhs.has_value() != rhs.has_value()) return false;
+        if (!lhs.has_value()) return true;
+        return *lhs == *rhs;
+    }
+
+    template <typename T, typename U>
+    inline bool operator!=(const optional<T>& lhs, const optional<U>& rhs) {
+        return !(lhs == rhs);
     }
 
 } // namespace compat

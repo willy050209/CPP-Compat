@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 #include "../StringView.hpp"
@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cwchar>
+#include <vector>
 
 #if COMPAT_HAS_STD_FORMAT
 #  include <format>
@@ -609,17 +610,6 @@ inline FormatSpec ParseFormatSpec(compat::string_view sv) noexcept {
     std::size_t colon_pos = sv.find(':');
     if (colon_pos != compat::string_view::npos) {
         sv = sv.substr(colon_pos + 1);
-    } else {
-        bool all_digits = true;
-        for (std::size_t j = 0; j < sv.size(); ++j) {
-            if (sv[j] < '0' || sv[j] > '9') {
-                all_digits = false;
-                break;
-            }
-        }
-        if (all_digits) {
-            return spec;
-        }
     }
 
     if (sv.empty()) {
@@ -1088,7 +1078,7 @@ inline void FormatIntWithSpec(stack_buffer<Capacity>& buf, int64_t val, const Fo
 /// <param name="spec">Parsed FormatSpec.</param>
 template <std::size_t Capacity>
 inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const FormatSpec& spec) {
-    char fmt_pattern[32];
+    char fmt_pattern[64];
     char* fp = fmt_pattern;
     *fp++ = '%';
     if (spec.sign == '+' && val >= 0.0) {
@@ -1101,23 +1091,46 @@ inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const F
     }
     if (spec.precision >= 0) {
         *fp++ = '.';
-        char prec_buf[16];
+        char prec_buf[32];
         int prec_len = std::snprintf(prec_buf, sizeof(prec_buf), "%d", spec.precision);
-        for (int k = 0; k < prec_len; ++k) {
-            *fp++ = prec_buf[k];
+        if (prec_len > 0) {
+            for (int k = 0; k < prec_len && (fp - fmt_pattern) < 55; ++k) {
+                *fp++ = prec_buf[k];
+            }
         }
     }
     char conv = spec.type;
     if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
-        conv = (spec.precision >= 0) ? 'f' : 'g';
+        if (spec.precision >= 0) {
+            conv = 'f';
+        } else {
+            *fp++ = '.';
+            *fp++ = '1';
+            *fp++ = '7';
+            conv = 'g';
+        }
     }
     *fp++ = conv;
     *fp = '\0';
 
-    char raw_buf[128];
-    int raw_len = std::snprintf(raw_buf, sizeof(raw_buf), fmt_pattern, val);
+    char stack_raw_buf[256];
+    char* raw_buf = stack_raw_buf;
+    std::vector<char> heap_raw_buf;
+    int raw_len = std::snprintf(stack_raw_buf, sizeof(stack_raw_buf), fmt_pattern, val);
     if (raw_len < 0) {
         return;
+    }
+    if (static_cast<std::size_t>(raw_len) >= sizeof(stack_raw_buf)) {
+        heap_raw_buf.resize(static_cast<std::size_t>(raw_len) + 1);
+        raw_buf = heap_raw_buf.data();
+        std::snprintf(raw_buf, heap_raw_buf.size(), fmt_pattern, val);
+    }
+
+    // Locale-independence: normalize ',' to '.' in formatted number
+    for (std::size_t idx = 0; idx < static_cast<std::size_t>(raw_len); ++idx) {
+        if (raw_buf[idx] == ',') {
+            raw_buf[idx] = '.';
+        }
     }
 
     const char* prefix = "";
@@ -1144,7 +1157,7 @@ inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const F
 /// <param name="spec">Parsed FormatSpec.</param>
 template <std::size_t Capacity>
 inline void FormatLongDoubleWithSpec(stack_buffer<Capacity>& buf, long double val, const FormatSpec& spec) {
-    char fmt_pattern[32];
+    char fmt_pattern[64];
     char* fp = fmt_pattern;
     *fp++ = '%';
     if (spec.sign == '+' && val >= 0.0L) {
@@ -1157,24 +1170,47 @@ inline void FormatLongDoubleWithSpec(stack_buffer<Capacity>& buf, long double va
     }
     if (spec.precision >= 0) {
         *fp++ = '.';
-        char prec_buf[16];
+        char prec_buf[32];
         int prec_len = std::snprintf(prec_buf, sizeof(prec_buf), "%d", spec.precision);
-        for (int k = 0; k < prec_len; ++k) {
-            *fp++ = prec_buf[k];
+        if (prec_len > 0) {
+            for (int k = 0; k < prec_len && (fp - fmt_pattern) < 55; ++k) {
+                *fp++ = prec_buf[k];
+            }
+        }
+    }
+    char conv = spec.type;
+    if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
+        if (spec.precision >= 0) {
+            conv = 'f';
+        } else {
+            *fp++ = '.';
+            *fp++ = '2';
+            *fp++ = '1';
+            conv = 'g';
         }
     }
     *fp++ = 'L';
-    char conv = spec.type;
-    if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
-        conv = (spec.precision >= 0) ? 'f' : 'g';
-    }
     *fp++ = conv;
     *fp = '\0';
 
-    char raw_buf[128];
-    int raw_len = std::snprintf(raw_buf, sizeof(raw_buf), fmt_pattern, val);
+    char stack_raw_buf[256];
+    char* raw_buf = stack_raw_buf;
+    std::vector<char> heap_raw_buf;
+    int raw_len = std::snprintf(stack_raw_buf, sizeof(stack_raw_buf), fmt_pattern, val);
     if (raw_len < 0) {
         return;
+    }
+    if (static_cast<std::size_t>(raw_len) >= sizeof(stack_raw_buf)) {
+        heap_raw_buf.resize(static_cast<std::size_t>(raw_len) + 1);
+        raw_buf = heap_raw_buf.data();
+        std::snprintf(raw_buf, heap_raw_buf.size(), fmt_pattern, val);
+    }
+
+    // Locale-independence: normalize ',' to '.' in formatted number
+    for (std::size_t idx = 0; idx < static_cast<std::size_t>(raw_len); ++idx) {
+        if (raw_buf[idx] == ',') {
+            raw_buf[idx] = '.';
+        }
     }
 
     const char* prefix = "";
@@ -1277,7 +1313,7 @@ struct base_primitive_formatter {
     /// <param name="ctx">Format parse context reference.</param>
     /// <returns>Iterator to position after parsed format specification.</returns>
     template <typename ParseContext>
-    constexpr auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
+    COMPAT_CONSTEXPR_14 auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
         auto it = ctx.begin();
         auto end = ctx.end();
         if (it != end && *it == ':') {
@@ -2306,24 +2342,33 @@ COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned lon
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, float val) {
     char sbuf[64];
-    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", static_cast<double>(val));
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%.9g", static_cast<double>(val));
     if (len > 0) {
+        for (int i = 0; i < len; ++i) {
+            if (sbuf[i] == ',') sbuf[i] = '.';
+        }
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
 }
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, double val) {
     char sbuf[64];
-    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", val);
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%.17g", val);
     if (len > 0) {
+        for (int i = 0; i < len; ++i) {
+            if (sbuf[i] == ',') sbuf[i] = '.';
+        }
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
 }
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long double val) {
     char sbuf[64];
-    int len = std::snprintf(sbuf, sizeof(sbuf), "%Lg", val);
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%.21Lg", val);
     if (len > 0) {
+        for (int i = 0; i < len; ++i) {
+            if (sbuf[i] == ',') sbuf[i] = '.';
+        }
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
 }
@@ -2360,46 +2405,38 @@ inline void StreamFormatArg(std::ostream& os, const T& arg) {
 /// <param name="fmt">Format string view.</param>
 /// <returns>Number of {} replacement fields.</returns>
 /// <exception cref="std::invalid_argument">Thrown on unmatched single { or }.</exception>
-inline std::size_t CountAndValidatePlaceholders(compat::string_view fmt) {
-    std::size_t count = 0;
-    std::size_t i = 0;
-    while (i < fmt.size()) {
-        if (fmt[i] == '{') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                i += 2;
-            } else {
-                std::size_t close = i + 1;
-                while (close < fmt.size() && fmt[close] != '}') {
-                    if (fmt[close] == '{') {
-                        throw std::invalid_argument("Unmatched '{' in format string");
-                    }
-                    ++close;
-                }
-                if (close >= fmt.size()) {
-                    throw std::invalid_argument("Unmatched '{' in format string");
-                }
-                ++count;
-                i = close + 1;
-            }
-        } else if (fmt[i] == '}') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                i += 2;
-            } else {
-                throw std::invalid_argument("Unmatched '}' in format string");
-            }
-        } else {
-            ++i;
-        }
-    }
-    return count;
+/// <summary>
+/// Type-erased reference to a format argument for indexed table dispatch.
+/// </summary>
+struct FormatArgRef {
+    const void* ptr;
+    void (*format_fn)(stack_buffer<512>& buf, const void* ptr, compat::string_view spec);
+};
+
+template <typename T>
+inline void FormatArgRefDispatcher(stack_buffer<512>& buf, const void* ptr, compat::string_view spec) {
+    const T& val = *static_cast<const T*>(ptr);
+    FormatArgToBufferWithSpec(buf, val, spec);
+}
+
+template <typename T>
+inline FormatArgRef MakeFormatArgRef(const T& val) {
+    FormatArgRef ref;
+    ref.ptr = static_cast<const void*>(&val);
+    ref.format_fn = &FormatArgRefDispatcher<T>;
+    return ref;
 }
 
 /// <summary>
-/// Base case for recursive template format string writer into stack_buffer.
+/// Formats arguments into buffer using an indexed argument table, supporting automatic ({}),
+/// manual ({0}, {1}), specifiers ({0:x}), and rejecting mixed automatic/manual indexing.
 /// </summary>
-/// <param name="buf">Target stack buffer.</param>
-/// <param name="fmt">Format string view.</param>
-inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt) {
+inline void WriteFormattedBufferTable(stack_buffer<512>& buf, compat::string_view fmt, const FormatArgRef* args, std::size_t num_args) {
+    enum IndexingMode { MODE_UNKNOWN, MODE_AUTO, MODE_MANUAL };
+    IndexingMode mode = MODE_UNKNOWN;
+    std::size_t auto_idx = 0;
+    std::size_t num_placeholders = 0;
+
     std::size_t i = 0;
     std::size_t start = 0;
     while (i < fmt.size()) {
@@ -2414,13 +2451,67 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
             } else {
                 std::size_t close = i + 1;
                 while (close < fmt.size() && fmt[close] != '}') {
+                    if (fmt[close] == '{') {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Unmatched '{' in format string"));
+                    }
                     ++close;
                 }
-                if (close < fmt.size()) {
-                    throw std::invalid_argument("Too few arguments for format string");
-                } else {
-                    ++i;
+                if (close >= fmt.size()) {
+                    COMPAT_THROW_OR_ABORT(std::invalid_argument("Unmatched '{' in format string"));
                 }
+
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+
+                compat::string_view field = fmt.substr(i + 1, close - (i + 1));
+                compat::string_view spec{};
+                std::size_t colon_pos = field.find(':');
+                compat::string_view idx_part = field;
+                if (colon_pos != compat::string_view::npos) {
+                    idx_part = field.substr(0, colon_pos);
+                    spec = field.substr(colon_pos + 1);
+                }
+
+                std::size_t arg_idx = 0;
+                if (idx_part.empty()) {
+                    // Automatic indexing
+                    if (mode == MODE_MANUAL) {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Cannot switch from manual to automatic argument indexing"));
+                    }
+                    mode = MODE_AUTO;
+                    arg_idx = auto_idx++;
+                } else {
+                    // Manual indexing
+                    bool all_digits = true;
+                    std::size_t parsed_idx = 0;
+                    for (std::size_t d = 0; d < idx_part.size(); ++d) {
+                        if (idx_part[d] >= '0' && idx_part[d] <= '9') {
+                            parsed_idx = parsed_idx * 10 + static_cast<std::size_t>(idx_part[d] - '0');
+                        } else {
+                            all_digits = false;
+                            break;
+                        }
+                    }
+                    if (!all_digits) {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Invalid replacement field index in format string"));
+                    }
+                    if (mode == MODE_AUTO) {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Cannot switch from automatic to manual argument indexing"));
+                    }
+                    mode = MODE_MANUAL;
+                    arg_idx = parsed_idx;
+                }
+
+                if (arg_idx >= num_args) {
+                    COMPAT_THROW_OR_ABORT(std::invalid_argument("Argument index out of bounds in format string"));
+                }
+
+                args[arg_idx].format_fn(buf, args[arg_idx].ptr, spec);
+                ++num_placeholders;
+
+                i = close + 1;
+                start = i;
             }
         } else if (fmt[i] == '}') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
@@ -2431,7 +2522,7 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
                 i += 2;
                 start = i;
             } else {
-                ++i;
+                COMPAT_THROW_OR_ABORT(std::invalid_argument("Unmatched '}' in format string"));
             }
         } else {
             ++i;
@@ -2440,73 +2531,34 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
     if (i > start) {
         buf.append(fmt.data() + start, i - start);
     }
-}
 
-/// <summary>
-/// Recursive template format string writer substituting {} placeholders into stack_buffer.
-/// </summary>
-/// <typeparam name="First">First argument type.</typeparam>
-/// <typeparam name="Rest">Remaining argument types.</typeparam>
-/// <param name="buf">Target stack buffer.</param>
-/// <param name="fmt">Format string view.</param>
-/// <param name="first">First argument.</param>
-/// <param name="rest">Remaining arguments.</param>
-template <typename First, typename... Rest>
-inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt, const First& first, const Rest&... rest) {
-    std::size_t i = 0;
-    std::size_t start = 0;
-    while (i < fmt.size()) {
-        if (fmt[i] == '{') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                if (i > start) {
-                    buf.append(fmt.data() + start, i - start);
-                }
-                buf.push_back('{');
-                i += 2;
-                start = i;
-            } else {
-                std::size_t close = i + 1;
-                while (close < fmt.size() && fmt[close] != '}') {
-                    ++close;
-                }
-                if (close < fmt.size()) {
-                    if (i > start) {
-                        buf.append(fmt.data() + start, i - start);
-                    }
-                    compat::string_view spec = (close > i + 1) ? fmt.substr(i + 1, close - (i + 1)) : compat::string_view{};
-                    FormatArgToBufferWithSpec(buf, first, spec);
-                    WriteFormattedBufferImpl(buf, fmt.substr(close + 1), rest...);
-                    return;
-                } else {
-                    ++i;
-                }
-            }
-        } else if (fmt[i] == '}') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                if (i > start) {
-                    buf.append(fmt.data() + start, i - start);
-                }
-                buf.push_back('}');
-                i += 2;
-                start = i;
-            } else {
-                ++i;
-            }
-        } else {
-            ++i;
+    if (mode == MODE_AUTO) {
+        if (num_placeholders < num_args) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("Too many arguments for format string"));
+        }
+        if (num_placeholders > num_args) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("Too few arguments for format string"));
         }
     }
-    throw std::invalid_argument("Too many arguments for format string");
 }
 
 /// <summary>
-/// Validates placeholder count against argument count and writes formatted output to stack buffer.
+/// Overload for formatting with 0 arguments.
 /// </summary>
-/// <typeparam name="Args">Types of arguments.</typeparam>
-/// <param name="buf">Target stack buffer.</param>
-/// <param name="fmt">Format string view.</param>
-/// <param name="args">Arguments to format.</param>
-/// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
+inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt) {
+#if defined(_WIN32)
+    std::string converted_fmt;
+    if (COMPAT_UNLIKELY(!IsValidUtf8(fmt))) {
+        converted_fmt = AcpToUtf8(fmt);
+        fmt = compat::string_view(converted_fmt.data(), converted_fmt.size());
+    }
+#endif
+    WriteFormattedBufferTable(buf, fmt, nullptr, 0);
+}
+
+/// <summary>
+/// Overload for formatting with arguments via FormatArgRef table.
+/// </summary>
 template <typename... Args>
 inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt, const Args&... args) {
 #if defined(_WIN32)
@@ -2517,14 +2569,8 @@ inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt
     }
 #endif
     constexpr std::size_t num_args = sizeof...(Args);
-    std::size_t num_placeholders = CountAndValidatePlaceholders(fmt);
-    if (num_placeholders < num_args) {
-        throw std::invalid_argument("Too many arguments for format string");
-    }
-    if (num_placeholders > num_args) {
-        throw std::invalid_argument("Too few arguments for format string");
-    }
-    WriteFormattedBufferImpl(buf, fmt, args...);
+    FormatArgRef arg_table[num_args > 0 ? num_args : 1] = { MakeFormatArgRef(args)... };
+    WriteFormattedBufferTable(buf, fmt, arg_table, num_args);
 }
 
 /// <summary>

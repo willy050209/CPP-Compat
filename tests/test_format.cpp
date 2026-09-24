@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <compat/Format.hpp>
 #include <string>
 #include <cstdint>
@@ -167,6 +167,62 @@ void run_test_format() {
         TEST_ASSERT(compat::format("{:8}", "一號") == "一號  ");
         TEST_ASSERT(compat::format("{:<8}", "一號") == "一號  ");
         TEST_ASSERT(compat::format("{:>8}", "一號") == "  一號");
+    }
+
+    // 11. Phase 3 & Contract Baseline Tests: TEST-FMT-001 through TEST-FMT-005
+    // TEST-FMT-001: large precision overflow check (Memory safety / buffer overflow resistance)
+    {
+        std::string s_prec1 = compat::format("{:.6f}", 1.0);
+        TEST_ASSERT(s_prec1 == "1.000000");
+
+        std::string s_prec2 = compat::format("{:.127f}", 1.0);
+        TEST_ASSERT(s_prec2.length() >= 128);
+
+        std::string s_prec3 = compat::format("{:.128f}", 1.0);
+        TEST_ASSERT(s_prec3.length() >= 129);
+
+        std::string s_prec4 = compat::format("{:.200f}", 1.0);
+        TEST_ASSERT(s_prec4.length() >= 201);
+    }
+
+    // TEST-FMT-002: manual argument indexing and arbitrary ordering / reuse
+    {
+        TEST_ASSERT(compat::format("{0} {1}", "Hello", "World") == "Hello World");
+        TEST_ASSERT(compat::format("{1} {0}", "World", "Hello") == "Hello World");
+        TEST_ASSERT(compat::format("{0} {0} {0}", "Echo") == "Echo Echo Echo");
+        TEST_ASSERT(compat::format("{2} + {0} = {1}", 1, 3, 2) == "2 + 1 = 3");
+        TEST_ASSERT(compat::format("{1:8} {0:<6}", "a", "b") == "b        a     ");
+        TEST_ASSERT(compat::format("{1:>8} {0:<6}", "a", "b") == "       b a     ");
+    }
+
+    // TEST-FMT-003: index validation & error handling
+#if COMPAT_HAS_EXCEPTIONS
+    {
+        // Out of bounds manual index
+        TEST_ASSERT_THROWS(compat::format("{2}", 1, 2), std::invalid_argument);
+
+        // Mixed automatic and manual indexing
+        TEST_ASSERT_THROWS(compat::format("{0} {}", 1, 2), std::invalid_argument);
+        TEST_ASSERT_THROWS(compat::format("{} {0}", 1, 2), std::invalid_argument);
+    }
+#endif
+
+    // TEST-FMT-004: default floating precision preserves significant figures without 6-digit %g truncation
+    {
+        std::string flt_str = compat::format("{}", 1.23456789);
+        // Under default %g (6 digits) it would be truncated to 1.23457
+        // With round-trip precision it preserves at least 8 significant figures
+        TEST_ASSERT(flt_str.find("1.2345678") != std::string::npos);
+    }
+
+    // TEST-FMT-005: Locale independence (floating point decimal is always dot)
+    {
+        std::string pi_str = compat::format("{}", 3.14159);
+        TEST_ASSERT(pi_str.find('.') != std::string::npos);
+        TEST_ASSERT(pi_str.find(',') == std::string::npos);
+
+        std::string pi_prec = compat::format("{:.2f}", 3.14159);
+        TEST_ASSERT(pi_prec == "3.14");
     }
 
     std::cout << "[PASS] test_format passed." << std::endl;

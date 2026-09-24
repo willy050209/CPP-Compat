@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <compat/Expected.hpp>
 #include <string>
 #include <cstdint>
@@ -13,6 +13,97 @@
 compat::expected<int32_t, std::string> increment_val(int32_t val) {
     return compat::expected<int32_t, std::string>(val + 1);
 }
+
+namespace {
+
+struct LifetimeCounter {
+    static int construct_count;
+    static int copy_count;
+    static int move_count;
+    static int destroy_count;
+
+    static void reset() {
+        construct_count = 0;
+        copy_count = 0;
+        move_count = 0;
+        destroy_count = 0;
+    }
+
+    static int live_count() {
+        return construct_count + copy_count + move_count - destroy_count;
+    }
+
+    int id{0};
+    LifetimeCounter() : id(0) { construct_count++; }
+    explicit LifetimeCounter(int i) : id(i) { construct_count++; }
+    LifetimeCounter(const LifetimeCounter& o) : id(o.id) { copy_count++; }
+    LifetimeCounter(LifetimeCounter&& o) noexcept : id(o.id) { move_count++; o.id = -1; }
+    LifetimeCounter& operator=(const LifetimeCounter& o) {
+        id = o.id;
+        return *this;
+    }
+    LifetimeCounter& operator=(LifetimeCounter&& o) noexcept {
+        id = o.id;
+        o.id = -1;
+        return *this;
+    }
+    ~LifetimeCounter() { destroy_count++; }
+};
+
+int LifetimeCounter::construct_count = 0;
+int LifetimeCounter::copy_count = 0;
+int LifetimeCounter::move_count = 0;
+int LifetimeCounter::destroy_count = 0;
+
+struct ThrowOnCopy {
+    int val{0};
+    static bool should_throw;
+
+    ThrowOnCopy() = default;
+    explicit ThrowOnCopy(int v) : val(v) {}
+    ThrowOnCopy(const ThrowOnCopy& o) : val(o.val) {
+        if (should_throw) throw std::runtime_error("ThrowOnCopy copy ctor");
+    }
+    ThrowOnCopy(ThrowOnCopy&& o) noexcept : val(o.val) { o.val = -1; }
+    ThrowOnCopy& operator=(const ThrowOnCopy& o) {
+        if (should_throw) throw std::runtime_error("ThrowOnCopy copy assign");
+        val = o.val;
+        return *this;
+    }
+    ThrowOnCopy& operator=(ThrowOnCopy&& o) noexcept {
+        val = o.val;
+        o.val = -1;
+        return *this;
+    }
+};
+bool ThrowOnCopy::should_throw = false;
+
+struct ThrowOnMove {
+    int val{0};
+    static bool should_throw;
+
+    ThrowOnMove() = default;
+    explicit ThrowOnMove(int v) : val(v) {}
+    ThrowOnMove(const ThrowOnMove& o) : val(o.val) {}
+    ThrowOnMove(ThrowOnMove&& o) {
+        if (should_throw) throw std::runtime_error("ThrowOnMove move ctor");
+        val = o.val;
+        o.val = -1;
+    }
+    ThrowOnMove& operator=(const ThrowOnMove& o) {
+        val = o.val;
+        return *this;
+    }
+    ThrowOnMove& operator=(ThrowOnMove&& o) {
+        if (should_throw) throw std::runtime_error("ThrowOnMove move assign");
+        val = o.val;
+        o.val = -1;
+        return *this;
+    }
+};
+bool ThrowOnMove::should_throw = false;
+
+} // namespace
 
 /// <summary>
 /// Comprehensive test suite for compat::expected, unexpected, and bad_expected_access.
@@ -341,6 +432,115 @@ void run_test_expected() {
     assigned = err_exp;
     TEST_ASSERT(!assigned.has_value());
     TEST_ASSERT(assigned.error() == "NetworkTimeout");
+
+    // TEST-EXP-005: conditional noexcept assertions
+    {
+        using NothrowType = int;
+        using ThrowingMoveType = ThrowOnMove;
+        static_assert(std::is_nothrow_move_constructible<compat::expected<NothrowType, int>>::value,
+                      "expected with nothrow types must have nothrow move ctor");
+        static_assert(!std::is_nothrow_move_constructible<compat::expected<ThrowingMoveType, int>>::value,
+                      "expected with throwing move type must have throwing move ctor");
+    }
+
+    // TEST-EXP-001 & TEST-EXP-002: throwing copy/move construction
+#if COMPAT_HAS_EXCEPTIONS
+    {
+        compat::expected<ThrowOnCopy, int> src(ThrowOnCopy{10});
+        ThrowOnCopy::should_throw = true;
+        try {
+            compat::expected<ThrowOnCopy, int> dst(src);
+            TEST_ASSERT(false); // Should throw
+        } catch (const std::runtime_error& ex) {
+            TEST_ASSERT(std::string(ex.what()) == "ThrowOnCopy copy ctor");
+        }
+        ThrowOnCopy::should_throw = false;
+    }
+    {
+        compat::expected<ThrowOnMove, int> src(ThrowOnMove{20});
+        ThrowOnMove::should_throw = true;
+        try {
+            compat::expected<ThrowOnMove, int> dst(std::move(src));
+            TEST_ASSERT(false); // Should throw
+        } catch (const std::runtime_error& ex) {
+            TEST_ASSERT(std::string(ex.what()) == "ThrowOnMove move ctor");
+        }
+        ThrowOnMove::should_throw = false;
+    }
+
+    // TEST-EXP-003 & TEST-EXP-004: value -> error and error -> value transitions under exception
+    {
+        // Transition: Value -> Error when Error copy constructor throws
+        ThrowOnCopy::should_throw = false;
+        compat::expected<int, ThrowOnCopy> e_val(42);
+        TEST_ASSERT(e_val.has_value());
+
+        ThrowOnCopy err_obj(99);
+        ThrowOnCopy::should_throw = true;
+        try {
+            e_val = compat::unexpected<ThrowOnCopy>(err_obj);
+            TEST_ASSERT(false);
+        } catch (const std::runtime_error&) {
+            // Invariant: after exception during transition, state must remain valid!
+            // Case B/C ensures e_val still holds valid value 42
+            TEST_ASSERT(e_val.has_value());
+            TEST_ASSERT(*e_val == 42);
+        }
+        ThrowOnCopy::should_throw = false;
+
+        // Transition: Error -> Value when Value copy constructor throws
+        compat::expected<ThrowOnCopy, int> e_err(compat::unexpected<int>(500));
+        TEST_ASSERT(!e_err.has_value());
+
+        ThrowOnCopy val_obj(77);
+        ThrowOnCopy::should_throw = true;
+        try {
+            e_err = val_obj;
+            TEST_ASSERT(false);
+        } catch (const std::runtime_error&) {
+            // Invariant: after exception, state remains valid error!
+            TEST_ASSERT(!e_err.has_value());
+            TEST_ASSERT(e_err.error() == 500);
+        }
+        ThrowOnCopy::should_throw = false;
+    }
+#endif // COMPAT_HAS_EXCEPTIONS
+
+    // TEST-EXP-006: Object lifetime counters (verify no leaks or double destroys)
+    {
+        LifetimeCounter::reset();
+        {
+            compat::expected<LifetimeCounter, int> exp1(LifetimeCounter{1});
+            TEST_ASSERT(exp1.has_value());
+            TEST_ASSERT(LifetimeCounter::live_count() == 1);
+
+            // emplace
+            exp1.emplace(2);
+            TEST_ASSERT(exp1.has_value());
+            TEST_ASSERT(LifetimeCounter::live_count() == 1);
+
+            // Transition: Value -> Error
+            exp1 = compat::unexpected<int>(404);
+            TEST_ASSERT(!exp1.has_value());
+            TEST_ASSERT(LifetimeCounter::live_count() == 0);
+
+            // Transition: Error -> Value
+            exp1.emplace(3);
+            TEST_ASSERT(exp1.has_value());
+            TEST_ASSERT(LifetimeCounter::live_count() == 1);
+        }
+        // After exp1 is destroyed
+        TEST_ASSERT(LifetimeCounter::live_count() == 0);
+        TEST_ASSERT(LifetimeCounter::construct_count + LifetimeCounter::copy_count + LifetimeCounter::move_count == LifetimeCounter::destroy_count);
+    }
+
+    // emplace for expected<void, E>
+    {
+        compat::expected<void, std::string> ev(compat::unexpected<std::string>("err"));
+        TEST_ASSERT(!ev.has_value());
+        ev.emplace();
+        TEST_ASSERT(ev.has_value());
+    }
 
     std::cout << "[PASS] test_expected passed." << std::endl;
 }

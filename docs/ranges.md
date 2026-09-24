@@ -1,4 +1,4 @@
-﻿# 範圍基礎與概念 (compat::ranges)
+# 範圍基礎與概念 (compat::ranges)
 
 定義於標頭檔 [`<compat/Ranges.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Ranges.hpp)。  
 所屬命名空間：`compat::ranges`。
@@ -100,6 +100,10 @@ CPO 是全域函式物件，透過毒丸技術（Poison-Pill）嚴格隔離引�
 
 ### 2. `compat::ranges::dangling` 與 `borrowed_iterator_t<R>`
 - 當傳入臨時右值 Range 且該 Range **不滿足** `borrowed_range` 時，演算法安全回傳 `dangling` 標記物件，防止編譯出持有懸空迭代器的危險程式碼。
+
+### 3. `single_view` 借用生命週期安全約束 (Lifetime Safety)
+- 根據 ISO C++ 標準規範，`single_view<T>` **僅在 `T` 為引用或指標等本身即具備借用特性的型別時**，才特化 `enable_borrowed_range<single_view<T>> = true`。
+- 若 `single_view<T>` 持有實體值（Value Object），將臨時右值 `single_view` 傳入演算法時，回傳之迭代器將被強制標記為 `dangling`，杜絕使用者取得指向已銷毀臨時單元素視圖內部成員的懸空指標。
 
 ---
 

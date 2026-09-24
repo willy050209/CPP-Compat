@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 
@@ -11,14 +11,6 @@
 #include <exception>
 #include <cstdint>
 
-#ifndef COMPAT_THROW_OR_ABORT
-#  if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
-#    define COMPAT_THROW_OR_ABORT(ex) throw (ex)
-#  else
-#    include <cstdlib>
-#    define COMPAT_THROW_OR_ABORT(ex) std::abort()
-#  endif
-#endif
 
 namespace compat {
 namespace detail {

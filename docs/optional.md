@@ -1,4 +1,4 @@
-﻿# 選擇性值 (compat::optional)
+# 選擇性值 (compat::optional)
 
 定義於標頭檔 [`<compat/Optional.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Optional.hpp)。  
 所屬命名空間：`compat`。
@@ -38,17 +38,39 @@ namespace compat {
 - **預設建構**：`optional()` 或 `optional(nullopt)` 構造為空狀態（`has_value() == false`）。
 - **值建構**：`optional(const T&)` / `optional(T&&)` 原地複製或移動建構值。
 - **賦值操作**：支援 `nullopt` 賦值（銷毀內部值並重設為空）、值賦值與同型別 `optional` 賦值。
-- **就地構造**：`emplace(args...)` 直接在儲存空間中以引數就地構造型別 `T`。
-- **重設**：`reset()` 銷毀內部物件並將狀態重設為未包含值。
+- **就地構造 (Emplace)**：
+  ```cpp
+  template <typename... Args>
+  T& emplace(Args&&... args);
+  ```
+  若當前已包含值，先銷毀既有值；接著在內部未受限聯合儲存區中，以 `std::forward<Args>(args)...` 就地直接建構型別 `T`，並回傳新建構物件的參考。保證建構完成後處於合法有效狀態。
+- **重設狀態 (Reset)**：
+  ```cpp
+  void reset() noexcept;
+  ```
+  若當前包含值，顯式呼叫內部物件之解構式並銷毀之；將狀態標誌重設為未包含值（`has_value() == false`）。保證 `noexcept`。
 
-### 2. 狀態檢查與觀察 (Observers)
+### 2. 特徵傳遞與 C++11 特殊成員支援 (Trait Propagation Invariant)
+
+`compat::optional<T>` 嚴格遵循 ISO C++ 標準的特殊成員特徵傳遞合約。即使在缺乏 C++20 `requires` 的 **C++11/14** 環境下，亦透過 SFINAE 與基底類別選擇機制完整實作：
+- **複製建構與移動建構**：
+  - 若 `T` 不具備可複製建構性（`is_copy_constructible<T>::value == false`，如 `std::unique_ptr`），則 `optional<T>` 的複製建構式將在編譯期被禁用（`delete`），使 `std::is_copy_constructible<optional<T>>::value` 精確為 `false`。
+  - 移動建構性同理依 `T` 傳遞。
+- **複製賦值與移動賦值**：
+  - 複製與移動賦值運算子同理依 `T` 的賦值能力精確啟用或禁用。
+- **平凡性傳遞 (Triviality)**：
+  - 若 `T` 為平凡型別（Trivial Type），`optional<T>` 亦保證可成為平凡複製/解構型別。
+- **條件式 `noexcept`**：
+  - 移動建構與交換操作嚴格依 `std::is_nothrow_move_constructible<T>` 與 `std::is_nothrow_move_assignable<T>` 條件化推導 `noexcept`，絕不引發非預期 `std::terminate`。
+
+### 3. 狀態檢查與觀察 (Observers)
 
 - **狀態判斷**：
   - `has_value()`：回傳內部是否包含實體值。
   - `operator bool()`：等同於 `has_value()`，方便於 `if (opt)` 條件判斷。
 - **值存取**：
   - `operator*()` / `operator->()`：直接存取內部物件的參考或指標（**前置條件**：`has_value() == true`；不進行邊界檢查以追求零開銷）。
-  - `value()`：安全存取內部值。若 `has_value() == false` 則拋出 `compat::bad_optional_access` 例外（在 `-fno-exceptions` 下觸發 `std::abort()`）。
+  - `value()`：安全存取內部值。若 `has_value() == false` 則拋出 `compat::bad_optional_access` 例外（在 `-fno-exceptions` 下觸發 `COMPAT_THROW_OR_ABORT` 執行 fail-fast）。
   - `value_or(default_value)`：若包含值則回傳該值，否則回傳傳入之預設回退值。
 
 ---

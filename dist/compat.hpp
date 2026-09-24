@@ -36,6 +36,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 // ============================================================================
 // Module Section: include/compat/Config.hpp
@@ -451,14 +452,6 @@ namespace detail {
 #include <exception>
 #include <cstdint>
 
-#ifndef COMPAT_THROW_OR_ABORT
-#  if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
-#    define COMPAT_THROW_OR_ABORT(ex) throw (ex)
-#  else
-#    include <cstdlib>
-#    define COMPAT_THROW_OR_ABORT(ex) std::abort()
-#  endif
-#endif
 
 namespace compat {
 namespace detail {
@@ -2698,8 +2691,10 @@ namespace self_ranges {
             static constexpr bool empty() noexcept { return false; }
         };
 
+        // single_view stores elements by value directly inside the view.
+        // It must NOT be a borrowed range to prevent returning dangling iterators from temporary views.
         template <typename T>
-        struct enable_borrowed_range_helper<single_view<T>> : std::true_type {};
+        struct enable_borrowed_range_helper<single_view<T>> : std::false_type {};
 
         // --- iota_view ---
         /// <summary>
@@ -5368,14 +5363,6 @@ namespace std {
 #include <stdexcept>
 #include <exception>
 
-#ifndef COMPAT_THROW_OR_ABORT
-#  if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
-#    define COMPAT_THROW_OR_ABORT(ex) throw (ex)
-#  else
-#    include <cstdlib>
-#    define COMPAT_THROW_OR_ABORT(ex) std::abort()
-#  endif
-#endif
 
 namespace compat {
 namespace detail {
@@ -5686,8 +5673,8 @@ struct ExpectedStorageBase<T, E, false> {
     ExpectedStorageBase() noexcept : m_has_value(false) {}
     explicit ExpectedStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
 
-    ExpectedStorageBase(const ExpectedStorageBase&) noexcept : m_has_value(false) {}
-    ExpectedStorageBase(ExpectedStorageBase&&) noexcept : m_has_value(false) {}
+    ExpectedStorageBase(const ExpectedStorageBase& o) noexcept : m_has_value(o.m_has_value) {}
+    ExpectedStorageBase(ExpectedStorageBase&& o) noexcept : m_has_value(o.m_has_value) {}
     ExpectedStorageBase& operator=(const ExpectedStorageBase&) noexcept { return *this; }
     ExpectedStorageBase& operator=(ExpectedStorageBase&&) noexcept { return *this; }
 
@@ -5730,6 +5717,76 @@ struct ExpectedStorageBase<T, E, true> {
 
     void destroy() noexcept {}
 };
+
+/// <summary>
+/// Helper implementing exception-safe transition from Value (T) to Error (E).
+/// Follows Case A, Case B, and Case C transition strategies:
+/// Case A: Error constructor is noexcept -> destroy old value, construct new error.
+/// Case B: Error has nothrow move ctor -> construct temporary error (if it throws, old value is intact), destroy old value, nothrow move to storage.
+/// Case C: Value has nothrow move ctor -> nothrow move old value to backup, destroy old value, construct new error; if error throws, restore old value from backup.
+/// </summary>
+template <typename T, typename E, typename Storage, typename Arg>
+inline void reinit_val_to_err(Storage& storage, bool& has_val, Arg&& arg) {
+    if (std::is_nothrow_constructible<E, Arg>::value) {
+        storage.m_val.~T();
+        ::new (static_cast<void*>(&storage.m_err)) E(std::forward<Arg>(arg));
+        has_val = false;
+    } else if (std::is_nothrow_move_constructible<E>::value) {
+        E temp(std::forward<Arg>(arg));
+        storage.m_val.~T();
+        ::new (static_cast<void*>(&storage.m_err)) E(std::move(temp));
+        has_val = false;
+    } else if (std::is_nothrow_move_constructible<T>::value) {
+        T backup(std::move(storage.m_val));
+        storage.m_val.~T();
+        try {
+            ::new (static_cast<void*>(&storage.m_err)) E(std::forward<Arg>(arg));
+            has_val = false;
+        } catch (...) {
+            ::new (static_cast<void*>(&storage.m_val)) T(std::move(backup));
+            throw;
+        }
+    } else {
+        storage.m_val.~T();
+        ::new (static_cast<void*>(&storage.m_err)) E(std::forward<Arg>(arg));
+        has_val = false;
+    }
+}
+
+/// <summary>
+/// Helper implementing exception-safe transition from Error (E) to Value (T).
+/// Follows Case A, Case B, and Case C transition strategies:
+/// Case A: Value constructor is noexcept -> destroy old error, construct new value.
+/// Case B: Value has nothrow move ctor -> construct temporary value (if it throws, old error is intact), destroy old error, nothrow move to storage.
+/// Case C: Error has nothrow move ctor -> nothrow move old error to backup, destroy old error, construct new value; if value throws, restore old error from backup.
+/// </summary>
+template <typename T, typename E, typename Storage, typename Arg>
+inline void reinit_err_to_val(Storage& storage, bool& has_val, Arg&& arg) {
+    if (std::is_nothrow_constructible<T, Arg>::value) {
+        storage.m_err.~E();
+        ::new (static_cast<void*>(&storage.m_val)) T(std::forward<Arg>(arg));
+        has_val = true;
+    } else if (std::is_nothrow_move_constructible<T>::value) {
+        T temp(std::forward<Arg>(arg));
+        storage.m_err.~E();
+        ::new (static_cast<void*>(&storage.m_val)) T(std::move(temp));
+        has_val = true;
+    } else if (std::is_nothrow_move_constructible<E>::value) {
+        E backup(std::move(storage.m_err));
+        storage.m_err.~E();
+        try {
+            ::new (static_cast<void*>(&storage.m_val)) T(std::forward<Arg>(arg));
+            has_val = true;
+        } catch (...) {
+            ::new (static_cast<void*>(&storage.m_err)) E(std::move(backup));
+            throw;
+        }
+    } else {
+        storage.m_err.~E();
+        ::new (static_cast<void*>(&storage.m_val)) T(std::forward<Arg>(arg));
+        has_val = true;
+    }
+}
 
 /// <summary>
 /// Forward declaration of expected template.
@@ -5809,21 +5866,24 @@ public:
     /// Copy constructor.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
-    expected(const expected& other) : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(m_has_value)) {
+    expected(const expected& other) : Base(false) {
+        if (COMPAT_UNLIKELY(other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
+            m_has_value = true;
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
         }
     }
 
     /// <summary>
-    /// Move constructor.
+    /// Move constructor with conditional noexcept.
     /// </summary>
     /// <param name="other">Instance to move.</param>
-    expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(m_has_value)) {
+    expected(expected&& other) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_constructible<E>::value)
+        : Base(false) {
+        if (COMPAT_UNLIKELY(other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
+            m_has_value = true;
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
         }
@@ -5835,36 +5895,44 @@ public:
     ~expected() = default;
 
     /// <summary>
-    /// Copy assignment operator.
+    /// Copy assignment operator with same-state assignment and exception-safe reinit transition.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const expected& other) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(m_has_value)) {
-                ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
+            if (m_has_value && other.m_has_value) {
+                m_storage.m_val = other.m_storage.m_val;
+            } else if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = other.m_storage.m_err;
+            } else if (m_has_value && !other.m_has_value) {
+                reinit_val_to_err<T, E>(m_storage, m_has_value, other.m_storage.m_err);
             } else {
-                ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
+                reinit_err_to_val<T, E>(m_storage, m_has_value, other.m_storage.m_val);
             }
         }
         return *this;
     }
 
     /// <summary>
-    /// Move assignment operator.
+    /// Move assignment operator with conditional noexcept, same-state move and exception-safe reinit transition.
     /// </summary>
     /// <param name="other">Instance to move.</param>
     /// <returns>Reference to self.</returns>
-    expected& operator=(expected&& other) noexcept {
+    expected& operator=(expected&& other) noexcept(
+        std::is_nothrow_move_assignable<T>::value &&
+        std::is_nothrow_move_constructible<T>::value &&
+        std::is_nothrow_move_assignable<E>::value &&
+        std::is_nothrow_move_constructible<E>::value) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(m_has_value)) {
-                ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
+            if (m_has_value && other.m_has_value) {
+                m_storage.m_val = std::move(other.m_storage.m_val);
+            } else if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = std::move(other.m_storage.m_err);
+            } else if (m_has_value && !other.m_has_value) {
+                reinit_val_to_err<T, E>(m_storage, m_has_value, std::move(other.m_storage.m_err));
             } else {
-                ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
+                reinit_err_to_val<T, E>(m_storage, m_has_value, std::move(other.m_storage.m_val));
             }
         }
         return *this;
@@ -5876,9 +5944,11 @@ public:
     /// <param name="val">Value to copy-assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const T& val) {
-        destroy();
-        m_has_value = true;
-        ::new (static_cast<void*>(&m_storage.m_val)) T(val);
+        if (m_has_value) {
+            m_storage.m_val = val;
+        } else {
+            reinit_err_to_val<T, E>(m_storage, m_has_value, val);
+        }
         return *this;
     }
 
@@ -5888,9 +5958,11 @@ public:
     /// <param name="val">Value to move-assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(T&& val) {
-        destroy();
-        m_has_value = true;
-        ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(val));
+        if (m_has_value) {
+            m_storage.m_val = std::move(val);
+        } else {
+            reinit_err_to_val<T, E>(m_storage, m_has_value, std::move(val));
+        }
         return *this;
     }
 
@@ -5900,9 +5972,11 @@ public:
     /// <param name="unexp">Unexpected error wrapper to assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const unexpected<E>& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
+        if (!m_has_value) {
+            m_storage.m_err = unexp.error();
+        } else {
+            reinit_val_to_err<T, E>(m_storage, m_has_value, unexp.error());
+        }
         return *this;
     }
 
@@ -5912,10 +5986,68 @@ public:
     /// <param name="unexp">Unexpected error wrapper to move-assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(unexpected<E>&& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
+        if (!m_has_value) {
+            m_storage.m_err = std::move(unexp.error());
+        } else {
+            reinit_val_to_err<T, E>(m_storage, m_has_value, std::move(unexp.error()));
+        }
         return *this;
+    }
+
+    /// <summary>
+    /// In-place constructs value inside expected.
+    /// </summary>
+    /// <typeparam name="Args">Constructor argument types.</typeparam>
+    /// <param name="args">Forwarded arguments.</param>
+    /// <returns>Reference to constructed value.</returns>
+    template <typename... Args>
+    T& emplace(Args&&... args) {
+        if (m_has_value) {
+            if (std::is_nothrow_constructible<T, Args...>::value) {
+                destroy();
+                m_has_value = false;
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            } else if (std::is_nothrow_move_constructible<T>::value) {
+                T temp(std::forward<Args>(args)...);
+                destroy();
+                m_has_value = false;
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(temp));
+                m_has_value = true;
+            } else {
+                destroy();
+                m_has_value = false;
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            }
+        } else {
+            if (std::is_nothrow_constructible<T, Args...>::value) {
+                destroy();
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            } else if (std::is_nothrow_move_constructible<T>::value) {
+                T temp(std::forward<Args>(args)...);
+                destroy();
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(temp));
+                m_has_value = true;
+            } else if (std::is_nothrow_move_constructible<E>::value) {
+                E backup(std::move(m_storage.m_err));
+                destroy();
+                try {
+                    ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                    m_has_value = true;
+                } catch (...) {
+                    ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(backup));
+                    m_has_value = false;
+                    throw;
+                }
+            } else {
+                destroy();
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            }
+        }
+        return m_storage.m_val;
     }
 
     /// <summary>
@@ -6450,8 +6582,8 @@ struct ExpectedVoidStorageBase<E, false> {
     ExpectedVoidStorageBase() noexcept : m_has_value(false) {}
     explicit ExpectedVoidStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
 
-    ExpectedVoidStorageBase(const ExpectedVoidStorageBase&) noexcept : m_has_value(false) {}
-    ExpectedVoidStorageBase(ExpectedVoidStorageBase&&) noexcept : m_has_value(false) {}
+    ExpectedVoidStorageBase(const ExpectedVoidStorageBase& o) noexcept : m_has_value(o.m_has_value) {}
+    ExpectedVoidStorageBase(ExpectedVoidStorageBase&& o) noexcept : m_has_value(o.m_has_value) {}
     ExpectedVoidStorageBase& operator=(const ExpectedVoidStorageBase&) noexcept { return *this; }
     ExpectedVoidStorageBase& operator=(ExpectedVoidStorageBase&&) noexcept { return *this; }
 
@@ -6543,19 +6675,21 @@ public:
     /// Copy constructor.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
-    expected(const expected& other) : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(!m_has_value)) {
+    expected(const expected& other) : Base(true) {
+        if (COMPAT_UNLIKELY(!other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
+            m_has_value = false;
         }
     }
 
     /// <summary>
-    /// Move constructor.
+    /// Move constructor with conditional noexcept.
     /// </summary>
     /// <param name="other">Instance to move.</param>
-    expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(!m_has_value)) {
+    expected(expected&& other) noexcept(std::is_nothrow_move_constructible<E>::value) : Base(true) {
+        if (COMPAT_UNLIKELY(!other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
+            m_has_value = false;
         }
     }
 
@@ -6571,26 +6705,36 @@ public:
     /// <returns>Reference to self.</returns>
     expected& operator=(const expected& other) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(!m_has_value)) {
+            if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = other.m_storage.m_err;
+            } else if (m_has_value && !other.m_has_value) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
+                m_has_value = false;
+            } else if (!m_has_value && other.m_has_value) {
+                destroy();
+                m_has_value = true;
             }
         }
         return *this;
     }
 
     /// <summary>
-    /// Move assignment operator.
+    /// Move assignment operator with conditional noexcept.
     /// </summary>
     /// <param name="other">Instance to move.</param>
     /// <returns>Reference to self.</returns>
-    expected& operator=(expected&& other) noexcept {
+    expected& operator=(expected&& other) noexcept(
+        std::is_nothrow_move_assignable<E>::value &&
+        std::is_nothrow_move_constructible<E>::value) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(!m_has_value)) {
+            if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = std::move(other.m_storage.m_err);
+            } else if (m_has_value && !other.m_has_value) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
+                m_has_value = false;
+            } else if (!m_has_value && other.m_has_value) {
+                destroy();
+                m_has_value = true;
             }
         }
         return *this;
@@ -6602,9 +6746,12 @@ public:
     /// <param name="unexp">Unexpected error wrapper.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const unexpected<E>& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
+        if (!m_has_value) {
+            m_storage.m_err = unexp.error();
+        } else {
+            ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
+            m_has_value = false;
+        }
         return *this;
     }
 
@@ -6614,10 +6761,23 @@ public:
     /// <param name="unexp">Unexpected error wrapper.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(unexpected<E>&& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
+        if (!m_has_value) {
+            m_storage.m_err = std::move(unexp.error());
+        } else {
+            ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
+            m_has_value = false;
+        }
         return *this;
+    }
+
+    /// <summary>
+    /// In-place constructs success value (void).
+    /// </summary>
+    void emplace() noexcept {
+        if (!m_has_value) {
+            destroy();
+            m_has_value = true;
+        }
     }
 
     /// <summary>
@@ -7120,92 +7280,234 @@ namespace compat {
         const char* what() const noexcept override { return "bad optional access"; }
     };
 
-    template <typename T>
-    class optional {
-        bool has_val_;
-        typename std::aligned_storage<sizeof(T), alignof(T)>::type storage_;
+    namespace detail {
 
-        T* ptr() noexcept { return reinterpret_cast<T*>(&storage_); }
-        const T* ptr() const noexcept { return reinterpret_cast<const T*>(&storage_); }
+        template <typename T, bool IsTriviallyDestructible = std::is_trivially_destructible<T>::value>
+        struct optional_storage_base {
+            union Storage {
+                char dummy_;
+                T value_;
+                Storage() noexcept : dummy_{} {}
+                ~Storage() noexcept {}
+            } storage_;
+            bool has_val_;
 
-        void destroy() noexcept {
-            if (has_val_) {
-                ptr()->~T();
+            optional_storage_base() noexcept : storage_{}, has_val_(false) {}
+            explicit optional_storage_base(bool engaged) noexcept : storage_{}, has_val_(engaged) {}
+
+            ~optional_storage_base() {
+                destroy();
+            }
+
+            void destroy() noexcept {
+                if (has_val_) {
+                    storage_.value_.~T();
+                    has_val_ = false;
+                }
+            }
+        };
+
+        template <typename T>
+        struct optional_storage_base<T, true> {
+            union Storage {
+                char dummy_;
+                T value_;
+                Storage() noexcept : dummy_{} {}
+                ~Storage() = default;
+            } storage_;
+            bool has_val_;
+
+            optional_storage_base() noexcept : storage_{}, has_val_(false) {}
+            explicit optional_storage_base(bool engaged) noexcept : storage_{}, has_val_(engaged) {}
+            ~optional_storage_base() = default;
+
+            void destroy() noexcept {
                 has_val_ = false;
             }
-        }
+        };
+
+        template <typename T, bool CanCopy = std::is_copy_constructible<T>::value>
+        struct optional_copy_ctor_base : optional_storage_base<T> {
+            using optional_storage_base<T>::optional_storage_base;
+            optional_copy_ctor_base() = default;
+            optional_copy_ctor_base(const optional_copy_ctor_base& other) : optional_storage_base<T>(false) {
+                if (other.has_val_) {
+                    ::new (static_cast<void*>(&this->storage_.value_)) T(other.storage_.value_);
+                    this->has_val_ = true;
+                }
+            }
+            optional_copy_ctor_base(optional_copy_ctor_base&&) = default;
+            optional_copy_ctor_base& operator=(const optional_copy_ctor_base&) = default;
+            optional_copy_ctor_base& operator=(optional_copy_ctor_base&&) = default;
+        };
+
+        template <typename T>
+        struct optional_copy_ctor_base<T, false> : optional_storage_base<T> {
+            using optional_storage_base<T>::optional_storage_base;
+            optional_copy_ctor_base() = default;
+            optional_copy_ctor_base(const optional_copy_ctor_base&) = delete;
+            optional_copy_ctor_base(optional_copy_ctor_base&&) = default;
+            optional_copy_ctor_base& operator=(const optional_copy_ctor_base&) = default;
+            optional_copy_ctor_base& operator=(optional_copy_ctor_base&&) = default;
+        };
+
+        template <typename T, bool CanMove = std::is_move_constructible<T>::value>
+        struct optional_move_ctor_base : optional_copy_ctor_base<T> {
+            using optional_copy_ctor_base<T>::optional_copy_ctor_base;
+            optional_move_ctor_base() = default;
+            optional_move_ctor_base(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base(optional_move_ctor_base&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : optional_copy_ctor_base<T>(false) {
+                if (other.has_val_) {
+                    ::new (static_cast<void*>(&this->storage_.value_)) T(std::move(other.storage_.value_));
+                    this->has_val_ = true;
+                }
+            }
+            optional_move_ctor_base& operator=(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base& operator=(optional_move_ctor_base&&) = default;
+        };
+
+        template <typename T>
+        struct optional_move_ctor_base<T, false> : optional_copy_ctor_base<T> {
+            using optional_copy_ctor_base<T>::optional_copy_ctor_base;
+            optional_move_ctor_base() = default;
+            optional_move_ctor_base(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base(optional_move_ctor_base&&) = delete;
+            optional_move_ctor_base& operator=(const optional_move_ctor_base&) = default;
+            optional_move_ctor_base& operator=(optional_move_ctor_base&&) = default;
+        };
+
+        template <typename T, bool CanCopyAssign = std::is_copy_constructible<T>::value && std::is_copy_assignable<T>::value>
+        struct optional_copy_assign_base : optional_move_ctor_base<T> {
+            using optional_move_ctor_base<T>::optional_move_ctor_base;
+            optional_copy_assign_base() = default;
+            optional_copy_assign_base(const optional_copy_assign_base&) = default;
+            optional_copy_assign_base(optional_copy_assign_base&&) = default;
+            optional_copy_assign_base& operator=(const optional_copy_assign_base& other) {
+                if (this != &other) {
+                    if (this->has_val_ && other.has_val_) {
+                        this->storage_.value_ = other.storage_.value_;
+                    } else if (this->has_val_) {
+                        this->destroy();
+                    } else if (other.has_val_) {
+                        ::new (static_cast<void*>(&this->storage_.value_)) T(other.storage_.value_);
+                        this->has_val_ = true;
+                    }
+                }
+                return *this;
+            }
+            optional_copy_assign_base& operator=(optional_copy_assign_base&&) = default;
+        };
+
+        template <typename T>
+        struct optional_copy_assign_base<T, false> : optional_move_ctor_base<T> {
+            using optional_move_ctor_base<T>::optional_move_ctor_base;
+            optional_copy_assign_base() = default;
+            optional_copy_assign_base(const optional_copy_assign_base&) = default;
+            optional_copy_assign_base(optional_copy_assign_base&&) = default;
+            optional_copy_assign_base& operator=(const optional_copy_assign_base&) = delete;
+            optional_copy_assign_base& operator=(optional_copy_assign_base&&) = default;
+        };
+
+        template <typename T, bool CanMoveAssign = std::is_move_constructible<T>::value && std::is_move_assignable<T>::value>
+        struct optional_move_assign_base : optional_copy_assign_base<T> {
+            using optional_copy_assign_base<T>::optional_copy_assign_base;
+            optional_move_assign_base() = default;
+            optional_move_assign_base(const optional_move_assign_base&) = default;
+            optional_move_assign_base(optional_move_assign_base&&) = default;
+            optional_move_assign_base& operator=(const optional_move_assign_base&) = default;
+            optional_move_assign_base& operator=(optional_move_assign_base&& other) noexcept(std::is_nothrow_move_assignable<T>::value && std::is_nothrow_move_constructible<T>::value) {
+                if (this != &other) {
+                    if (this->has_val_ && other.has_val_) {
+                        this->storage_.value_ = std::move(other.storage_.value_);
+                    } else if (this->has_val_) {
+                        this->destroy();
+                    } else if (other.has_val_) {
+                        ::new (static_cast<void*>(&this->storage_.value_)) T(std::move(other.storage_.value_));
+                        this->has_val_ = true;
+                    }
+                }
+                return *this;
+            }
+        };
+
+        template <typename T>
+        struct optional_move_assign_base<T, false> : optional_copy_assign_base<T> {
+            using optional_copy_assign_base<T>::optional_copy_assign_base;
+            optional_move_assign_base() = default;
+            optional_move_assign_base(const optional_move_assign_base&) = default;
+            optional_move_assign_base(optional_move_assign_base&&) = default;
+            optional_move_assign_base& operator=(const optional_move_assign_base&) = default;
+            optional_move_assign_base& operator=(optional_move_assign_base&&) = delete;
+        };
+
+    } // namespace detail
+
+    template <typename T>
+    class optional : public detail::optional_move_assign_base<T> {
+        using Base = detail::optional_move_assign_base<T>;
+
+        T* ptr() noexcept { return reinterpret_cast<T*>(&this->storage_.value_); }
+        const T* ptr() const noexcept { return reinterpret_cast<const T*>(&this->storage_.value_); }
+
     public:
-        constexpr optional() noexcept : has_val_(false), storage_{} {}
-        constexpr optional(nullopt_t) noexcept : has_val_(false), storage_{} {}
+        using value_type = T;
 
-        optional(const T& val) : has_val_(true) {
-            ::new (static_cast<void*>(&storage_)) T(val);
+        constexpr optional() noexcept : Base(false) {}
+        constexpr optional(nullopt_t) noexcept : Base(false) {}
+
+        optional(const T& val) : Base(false) {
+            ::new (static_cast<void*>(&this->storage_.value_)) T(val);
+            this->has_val_ = true;
         }
 
-        optional(T&& val) : has_val_(true) {
-            ::new (static_cast<void*>(&storage_)) T(std::move(val));
+        optional(T&& val) : Base(false) {
+            ::new (static_cast<void*>(&this->storage_.value_)) T(std::move(val));
+            this->has_val_ = true;
         }
 
-        optional(const optional& other) : has_val_(other.has_val_) {
-            if (other.has_val_) {
-                ::new (static_cast<void*>(&storage_)) T(*other.ptr());
-            }
+        template <typename... Args>
+        explicit optional(std::piecewise_construct_t, Args&&... args) : Base(false) {
+            ::new (static_cast<void*>(&this->storage_.value_)) T(std::forward<Args>(args)...);
+            this->has_val_ = true;
         }
 
-        optional(optional&& other) noexcept(std::is_nothrow_move_constructible<T>::value) : has_val_(other.has_val_) {
-            if (other.has_val_) {
-                ::new (static_cast<void*>(&storage_)) T(std::move(*other.ptr()));
-            }
-        }
+        optional(const optional&) = default;
+        optional(optional&&) = default;
+        optional& operator=(const optional&) = default;
+        optional& operator=(optional&&) = default;
 
-        ~optional() { destroy(); }
+        ~optional() = default;
 
         optional& operator=(nullopt_t) noexcept {
-            destroy();
+            this->destroy();
             return *this;
         }
 
-        optional& operator=(const optional& other) {
-            if (this != &other) {
-                if (has_val_ && other.has_val_) {
-                    *ptr() = *other.ptr();
-                } else if (has_val_) {
-                    destroy();
-                } else if (other.has_val_) {
-                    ::new (static_cast<void*>(&storage_)) T(*other.ptr());
-                    has_val_ = true;
-                }
-            }
-            return *this;
-        }
-
-        optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable<T>::value && std::is_nothrow_move_constructible<T>::value) {
-            if (this != &other) {
-                if (has_val_ && other.has_val_) {
-                    *ptr() = std::move(*other.ptr());
-                } else if (has_val_) {
-                    destroy();
-                } else if (other.has_val_) {
-                    ::new (static_cast<void*>(&storage_)) T(std::move(*other.ptr()));
-                    has_val_ = true;
-                }
-            }
-            return *this;
-        }
-
-        template <typename U = T, typename = typename std::enable_if<!std::is_same<typename std::decay<U>::type, optional>::value>::type>
+        template <typename U = T, typename = typename std::enable_if<!std::is_same<typename std::decay<U>::type, optional>::value && std::is_constructible<T, U>::value && std::is_assignable<T&, U>::value>::type>
         optional& operator=(U&& val) {
-            if (has_val_) {
+            if (this->has_val_) {
                 *ptr() = std::forward<U>(val);
             } else {
-                ::new (static_cast<void*>(&storage_)) T(std::forward<U>(val));
-                has_val_ = true;
+                ::new (static_cast<void*>(&this->storage_.value_)) T(std::forward<U>(val));
+                this->has_val_ = true;
             }
             return *this;
         }
 
-        constexpr explicit operator bool() const noexcept { return has_val_; }
-        constexpr bool has_value() const noexcept { return has_val_; }
+        void reset() noexcept {
+            this->destroy();
+        }
+
+        template <typename... Args>
+        T& emplace(Args&&... args) {
+            this->destroy();
+            ::new (static_cast<void*>(&this->storage_.value_)) T(std::forward<Args>(args)...);
+            this->has_val_ = true;
+            return *ptr();
+        }
+
+        constexpr explicit operator bool() const noexcept { return this->has_val_; }
+        constexpr bool has_value() const noexcept { return this->has_val_; }
 
         T& operator*() & noexcept { return *ptr(); }
         const T& operator*() const & noexcept { return *ptr(); }
@@ -7216,29 +7518,38 @@ namespace compat {
         const T* operator->() const noexcept { return ptr(); }
 
         T& value() & {
-            if (!has_val_) throw bad_optional_access();
+            if (!this->has_val_) {
+                COMPAT_THROW_OR_ABORT(bad_optional_access());
+            }
             return *ptr();
         }
 
         const T& value() const & {
-            if (!has_val_) throw bad_optional_access();
+            if (!this->has_val_) {
+                COMPAT_THROW_OR_ABORT(bad_optional_access());
+            }
             return *ptr();
         }
 
         template <typename U>
         T value_or(U&& default_value) const & {
-            return has_val_ ? *ptr() : static_cast<T>(std::forward<U>(default_value));
+            return this->has_val_ ? *ptr() : static_cast<T>(std::forward<U>(default_value));
         }
 
         template <typename U>
         T value_or(U&& default_value) && {
-            return has_val_ ? std::move(*ptr()) : static_cast<T>(std::forward<U>(default_value));
+            return this->has_val_ ? std::move(*ptr()) : static_cast<T>(std::forward<U>(default_value));
         }
     };
 
     template <typename T>
     inline optional<typename std::decay<T>::type> make_optional(T&& value) {
         return optional<typename std::decay<T>::type>(std::forward<T>(value));
+    }
+
+    template <typename T, typename... Args>
+    inline optional<T> make_optional(Args&&... args) {
+        return optional<T>(std::piecewise_construct, std::forward<Args>(args)...);
     }
 
     template <typename T, typename U>
@@ -7269,6 +7580,18 @@ namespace compat {
     template <typename T>
     inline bool operator!=(nullopt_t, const optional<T>& opt) noexcept {
         return opt.has_value();
+    }
+
+    template <typename T, typename U>
+    inline bool operator==(const optional<T>& lhs, const optional<U>& rhs) {
+        if (lhs.has_value() != rhs.has_value()) return false;
+        if (!lhs.has_value()) return true;
+        return *lhs == *rhs;
+    }
+
+    template <typename T, typename U>
+    inline bool operator!=(const optional<T>& lhs, const optional<U>& rhs) {
+        return !(lhs == rhs);
     }
 
 } // namespace compat
@@ -11227,10 +11550,14 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
     } else if (total_exp > 22) {
         dval *= Pow10Positive(total_exp);
     } else {
-        if (total_exp < -324) {
+        int32_t neg_exp = -total_exp;
+        if (neg_exp > 324) {
             dval = 0.0;
+        } else if (neg_exp > 256) {
+            dval /= 1e256;
+            dval /= Pow10Positive(neg_exp - 256);
         } else {
-            dval /= Pow10Positive(-total_exp);
+            dval /= Pow10Positive(neg_exp);
         }
     }
 
@@ -11248,6 +11575,13 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
             res.ptr = ptr;
             return res;
         }
+    }
+
+    // Underflow check: if mantissa was non-zero but scaled value underflows to 0.0
+    if (COMPAT_UNLIKELY(mantissa != 0.0 && static_cast<FloatType>(dval) == static_cast<FloatType>(0.0))) {
+        res.ec = std::errc::result_out_of_range;
+        res.ptr = ptr;
+        return res;
     }
 
     if (negative) {
@@ -12024,17 +12358,6 @@ inline FormatSpec ParseFormatSpec(compat::string_view sv) noexcept {
     std::size_t colon_pos = sv.find(':');
     if (colon_pos != compat::string_view::npos) {
         sv = sv.substr(colon_pos + 1);
-    } else {
-        bool all_digits = true;
-        for (std::size_t j = 0; j < sv.size(); ++j) {
-            if (sv[j] < '0' || sv[j] > '9') {
-                all_digits = false;
-                break;
-            }
-        }
-        if (all_digits) {
-            return spec;
-        }
     }
 
     if (sv.empty()) {
@@ -12503,7 +12826,7 @@ inline void FormatIntWithSpec(stack_buffer<Capacity>& buf, int64_t val, const Fo
 /// <param name="spec">Parsed FormatSpec.</param>
 template <std::size_t Capacity>
 inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const FormatSpec& spec) {
-    char fmt_pattern[32];
+    char fmt_pattern[64];
     char* fp = fmt_pattern;
     *fp++ = '%';
     if (spec.sign == '+' && val >= 0.0) {
@@ -12516,23 +12839,46 @@ inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const F
     }
     if (spec.precision >= 0) {
         *fp++ = '.';
-        char prec_buf[16];
+        char prec_buf[32];
         int prec_len = std::snprintf(prec_buf, sizeof(prec_buf), "%d", spec.precision);
-        for (int k = 0; k < prec_len; ++k) {
-            *fp++ = prec_buf[k];
+        if (prec_len > 0) {
+            for (int k = 0; k < prec_len && (fp - fmt_pattern) < 55; ++k) {
+                *fp++ = prec_buf[k];
+            }
         }
     }
     char conv = spec.type;
     if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
-        conv = (spec.precision >= 0) ? 'f' : 'g';
+        if (spec.precision >= 0) {
+            conv = 'f';
+        } else {
+            *fp++ = '.';
+            *fp++ = '1';
+            *fp++ = '7';
+            conv = 'g';
+        }
     }
     *fp++ = conv;
     *fp = '\0';
 
-    char raw_buf[128];
-    int raw_len = std::snprintf(raw_buf, sizeof(raw_buf), fmt_pattern, val);
+    char stack_raw_buf[256];
+    char* raw_buf = stack_raw_buf;
+    std::vector<char> heap_raw_buf;
+    int raw_len = std::snprintf(stack_raw_buf, sizeof(stack_raw_buf), fmt_pattern, val);
     if (raw_len < 0) {
         return;
+    }
+    if (static_cast<std::size_t>(raw_len) >= sizeof(stack_raw_buf)) {
+        heap_raw_buf.resize(static_cast<std::size_t>(raw_len) + 1);
+        raw_buf = heap_raw_buf.data();
+        std::snprintf(raw_buf, heap_raw_buf.size(), fmt_pattern, val);
+    }
+
+    // Locale-independence: normalize ',' to '.' in formatted number
+    for (std::size_t idx = 0; idx < static_cast<std::size_t>(raw_len); ++idx) {
+        if (raw_buf[idx] == ',') {
+            raw_buf[idx] = '.';
+        }
     }
 
     const char* prefix = "";
@@ -12559,7 +12905,7 @@ inline void FormatFloatWithSpec(stack_buffer<Capacity>& buf, double val, const F
 /// <param name="spec">Parsed FormatSpec.</param>
 template <std::size_t Capacity>
 inline void FormatLongDoubleWithSpec(stack_buffer<Capacity>& buf, long double val, const FormatSpec& spec) {
-    char fmt_pattern[32];
+    char fmt_pattern[64];
     char* fp = fmt_pattern;
     *fp++ = '%';
     if (spec.sign == '+' && val >= 0.0L) {
@@ -12572,24 +12918,47 @@ inline void FormatLongDoubleWithSpec(stack_buffer<Capacity>& buf, long double va
     }
     if (spec.precision >= 0) {
         *fp++ = '.';
-        char prec_buf[16];
+        char prec_buf[32];
         int prec_len = std::snprintf(prec_buf, sizeof(prec_buf), "%d", spec.precision);
-        for (int k = 0; k < prec_len; ++k) {
-            *fp++ = prec_buf[k];
+        if (prec_len > 0) {
+            for (int k = 0; k < prec_len && (fp - fmt_pattern) < 55; ++k) {
+                *fp++ = prec_buf[k];
+            }
+        }
+    }
+    char conv = spec.type;
+    if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
+        if (spec.precision >= 0) {
+            conv = 'f';
+        } else {
+            *fp++ = '.';
+            *fp++ = '2';
+            *fp++ = '1';
+            conv = 'g';
         }
     }
     *fp++ = 'L';
-    char conv = spec.type;
-    if (conv != 'f' && conv != 'F' && conv != 'e' && conv != 'E' && conv != 'g' && conv != 'G' && conv != 'a' && conv != 'A') {
-        conv = (spec.precision >= 0) ? 'f' : 'g';
-    }
     *fp++ = conv;
     *fp = '\0';
 
-    char raw_buf[128];
-    int raw_len = std::snprintf(raw_buf, sizeof(raw_buf), fmt_pattern, val);
+    char stack_raw_buf[256];
+    char* raw_buf = stack_raw_buf;
+    std::vector<char> heap_raw_buf;
+    int raw_len = std::snprintf(stack_raw_buf, sizeof(stack_raw_buf), fmt_pattern, val);
     if (raw_len < 0) {
         return;
+    }
+    if (static_cast<std::size_t>(raw_len) >= sizeof(stack_raw_buf)) {
+        heap_raw_buf.resize(static_cast<std::size_t>(raw_len) + 1);
+        raw_buf = heap_raw_buf.data();
+        std::snprintf(raw_buf, heap_raw_buf.size(), fmt_pattern, val);
+    }
+
+    // Locale-independence: normalize ',' to '.' in formatted number
+    for (std::size_t idx = 0; idx < static_cast<std::size_t>(raw_len); ++idx) {
+        if (raw_buf[idx] == ',') {
+            raw_buf[idx] = '.';
+        }
     }
 
     const char* prefix = "";
@@ -12692,7 +13061,7 @@ struct base_primitive_formatter {
     /// <param name="ctx">Format parse context reference.</param>
     /// <returns>Iterator to position after parsed format specification.</returns>
     template <typename ParseContext>
-    constexpr auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
+    COMPAT_CONSTEXPR_14 auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
         auto it = ctx.begin();
         auto end = ctx.end();
         if (it != end && *it == ':') {
@@ -13721,24 +14090,33 @@ COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, unsigned lon
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, float val) {
     char sbuf[64];
-    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", static_cast<double>(val));
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%.9g", static_cast<double>(val));
     if (len > 0) {
+        for (int i = 0; i < len; ++i) {
+            if (sbuf[i] == ',') sbuf[i] = '.';
+        }
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
 }
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, double val) {
     char sbuf[64];
-    int len = std::snprintf(sbuf, sizeof(sbuf), "%g", val);
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%.17g", val);
     if (len > 0) {
+        for (int i = 0; i < len; ++i) {
+            if (sbuf[i] == ',') sbuf[i] = '.';
+        }
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
 }
 
 COMPAT_ALWAYS_INLINE void FormatArgToBuffer(stack_buffer<512>& buf, long double val) {
     char sbuf[64];
-    int len = std::snprintf(sbuf, sizeof(sbuf), "%Lg", val);
+    int len = std::snprintf(sbuf, sizeof(sbuf), "%.21Lg", val);
     if (len > 0) {
+        for (int i = 0; i < len; ++i) {
+            if (sbuf[i] == ',') sbuf[i] = '.';
+        }
         buf.append(sbuf, static_cast<std::size_t>(len));
     }
 }
@@ -13775,46 +14153,38 @@ inline void StreamFormatArg(std::ostream& os, const T& arg) {
 /// <param name="fmt">Format string view.</param>
 /// <returns>Number of {} replacement fields.</returns>
 /// <exception cref="std::invalid_argument">Thrown on unmatched single { or }.</exception>
-inline std::size_t CountAndValidatePlaceholders(compat::string_view fmt) {
-    std::size_t count = 0;
-    std::size_t i = 0;
-    while (i < fmt.size()) {
-        if (fmt[i] == '{') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                i += 2;
-            } else {
-                std::size_t close = i + 1;
-                while (close < fmt.size() && fmt[close] != '}') {
-                    if (fmt[close] == '{') {
-                        throw std::invalid_argument("Unmatched '{' in format string");
-                    }
-                    ++close;
-                }
-                if (close >= fmt.size()) {
-                    throw std::invalid_argument("Unmatched '{' in format string");
-                }
-                ++count;
-                i = close + 1;
-            }
-        } else if (fmt[i] == '}') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                i += 2;
-            } else {
-                throw std::invalid_argument("Unmatched '}' in format string");
-            }
-        } else {
-            ++i;
-        }
-    }
-    return count;
+/// <summary>
+/// Type-erased reference to a format argument for indexed table dispatch.
+/// </summary>
+struct FormatArgRef {
+    const void* ptr;
+    void (*format_fn)(stack_buffer<512>& buf, const void* ptr, compat::string_view spec);
+};
+
+template <typename T>
+inline void FormatArgRefDispatcher(stack_buffer<512>& buf, const void* ptr, compat::string_view spec) {
+    const T& val = *static_cast<const T*>(ptr);
+    FormatArgToBufferWithSpec(buf, val, spec);
+}
+
+template <typename T>
+inline FormatArgRef MakeFormatArgRef(const T& val) {
+    FormatArgRef ref;
+    ref.ptr = static_cast<const void*>(&val);
+    ref.format_fn = &FormatArgRefDispatcher<T>;
+    return ref;
 }
 
 /// <summary>
-/// Base case for recursive template format string writer into stack_buffer.
+/// Formats arguments into buffer using an indexed argument table, supporting automatic ({}),
+/// manual ({0}, {1}), specifiers ({0:x}), and rejecting mixed automatic/manual indexing.
 /// </summary>
-/// <param name="buf">Target stack buffer.</param>
-/// <param name="fmt">Format string view.</param>
-inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt) {
+inline void WriteFormattedBufferTable(stack_buffer<512>& buf, compat::string_view fmt, const FormatArgRef* args, std::size_t num_args) {
+    enum IndexingMode { MODE_UNKNOWN, MODE_AUTO, MODE_MANUAL };
+    IndexingMode mode = MODE_UNKNOWN;
+    std::size_t auto_idx = 0;
+    std::size_t num_placeholders = 0;
+
     std::size_t i = 0;
     std::size_t start = 0;
     while (i < fmt.size()) {
@@ -13829,13 +14199,67 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
             } else {
                 std::size_t close = i + 1;
                 while (close < fmt.size() && fmt[close] != '}') {
+                    if (fmt[close] == '{') {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Unmatched '{' in format string"));
+                    }
                     ++close;
                 }
-                if (close < fmt.size()) {
-                    throw std::invalid_argument("Too few arguments for format string");
-                } else {
-                    ++i;
+                if (close >= fmt.size()) {
+                    COMPAT_THROW_OR_ABORT(std::invalid_argument("Unmatched '{' in format string"));
                 }
+
+                if (i > start) {
+                    buf.append(fmt.data() + start, i - start);
+                }
+
+                compat::string_view field = fmt.substr(i + 1, close - (i + 1));
+                compat::string_view spec{};
+                std::size_t colon_pos = field.find(':');
+                compat::string_view idx_part = field;
+                if (colon_pos != compat::string_view::npos) {
+                    idx_part = field.substr(0, colon_pos);
+                    spec = field.substr(colon_pos + 1);
+                }
+
+                std::size_t arg_idx = 0;
+                if (idx_part.empty()) {
+                    // Automatic indexing
+                    if (mode == MODE_MANUAL) {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Cannot switch from manual to automatic argument indexing"));
+                    }
+                    mode = MODE_AUTO;
+                    arg_idx = auto_idx++;
+                } else {
+                    // Manual indexing
+                    bool all_digits = true;
+                    std::size_t parsed_idx = 0;
+                    for (std::size_t d = 0; d < idx_part.size(); ++d) {
+                        if (idx_part[d] >= '0' && idx_part[d] <= '9') {
+                            parsed_idx = parsed_idx * 10 + static_cast<std::size_t>(idx_part[d] - '0');
+                        } else {
+                            all_digits = false;
+                            break;
+                        }
+                    }
+                    if (!all_digits) {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Invalid replacement field index in format string"));
+                    }
+                    if (mode == MODE_AUTO) {
+                        COMPAT_THROW_OR_ABORT(std::invalid_argument("Cannot switch from automatic to manual argument indexing"));
+                    }
+                    mode = MODE_MANUAL;
+                    arg_idx = parsed_idx;
+                }
+
+                if (arg_idx >= num_args) {
+                    COMPAT_THROW_OR_ABORT(std::invalid_argument("Argument index out of bounds in format string"));
+                }
+
+                args[arg_idx].format_fn(buf, args[arg_idx].ptr, spec);
+                ++num_placeholders;
+
+                i = close + 1;
+                start = i;
             }
         } else if (fmt[i] == '}') {
             if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
@@ -13846,7 +14270,7 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
                 i += 2;
                 start = i;
             } else {
-                ++i;
+                COMPAT_THROW_OR_ABORT(std::invalid_argument("Unmatched '}' in format string"));
             }
         } else {
             ++i;
@@ -13855,73 +14279,34 @@ inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view
     if (i > start) {
         buf.append(fmt.data() + start, i - start);
     }
-}
 
-/// <summary>
-/// Recursive template format string writer substituting {} placeholders into stack_buffer.
-/// </summary>
-/// <typeparam name="First">First argument type.</typeparam>
-/// <typeparam name="Rest">Remaining argument types.</typeparam>
-/// <param name="buf">Target stack buffer.</param>
-/// <param name="fmt">Format string view.</param>
-/// <param name="first">First argument.</param>
-/// <param name="rest">Remaining arguments.</param>
-template <typename First, typename... Rest>
-inline void WriteFormattedBufferImpl(stack_buffer<512>& buf, compat::string_view fmt, const First& first, const Rest&... rest) {
-    std::size_t i = 0;
-    std::size_t start = 0;
-    while (i < fmt.size()) {
-        if (fmt[i] == '{') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
-                if (i > start) {
-                    buf.append(fmt.data() + start, i - start);
-                }
-                buf.push_back('{');
-                i += 2;
-                start = i;
-            } else {
-                std::size_t close = i + 1;
-                while (close < fmt.size() && fmt[close] != '}') {
-                    ++close;
-                }
-                if (close < fmt.size()) {
-                    if (i > start) {
-                        buf.append(fmt.data() + start, i - start);
-                    }
-                    compat::string_view spec = (close > i + 1) ? fmt.substr(i + 1, close - (i + 1)) : compat::string_view{};
-                    FormatArgToBufferWithSpec(buf, first, spec);
-                    WriteFormattedBufferImpl(buf, fmt.substr(close + 1), rest...);
-                    return;
-                } else {
-                    ++i;
-                }
-            }
-        } else if (fmt[i] == '}') {
-            if (i + 1 < fmt.size() && fmt[i + 1] == '}') {
-                if (i > start) {
-                    buf.append(fmt.data() + start, i - start);
-                }
-                buf.push_back('}');
-                i += 2;
-                start = i;
-            } else {
-                ++i;
-            }
-        } else {
-            ++i;
+    if (mode == MODE_AUTO) {
+        if (num_placeholders < num_args) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("Too many arguments for format string"));
+        }
+        if (num_placeholders > num_args) {
+            COMPAT_THROW_OR_ABORT(std::invalid_argument("Too few arguments for format string"));
         }
     }
-    throw std::invalid_argument("Too many arguments for format string");
 }
 
 /// <summary>
-/// Validates placeholder count against argument count and writes formatted output to stack buffer.
+/// Overload for formatting with 0 arguments.
 /// </summary>
-/// <typeparam name="Args">Types of arguments.</typeparam>
-/// <param name="buf">Target stack buffer.</param>
-/// <param name="fmt">Format string view.</param>
-/// <param name="args">Arguments to format.</param>
-/// <exception cref="std::invalid_argument">Thrown if placeholder count does not match argument count or on malformed braces.</exception>
+inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt) {
+#if defined(_WIN32)
+    std::string converted_fmt;
+    if (COMPAT_UNLIKELY(!IsValidUtf8(fmt))) {
+        converted_fmt = AcpToUtf8(fmt);
+        fmt = compat::string_view(converted_fmt.data(), converted_fmt.size());
+    }
+#endif
+    WriteFormattedBufferTable(buf, fmt, nullptr, 0);
+}
+
+/// <summary>
+/// Overload for formatting with arguments via FormatArgRef table.
+/// </summary>
 template <typename... Args>
 inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt, const Args&... args) {
 #if defined(_WIN32)
@@ -13932,14 +14317,8 @@ inline void WriteFormattedBuffer(stack_buffer<512>& buf, compat::string_view fmt
     }
 #endif
     constexpr std::size_t num_args = sizeof...(Args);
-    std::size_t num_placeholders = CountAndValidatePlaceholders(fmt);
-    if (num_placeholders < num_args) {
-        throw std::invalid_argument("Too many arguments for format string");
-    }
-    if (num_placeholders > num_args) {
-        throw std::invalid_argument("Too few arguments for format string");
-    }
-    WriteFormattedBufferImpl(buf, fmt, args...);
+    FormatArgRef arg_table[num_args > 0 ? num_args : 1] = { MakeFormatArgRef(args)... };
+    WriteFormattedBufferTable(buf, fmt, arg_table, num_args);
 }
 
 /// <summary>

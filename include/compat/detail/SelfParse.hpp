@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 #include "../StringView.hpp"
@@ -404,10 +404,14 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
     } else if (total_exp > 22) {
         dval *= Pow10Positive(total_exp);
     } else {
-        if (total_exp < -324) {
+        int32_t neg_exp = -total_exp;
+        if (neg_exp > 324) {
             dval = 0.0;
+        } else if (neg_exp > 256) {
+            dval /= 1e256;
+            dval /= Pow10Positive(neg_exp - 256);
         } else {
-            dval /= Pow10Positive(-total_exp);
+            dval /= Pow10Positive(neg_exp);
         }
     }
 
@@ -425,6 +429,13 @@ inline from_chars_result from_chars_float(const char* first, const char* last, F
             res.ptr = ptr;
             return res;
         }
+    }
+
+    // Underflow check: if mantissa was non-zero but scaled value underflows to 0.0
+    if (COMPAT_UNLIKELY(mantissa != 0.0 && static_cast<FloatType>(dval) == static_cast<FloatType>(0.0))) {
+        res.ec = std::errc::result_out_of_range;
+        res.ptr = ptr;
+        return res;
     }
 
     if (negative) {

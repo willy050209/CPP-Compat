@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 
@@ -891,8 +891,10 @@ namespace self_ranges {
             static constexpr bool empty() noexcept { return false; }
         };
 
+        // single_view stores elements by value directly inside the view.
+        // It must NOT be a borrowed range to prevent returning dangling iterators from temporary views.
         template <typename T>
-        struct enable_borrowed_range_helper<single_view<T>> : std::true_type {};
+        struct enable_borrowed_range_helper<single_view<T>> : std::false_type {};
 
         // --- iota_view ---
         /// <summary>

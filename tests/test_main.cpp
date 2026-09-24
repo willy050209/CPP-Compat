@@ -1,7 +1,8 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <iostream>
 
 void run_test_expected();
+void run_test_optional();
 void run_test_format();
 void run_test_parse();
 void run_test_print();
@@ -19,6 +20,7 @@ int main() {
     std::cout << "========================================" << std::endl;
 
     run_test_string_view();
+    run_test_optional();
     run_test_expected();
     run_test_format();
     run_test_print();

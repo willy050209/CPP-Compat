@@ -1,4 +1,4 @@
-﻿# 特性檢測與配置 (Config API Reference)
+# 特性檢測與配置 (Config API Reference)
 
 定義於標頭檔 [`<compat/Config.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Config.hpp)。  
 所屬命名空間：`compat`, `compat::detail`。
@@ -64,10 +64,13 @@
 
 ## 例外處理與微架構最佳化 (Exceptions & Microarchitecture)
 
-### `COMPAT_THROW_OR_ABORT(ex)`
-- **語意**：
-  - 當編譯器啟用 C++ 異常（定義 `__cpp_exceptions` 或 MSVC `_CPPUNWIND`）時，展開為 `throw (ex);`。
-  - 當在 `-fno-exceptions` 或 MSVC `/EHs-c-` 模式編譯時，自動展開為 `std::abort();`，保證庫在無異常環境下 100% 安全編譯且不破壞 Fail-fast 原則。
+### 核心失敗策略不變量 (Failure Policy Invariant)
+
+所有函式庫內部需要報告致命錯誤或終止流程之處，一律經由統一的失敗抽象介面（`COMPAT_THROW_OR_ABORT`）管控，禁止任何 detail 內部實作散落未受控的裸 `throw`。
+
+- **`COMPAT_THROW_OR_ABORT(ex)`**：
+  - **Exceptions Enabled 模式**（定義 `__cpp_exceptions` 或 MSVC `_CPPUNWIND`）：依 API 契約拋出對應例外型別 `throw (ex);`。
+  - **Exceptions Disabled 模式**（`-fno-exceptions` 或 MSVC `/EHs-c-`）：一律執行 Fail-fast 終止策略 `std::abort();`。保證即便是 `#include <compat/Compat.hpp>` 在 C++11 `-fno-exceptions` 下編譯亦 100% 成功，無任何語法錯誤。
 
 ### `COMPAT_UNREACHABLE()`
 - **語意**：提示編譯器該分支在邏輯上永遠不可達，消除分支開銷。
@@ -85,6 +88,20 @@
 ### `COMPAT_CONSTEXPR_14` 與 `COMPAT_CONSTEXPR_20`
 - `COMPAT_CONSTEXPR_14`：在 C++14 及以上環境展開為 `constexpr`，在 C++11 環境展開為 `inline`，用於修飾包含迴圈、區域變數或修改內部狀態的函式。
 - `COMPAT_CONSTEXPR_20`：在 C++20 及以上環境展開為 `constexpr`，在 C++11/14/17 展開為 `inline`。
+
+---
+
+## 跨平臺與編譯器驗證矩陣 (Verified Toolchain Matrix)
+
+`CPP-Compat` 實作保證通過以下平臺、編譯器與語言標準的建構與迴歸測試（全部啟用 `COMPAT_FORCE_SELF_IMPLEMENTATION=1`）：
+
+| 平臺環境 | 編譯器版本 | C++11 | C++14 | C++17 | C++20 | C++23 |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Windows 11 x64** | MSVC 19.51 (Visual Studio 2026 Preview) | 不支援* | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| **Linux (WSL2 Ubuntu)** | GNU GCC 14.2 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| **Linux (WSL2 Ubuntu)** | Clang 18.1 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+
+*\*註：MSVC 現代編譯器最低支援標準為 `/std:c++14`。*
 
 ---
 

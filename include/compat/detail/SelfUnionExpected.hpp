@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "../Config.hpp"
 
@@ -12,14 +12,6 @@
 #include <stdexcept>
 #include <exception>
 
-#ifndef COMPAT_THROW_OR_ABORT
-#  if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
-#    define COMPAT_THROW_OR_ABORT(ex) throw (ex)
-#  else
-#    include <cstdlib>
-#    define COMPAT_THROW_OR_ABORT(ex) std::abort()
-#  endif
-#endif
 
 namespace compat {
 namespace detail {
@@ -330,8 +322,8 @@ struct ExpectedStorageBase<T, E, false> {
     ExpectedStorageBase() noexcept : m_has_value(false) {}
     explicit ExpectedStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
 
-    ExpectedStorageBase(const ExpectedStorageBase&) noexcept : m_has_value(false) {}
-    ExpectedStorageBase(ExpectedStorageBase&&) noexcept : m_has_value(false) {}
+    ExpectedStorageBase(const ExpectedStorageBase& o) noexcept : m_has_value(o.m_has_value) {}
+    ExpectedStorageBase(ExpectedStorageBase&& o) noexcept : m_has_value(o.m_has_value) {}
     ExpectedStorageBase& operator=(const ExpectedStorageBase&) noexcept { return *this; }
     ExpectedStorageBase& operator=(ExpectedStorageBase&&) noexcept { return *this; }
 
@@ -374,6 +366,76 @@ struct ExpectedStorageBase<T, E, true> {
 
     void destroy() noexcept {}
 };
+
+/// <summary>
+/// Helper implementing exception-safe transition from Value (T) to Error (E).
+/// Follows Case A, Case B, and Case C transition strategies:
+/// Case A: Error constructor is noexcept -> destroy old value, construct new error.
+/// Case B: Error has nothrow move ctor -> construct temporary error (if it throws, old value is intact), destroy old value, nothrow move to storage.
+/// Case C: Value has nothrow move ctor -> nothrow move old value to backup, destroy old value, construct new error; if error throws, restore old value from backup.
+/// </summary>
+template <typename T, typename E, typename Storage, typename Arg>
+inline void reinit_val_to_err(Storage& storage, bool& has_val, Arg&& arg) {
+    if (std::is_nothrow_constructible<E, Arg>::value) {
+        storage.m_val.~T();
+        ::new (static_cast<void*>(&storage.m_err)) E(std::forward<Arg>(arg));
+        has_val = false;
+    } else if (std::is_nothrow_move_constructible<E>::value) {
+        E temp(std::forward<Arg>(arg));
+        storage.m_val.~T();
+        ::new (static_cast<void*>(&storage.m_err)) E(std::move(temp));
+        has_val = false;
+    } else if (std::is_nothrow_move_constructible<T>::value) {
+        T backup(std::move(storage.m_val));
+        storage.m_val.~T();
+        try {
+            ::new (static_cast<void*>(&storage.m_err)) E(std::forward<Arg>(arg));
+            has_val = false;
+        } catch (...) {
+            ::new (static_cast<void*>(&storage.m_val)) T(std::move(backup));
+            throw;
+        }
+    } else {
+        storage.m_val.~T();
+        ::new (static_cast<void*>(&storage.m_err)) E(std::forward<Arg>(arg));
+        has_val = false;
+    }
+}
+
+/// <summary>
+/// Helper implementing exception-safe transition from Error (E) to Value (T).
+/// Follows Case A, Case B, and Case C transition strategies:
+/// Case A: Value constructor is noexcept -> destroy old error, construct new value.
+/// Case B: Value has nothrow move ctor -> construct temporary value (if it throws, old error is intact), destroy old error, nothrow move to storage.
+/// Case C: Error has nothrow move ctor -> nothrow move old error to backup, destroy old error, construct new value; if value throws, restore old error from backup.
+/// </summary>
+template <typename T, typename E, typename Storage, typename Arg>
+inline void reinit_err_to_val(Storage& storage, bool& has_val, Arg&& arg) {
+    if (std::is_nothrow_constructible<T, Arg>::value) {
+        storage.m_err.~E();
+        ::new (static_cast<void*>(&storage.m_val)) T(std::forward<Arg>(arg));
+        has_val = true;
+    } else if (std::is_nothrow_move_constructible<T>::value) {
+        T temp(std::forward<Arg>(arg));
+        storage.m_err.~E();
+        ::new (static_cast<void*>(&storage.m_val)) T(std::move(temp));
+        has_val = true;
+    } else if (std::is_nothrow_move_constructible<E>::value) {
+        E backup(std::move(storage.m_err));
+        storage.m_err.~E();
+        try {
+            ::new (static_cast<void*>(&storage.m_val)) T(std::forward<Arg>(arg));
+            has_val = true;
+        } catch (...) {
+            ::new (static_cast<void*>(&storage.m_err)) E(std::move(backup));
+            throw;
+        }
+    } else {
+        storage.m_err.~E();
+        ::new (static_cast<void*>(&storage.m_val)) T(std::forward<Arg>(arg));
+        has_val = true;
+    }
+}
 
 /// <summary>
 /// Forward declaration of expected template.
@@ -453,21 +515,24 @@ public:
     /// Copy constructor.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
-    expected(const expected& other) : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(m_has_value)) {
+    expected(const expected& other) : Base(false) {
+        if (COMPAT_UNLIKELY(other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
+            m_has_value = true;
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
         }
     }
 
     /// <summary>
-    /// Move constructor.
+    /// Move constructor with conditional noexcept.
     /// </summary>
     /// <param name="other">Instance to move.</param>
-    expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(m_has_value)) {
+    expected(expected&& other) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_constructible<E>::value)
+        : Base(false) {
+        if (COMPAT_UNLIKELY(other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
+            m_has_value = true;
         } else {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
         }
@@ -479,36 +544,44 @@ public:
     ~expected() = default;
 
     /// <summary>
-    /// Copy assignment operator.
+    /// Copy assignment operator with same-state assignment and exception-safe reinit transition.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const expected& other) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(m_has_value)) {
-                ::new (static_cast<void*>(&m_storage.m_val)) T(other.m_storage.m_val);
+            if (m_has_value && other.m_has_value) {
+                m_storage.m_val = other.m_storage.m_val;
+            } else if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = other.m_storage.m_err;
+            } else if (m_has_value && !other.m_has_value) {
+                reinit_val_to_err<T, E>(m_storage, m_has_value, other.m_storage.m_err);
             } else {
-                ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
+                reinit_err_to_val<T, E>(m_storage, m_has_value, other.m_storage.m_val);
             }
         }
         return *this;
     }
 
     /// <summary>
-    /// Move assignment operator.
+    /// Move assignment operator with conditional noexcept, same-state move and exception-safe reinit transition.
     /// </summary>
     /// <param name="other">Instance to move.</param>
     /// <returns>Reference to self.</returns>
-    expected& operator=(expected&& other) noexcept {
+    expected& operator=(expected&& other) noexcept(
+        std::is_nothrow_move_assignable<T>::value &&
+        std::is_nothrow_move_constructible<T>::value &&
+        std::is_nothrow_move_assignable<E>::value &&
+        std::is_nothrow_move_constructible<E>::value) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(m_has_value)) {
-                ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(other.m_storage.m_val));
+            if (m_has_value && other.m_has_value) {
+                m_storage.m_val = std::move(other.m_storage.m_val);
+            } else if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = std::move(other.m_storage.m_err);
+            } else if (m_has_value && !other.m_has_value) {
+                reinit_val_to_err<T, E>(m_storage, m_has_value, std::move(other.m_storage.m_err));
             } else {
-                ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
+                reinit_err_to_val<T, E>(m_storage, m_has_value, std::move(other.m_storage.m_val));
             }
         }
         return *this;
@@ -520,9 +593,11 @@ public:
     /// <param name="val">Value to copy-assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const T& val) {
-        destroy();
-        m_has_value = true;
-        ::new (static_cast<void*>(&m_storage.m_val)) T(val);
+        if (m_has_value) {
+            m_storage.m_val = val;
+        } else {
+            reinit_err_to_val<T, E>(m_storage, m_has_value, val);
+        }
         return *this;
     }
 
@@ -532,9 +607,11 @@ public:
     /// <param name="val">Value to move-assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(T&& val) {
-        destroy();
-        m_has_value = true;
-        ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(val));
+        if (m_has_value) {
+            m_storage.m_val = std::move(val);
+        } else {
+            reinit_err_to_val<T, E>(m_storage, m_has_value, std::move(val));
+        }
         return *this;
     }
 
@@ -544,9 +621,11 @@ public:
     /// <param name="unexp">Unexpected error wrapper to assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const unexpected<E>& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
+        if (!m_has_value) {
+            m_storage.m_err = unexp.error();
+        } else {
+            reinit_val_to_err<T, E>(m_storage, m_has_value, unexp.error());
+        }
         return *this;
     }
 
@@ -556,10 +635,68 @@ public:
     /// <param name="unexp">Unexpected error wrapper to move-assign.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(unexpected<E>&& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
+        if (!m_has_value) {
+            m_storage.m_err = std::move(unexp.error());
+        } else {
+            reinit_val_to_err<T, E>(m_storage, m_has_value, std::move(unexp.error()));
+        }
         return *this;
+    }
+
+    /// <summary>
+    /// In-place constructs value inside expected.
+    /// </summary>
+    /// <typeparam name="Args">Constructor argument types.</typeparam>
+    /// <param name="args">Forwarded arguments.</param>
+    /// <returns>Reference to constructed value.</returns>
+    template <typename... Args>
+    T& emplace(Args&&... args) {
+        if (m_has_value) {
+            if (std::is_nothrow_constructible<T, Args...>::value) {
+                destroy();
+                m_has_value = false;
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            } else if (std::is_nothrow_move_constructible<T>::value) {
+                T temp(std::forward<Args>(args)...);
+                destroy();
+                m_has_value = false;
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(temp));
+                m_has_value = true;
+            } else {
+                destroy();
+                m_has_value = false;
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            }
+        } else {
+            if (std::is_nothrow_constructible<T, Args...>::value) {
+                destroy();
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            } else if (std::is_nothrow_move_constructible<T>::value) {
+                T temp(std::forward<Args>(args)...);
+                destroy();
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::move(temp));
+                m_has_value = true;
+            } else if (std::is_nothrow_move_constructible<E>::value) {
+                E backup(std::move(m_storage.m_err));
+                destroy();
+                try {
+                    ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                    m_has_value = true;
+                } catch (...) {
+                    ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(backup));
+                    m_has_value = false;
+                    throw;
+                }
+            } else {
+                destroy();
+                ::new (static_cast<void*>(&m_storage.m_val)) T(std::forward<Args>(args)...);
+                m_has_value = true;
+            }
+        }
+        return m_storage.m_val;
     }
 
     /// <summary>
@@ -1094,8 +1231,8 @@ struct ExpectedVoidStorageBase<E, false> {
     ExpectedVoidStorageBase() noexcept : m_has_value(false) {}
     explicit ExpectedVoidStorageBase(bool has_val) noexcept : m_has_value(has_val) {}
 
-    ExpectedVoidStorageBase(const ExpectedVoidStorageBase&) noexcept : m_has_value(false) {}
-    ExpectedVoidStorageBase(ExpectedVoidStorageBase&&) noexcept : m_has_value(false) {}
+    ExpectedVoidStorageBase(const ExpectedVoidStorageBase& o) noexcept : m_has_value(o.m_has_value) {}
+    ExpectedVoidStorageBase(ExpectedVoidStorageBase&& o) noexcept : m_has_value(o.m_has_value) {}
     ExpectedVoidStorageBase& operator=(const ExpectedVoidStorageBase&) noexcept { return *this; }
     ExpectedVoidStorageBase& operator=(ExpectedVoidStorageBase&&) noexcept { return *this; }
 
@@ -1187,19 +1324,21 @@ public:
     /// Copy constructor.
     /// </summary>
     /// <param name="other">Instance to copy.</param>
-    expected(const expected& other) : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(!m_has_value)) {
+    expected(const expected& other) : Base(true) {
+        if (COMPAT_UNLIKELY(!other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
+            m_has_value = false;
         }
     }
 
     /// <summary>
-    /// Move constructor.
+    /// Move constructor with conditional noexcept.
     /// </summary>
     /// <param name="other">Instance to move.</param>
-    expected(expected&& other) noexcept : Base(other.m_has_value) {
-        if (COMPAT_UNLIKELY(!m_has_value)) {
+    expected(expected&& other) noexcept(std::is_nothrow_move_constructible<E>::value) : Base(true) {
+        if (COMPAT_UNLIKELY(!other.m_has_value)) {
             ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
+            m_has_value = false;
         }
     }
 
@@ -1215,26 +1354,36 @@ public:
     /// <returns>Reference to self.</returns>
     expected& operator=(const expected& other) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(!m_has_value)) {
+            if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = other.m_storage.m_err;
+            } else if (m_has_value && !other.m_has_value) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(other.m_storage.m_err);
+                m_has_value = false;
+            } else if (!m_has_value && other.m_has_value) {
+                destroy();
+                m_has_value = true;
             }
         }
         return *this;
     }
 
     /// <summary>
-    /// Move assignment operator.
+    /// Move assignment operator with conditional noexcept.
     /// </summary>
     /// <param name="other">Instance to move.</param>
     /// <returns>Reference to self.</returns>
-    expected& operator=(expected&& other) noexcept {
+    expected& operator=(expected&& other) noexcept(
+        std::is_nothrow_move_assignable<E>::value &&
+        std::is_nothrow_move_constructible<E>::value) {
         if (this != &other) {
-            destroy();
-            m_has_value = other.m_has_value;
-            if (COMPAT_UNLIKELY(!m_has_value)) {
+            if (!m_has_value && !other.m_has_value) {
+                m_storage.m_err = std::move(other.m_storage.m_err);
+            } else if (m_has_value && !other.m_has_value) {
                 ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(other.m_storage.m_err));
+                m_has_value = false;
+            } else if (!m_has_value && other.m_has_value) {
+                destroy();
+                m_has_value = true;
             }
         }
         return *this;
@@ -1246,9 +1395,12 @@ public:
     /// <param name="unexp">Unexpected error wrapper.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(const unexpected<E>& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
+        if (!m_has_value) {
+            m_storage.m_err = unexp.error();
+        } else {
+            ::new (static_cast<void*>(&m_storage.m_err)) E(unexp.error());
+            m_has_value = false;
+        }
         return *this;
     }
 
@@ -1258,10 +1410,23 @@ public:
     /// <param name="unexp">Unexpected error wrapper.</param>
     /// <returns>Reference to self.</returns>
     expected& operator=(unexpected<E>&& unexp) {
-        destroy();
-        m_has_value = false;
-        ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
+        if (!m_has_value) {
+            m_storage.m_err = std::move(unexp.error());
+        } else {
+            ::new (static_cast<void*>(&m_storage.m_err)) E(std::move(unexp.error()));
+            m_has_value = false;
+        }
         return *this;
+    }
+
+    /// <summary>
+    /// In-place constructs success value (void).
+    /// </summary>
+    void emplace() noexcept {
+        if (!m_has_value) {
+            destroy();
+            m_has_value = true;
+        }
     }
 
     /// <summary>

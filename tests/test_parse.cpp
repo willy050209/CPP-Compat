@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <compat/Parse.hpp>
 #include <cstdint>
 #include <cmath>
@@ -225,5 +225,65 @@ void run_test_parse() {
     TEST_ASSERT(!r_flt32_ovf);
     TEST_ASSERT(r_flt32_ovf.ec == std::errc::result_out_of_range);
 
+    // 8. TEST-PARSE Baseline Tests (Phase 4 Invariant Verification)
+    // TEST-PARSE-001: representable subnormal
+    {
+        double subnorm = 0.0;
+        const char* s = "1e-320";
+        compat::from_chars_result r = compat::from_chars(s, s + 6, subnorm);
+        TEST_ASSERT(r);
+        TEST_ASSERT(r.ec == std::errc{});
+        TEST_ASSERT(subnorm > 0.0);
+        TEST_ASSERT(subnorm < 1e-308);
+    }
+
+    // TEST-PARSE-002: underflow out_of_range
+    {
+        double underflow_val = 123.456;
+        const char* s = "1e-350";
+        compat::from_chars_result r = compat::from_chars(s, s + 6, underflow_val);
+        TEST_ASSERT(!r);
+        TEST_ASSERT(r.ec == std::errc::result_out_of_range);
+        TEST_ASSERT(underflow_val == 123.456); // must not modify value on failure!
+
+        float f_underflow = 42.0f;
+        const char* sf = "1e-50";
+        compat::from_chars_result rf = compat::from_chars(sf, sf + 5, f_underflow);
+        TEST_ASSERT(!rf);
+        TEST_ASSERT(rf.ec == std::errc::result_out_of_range);
+        TEST_ASSERT(f_underflow == 42.0f);
+    }
+
+    // TEST-PARSE-003: overflow out_of_range
+    {
+        double overflow_val = 999.0;
+        const char* s = "1e400";
+        compat::from_chars_result r = compat::from_chars(s, s + 5, overflow_val);
+        TEST_ASSERT(!r);
+        TEST_ASSERT(r.ec == std::errc::result_out_of_range);
+        TEST_ASSERT(overflow_val == 999.0); // must not modify value on failure!
+    }
+
+    // TEST-PARSE-004: output value unchanged on failure (integers and floats)
+    {
+        int32_t val_i32 = 777;
+        const char* s_inv = "abc";
+        compat::from_chars_result r_i32_inv = compat::from_chars(s_inv, s_inv + 3, val_i32);
+        TEST_ASSERT(!r_i32_inv);
+        TEST_ASSERT(val_i32 == 777);
+
+        int32_t val_i32_ovf = 888;
+        const char* s_ovf = "999999999999999";
+        compat::from_chars_result r_ovf2 = compat::from_chars(s_ovf, s_ovf + 15, val_i32_ovf);
+        TEST_ASSERT(!r_ovf2);
+        TEST_ASSERT(val_i32_ovf == 888);
+
+        double val_flt_inv = 555.55;
+        compat::from_chars_result r_flt_inv = compat::from_chars(s_inv, s_inv + 3, val_flt_inv);
+        TEST_ASSERT(!r_flt_inv);
+        TEST_ASSERT(val_flt_inv == 555.55);
+    }
+
     std::cout << "[PASS] test_parse passed." << std::endl;
 }
+

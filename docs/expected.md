@@ -1,4 +1,4 @@
-﻿# 期望值與錯誤處理 (compat::expected)
+# 期望值與錯誤處理 (compat::expected)
 
 定義於標頭檔 [`<compat/Expected.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Expected.hpp)。  
 所屬命名空間：`compat`。
@@ -45,6 +45,38 @@ flowchart TD
 2. **C++17 Variant Fallback**：透過 `std::variant` 實作，自動享有現代 STL 的例外保證與移動語意。
 3. **C++11/14 Tagged Union Fallback**：  
    純自研**無限制聯合體（Unrestricted Union）**。當 `T` 與 `E` 均為 Trivial 類型時，自研 `expected` 亦自動成為 Trivial 類型，並透過精確的顯式解構式呼叫管理非平凡（Non-trivial）型別的生命週期。
+
+---
+
+## 核心生命週期不變量 (Lifetime & State Invariant)
+
+`compat::expected<T, E>` 保證永遠處於合法狀態：
+- 在任何成功運算或例外傳播後，物件**必須持有有效 `T` 或有效 `E`**。
+- **杜絕任何第三種狀態**：不存在 `valueless_by_exception` 或未初始化活躍狀態（uninitialized-active-state）。
+
+### 活躍成員例外安全轉移策略 (`reinit_expected`)
+
+在自研 Union 儲存架構中，跨成員切換（`value -> error` 或 `error -> value`）由統一原語集中控制，嚴格遵循三種例外安全分派策略：
+
+```mermaid
+flowchart TD
+    Start[活躍成員轉移請求] --> CheckA{NewType 建構為 noexcept?}
+    CheckA -- 是 --> CaseA["Case A: Direct Reinit<br>1. destroy old<br>2. construct new (in-place)"]
+    CheckA -- 否 --> CheckB{NewType 可 nothrow move?}
+    CheckB -- 是 --> CaseB["Case B: Temporary Pivot<br>1. 在 stack 構造 NewType 臨時物件 (若 throw 則 old 完好)<br>2. destroy old<br>3. nothrow move 臨時物件至 union"]
+    CheckB -- 否 --> CheckC{OldType 可 nothrow move?}
+    CheckC -- 是 --> CaseC["Case C: Backup Recovery<br>1. nothrow move old 至 backup 備份<br>2. destroy old<br>3. construct new (若 throw 則從 backup 復原 old 並 rethrow)"]
+    CheckC -- 否 --> Fail["編譯期禁用 (SFINAE / delete) 該多載<br>絕不於執行期觸發非預期 terminate"]
+```
+
+- **Case A (直接重建)**：當目標型別建構保證 `noexcept`，直接銷毀舊物件並就地建構新物件。
+- **Case B (臨時物件過渡)**：若新物件建構可能拋出例外但支援 `nothrow move`，先於 stack 建構臨時物件。若拋出例外，舊物件保持完好無損；成功後再銷毀舊物件並將臨時物件遷入儲存區。
+- **Case C (舊成員備份復原)**：若新物件移動可能拋出例外，但舊物件支援 `nothrow move`，先將舊物件遷出至 backup。若新物件建構拋出例外，立即從 backup 復原舊物件後重新拋出例外。
+
+### 條件式 `noexcept` 與特殊成員 SFINAE
+
+- **特殊成員函式禁用**：若 `T` 或 `E` 不支援複製建構/賦值，對應之 `expected<T, E>` 複製成員函式在編譯期被 SFINAE 刪除。
+- **精確條件式 `noexcept`**：複製/移動建構與賦值運算子均帶有 `noexcept(...)` 條件式推導，僅在包含之型別確實 `nothrow` 時成立，避免 throwing 型別在例外傳播中誤入 `std::terminate`。
 
 ---
 
