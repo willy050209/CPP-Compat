@@ -27,8 +27,8 @@ auto pipeline = numbers
 
 | 視圖物件 | 類別樣板型別 | 說明與標準版本 |
 | :--- | :--- | :--- |
-| `compat::views::empty<T>` | `empty_view<T>` | 產生元素個數永遠為 0 的唯讀空視圖 (C++20)。 |
-| `compat::views::single(x)` | `single_view<T>` | 產生僅包含單一元素 `x` 的視圖 (C++20)。僅當 `T` 滿足借用概念時特化為 `borrowed_range`，杜絕臨時物件迭代器懸空。 |
+| `compat::views::empty<T>` | `empty_view<T>` | 產生元素個數永遠為 0 的唯讀空視圖 (C++20)。滿足 `borrowed_range`。 |
+| `compat::views::single(x)` | `single_view<T>` | 產生僅包含單一元素 `x` 的視圖 (C++20)。透過 [`enable_borrowed_range`](ranges.md#3-自訂點變數樣板-compatrangesenable_borrowed_ranger) 約束，持有實體值時預設為非借用，杜絕臨時物件迭代器懸空。 |
 | `compat::views::iota(first, [last])` | `iota_view<W, Bound>` | 產生從 `first` 遞增的整數或迭代器序列，可為有界或無窮序列 (C++20)。 |
 | `compat::views::all(r)` | `all_t<R>` | 將可檢視容器轉化為視圖（左值轉為 `subrange`，右值轉為 `owning_view`）(C++20)。 |
 

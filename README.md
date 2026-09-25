@@ -18,11 +18,11 @@
 - ⚙️ [**特性檢測與配置 (docs/config.md)**](docs/config.md)：標準方言常數、特性探測巨集、雙軌開關
 - 🔤 [**字串檢視 (docs/string_view.md)**](docs/string_view.md)：`compat::string_view`、`std::hash` 特化
 - 🎁 [**選用值容器 (docs/optional.md)**](docs/optional.md)：`compat::optional<T>`、`nullopt`、`bad_optional_access`
-- 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作
-- 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、標準格式規格語法（`[[fill]align][sign][#][0][width][.precision][type]`）、Unicode 東亞寬度 (UAX #11 / P1868R2)、`formatter<T>` 自訂型別擴充
+- 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作、`emplace()` 就地建構與強例外安全保證
+- 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、標準格式規格語法（`[[fill]align][sign][#][0][width][.precision][type]`）、Unicode 東亞寬度 (UAX #11 / P1868R2)、編譯期靜態檢查與執行期例外防護、`formatter<T>` 自訂型別擴充
 - 🖨️ [**終端列印 (docs/print.md)**](docs/print.md)：`print`、`println`、`std::ostream&` 串流路由、Windows UTF-8 `WriteConsoleW` 直寫管線、東亞多欄表格對齊
 - 🔢 [**強型別解析 (docs/parse.md)**](docs/parse.md)：`parse<T>`、零堆積 `from_chars`（整數 2~36 進位、浮點數、NaN/Inf）
-- 🔄 [**範圍基礎與概念 (docs/ranges.md)**](docs/ranges.md)：Range Concepts、CPO (`begin`, `end`, `size` 等)、`subrange`、`dangling`
+- 🔄 [**範圍基礎與概念 (docs/ranges.md)**](docs/ranges.md)：Range Concepts、CPO (`begin`, `end`, `size` 等)、`subrange`、`dangling`、`enable_borrowed_range` 特化自訂點
 - 🌊 [**視圖適配器 (docs/views.md)**](docs/views.md)：管道語法 (`|`)、C++20 視圖、C++23 `as_const`、C++26 `concat` 與 `cache_latest`
 - ⚡ [**受約束範圍演算法 (docs/algorithms.md)**](docs/algorithms.md)：Niebloids、投影支援 (`&Item::id`)、標籤結果型別 (`in_out_result`)
 - 📦 [**未初始化記憶體演算法 (docs/memory.md)**](docs/memory.md)：`construct_at`、`destroy_at`、`uninitialized_copy/fill/move` 等 RAII 物件生命週期演算法
@@ -65,11 +65,11 @@
 | **特性檢測** | `<compat/Config.hpp>` | `compat`, `compat::detail` | 探測 `__cpp_lib_*` | `COMPAT_FORCE_SELF_IMPLEMENTATION` / `COMPAT_FORCE_STD_IMPLEMENTATION` |
 | **字串檢視** | `<compat/StringView.hpp>` | `compat` | `std::string_view` (C++17+) | 自研 `compat::string_view`（constexpr、`std::hash`）|
 | **選用值容器** | `<compat/Optional.hpp>` | `compat` | `std::optional` (C++17+) | 自研 `compat::optional<T>` (Tagged Union, constexpr) |
-| **期望值/錯誤** | `<compat/Expected.hpp>` | `compat` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union |
+| **期望值/錯誤** | `<compat/Expected.hpp>` | `compat` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union<br>（完整支援 `emplace()` 與強例外安全） |
 | **格式化輸出** | `<compat/Format.hpp>` | `compat` | `std::format` (C++20+) | 自研格式化規格引擎（對齊/填充/進位/精度/東亞寬度）+ `compat::formatter<T>` |
 | **終端列印** | `<compat/Print.hpp>` | `compat` | `std::print`, `std::println` (C++23+) | 自研引擎 + Windows UTF-8 WriteConsoleW 直寫 + `std::ostream` 路由 |
 | **強型別解析** | `<compat/Parse.hpp>` | `compat` | 原生或自研 `from_chars` | 自研零堆積、零 locale、基數 2~36 數值解析 |
-| **範圍概念/CPO**| `<compat/Ranges.hpp>` | `compat::ranges` | `std::ranges` (C++20+) | 自研 CPO (`begin`/`end`/`size`)、`subrange`、Concepts 萃取器 |
+| **範圍概念/CPO**| `<compat/Ranges.hpp>` | `compat::ranges` | `std::ranges` (C++20+) | 自研 CPO (`begin`/`end`/`size`)、`subrange`、`enable_borrowed_range`、Concepts 萃取器 |
 | **視圖適配器** | `<compat/View.hpp>` | `compat::views` | `std::views` (C++20+) | 自研管道 (`\|`)、核心 Views、C++26 `concat` 與 `cache_latest` |
 | **範圍演算法** | `<compat/Algorithm.hpp>`| `compat::ranges` | `std::ranges::*` (C++20+) | 自研 Niebloids、投影支援、標籤結果型別 (`in_out_result` 等) |
 | **記憶體演算法**| `<compat/Memory.hpp>` | `compat::ranges` | `std::ranges::*` (C++20+) | 自研未初始化物件建構/銷毀、RAII 回滾保護、標籤結果型別 |
@@ -266,18 +266,19 @@ cmake --build build-clang-cxx11
 
 ## 跨編譯器與方言驗證矩陣
 
-所有測試套件與演算法在各平臺上均達成 **100% 通過（0 警告、0 錯誤）**：
+專案在全平臺與主流工具鏈上，均經過 **Native 預設模式 (`default`)** 與 **強制自研回退模式 (`fallback`)** 雙軌完整迴歸驗證，達成 **100% 通過（0 警告、0 錯誤）**：
 
-| 平臺 / 編譯器 | 語言標準 | 執行模式 | 斷言總數 | 測試狀態 |
-| :--- | :--- | :--- | :---: | :---: |
-| **Ubuntu Clang 18.1** | C++11 (`-Wall -Wextra -Werror`) | Self-contained | 591 | **PASSED** |
-| **Ubuntu Clang 18.1** | C++14 / C++17 / C++20 / C++23 | Self-contained | 591 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++11 (`-pedantic-errors`) | Self-contained | 591 | **PASSED** |
-| **Ubuntu GCC 14.2** | C++14 / C++17 / C++20 / C++23 | Self-contained | 591 | **PASSED** |
-| **Windows MSVC 19.51** | C++14 / C++17 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 591 | **PASSED** |
-| **Windows MSVC 19.51** | C++20 | Native STL | 588 | **PASSED** |
-| **Windows MSVC 19.51** | C++20 | Fallback (`COMPAT_FORCE_SELF_IMPLEMENTATION`) | 591 | **PASSED** |
-| **macOS Apple Clang** | C++11 ~ C++23 | Auto + Fallback | 591 | **PASSED** |
+| 平臺環境 | 編譯器版本 | 測試模式 | C++11 | C++14 | C++17 | C++20 | C++23 | 測試狀態 |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Windows 11 x64** | MSVC 19.51 (VS 2026 Preview) | Default (Native) | 不支援* | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+| | | Fallback (Self) | 不支援* | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+| **Linux (Ubuntu 24.04)** | GNU GCC 14.2 | Default (Native) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+| | | Fallback (Self) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+| **Linux (Ubuntu 24.04)** | LLVM Clang 18.1 | Default (Native) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+| | | Fallback (Self) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+| **macOS (GitHub Actions)** | Apple Clang (Xcode) | Dual-Mode CI | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | **PASSED** |
+
+*\*註：MSVC 現代編譯器最低支援方言為 `/std:c++14`。*
 
 ---
 

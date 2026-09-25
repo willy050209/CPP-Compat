@@ -93,15 +93,26 @@
 
 ## 跨平臺與編譯器驗證矩陣 (Verified Toolchain Matrix)
 
-`CPP-Compat` 實作保證通過以下平臺、編譯器與語言標準的建構與迴歸測試（全部啟用 `COMPAT_FORCE_SELF_IMPLEMENTATION=1`）：
+`CPP-Compat` 實作在全平臺與主流編譯器上，均經過 **Native 預設模式 (`default`)** 與 **強制自研回退模式 (`fallback`，`-DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1`)** 雙軌完整迴歸驗證，保證 100% 通過：
 
-| 平臺環境 | 編譯器版本 | C++11 | C++14 | C++17 | C++20 | C++23 |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Windows 11 x64** | MSVC 19.51 (Visual Studio 2026 Preview) | 不支援* | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
-| **Linux (WSL2 Ubuntu)** | GNU GCC 14.2 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
-| **Linux (WSL2 Ubuntu)** | Clang 18.1 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+### 1. 本機驗證數據 (Local Verified Matrix)
+
+| 平臺環境 | 編譯器版本 | 測試模式 | C++11 | C++14 | C++17 | C++20 | C++23 |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Windows 11 x64** | MSVC 19.51 (VS 2026 Preview) | Default (Native) | 不支援* | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| | | Fallback (Self) | 不支援* | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| **Linux (WSL2 Ubuntu)** | GNU GCC 14.2 | Default (Native) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| | | Fallback (Self) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| **Linux (WSL2 Ubuntu)** | Clang 18.1 | Default (Native) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
+| | | Fallback (Self) | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 | ✅ 通過 |
 
 *\*註：MSVC 現代編譯器最低支援標準為 `/std:c++14`。*
+
+### 2. CI 雲端自動化矩陣 (.github/workflows/ci.yml)
+GitHub Actions CI 工作流程全面涵蓋：
+- **作業系統**：`ubuntu-latest`、`windows-latest`、`macos-latest`
+- **標準**：C++11, 14, 17, 20, 23（Windows 排除 C++11）
+- **模式**：`default` 與 `fallback` 雙軌展開，嚴格防範原生後端與降階後端之功能退化（Regression）。
 
 ---
 

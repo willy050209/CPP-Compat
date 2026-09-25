@@ -106,6 +106,18 @@ flowchart TD
 | `value_or(U&& default_value)` | `constexpr T value_or(U&& default_value) const&;` | 若有值回傳該值，否則回傳預設值。 |
 | `error_or(G&& default_error)` | `constexpr E error_or(G&& default_error) const&;` | 若為錯誤回傳錯誤值，否則回傳預設錯誤。 |
 
+### 修飾者與就地建構 (Modifiers)
+
+| 函式 | 簽章 | 說明與例外保證 |
+| :--- | :--- | :--- |
+| `emplace(Args&&... args)` | `template <typename... Args>`<br>`constexpr T& emplace(Args&&... args);` | 就地直接建構包含之預期值。若當前持有錯誤，銷毀錯誤並轉移為成功狀態。提供強例外安全保證（Strong Exception Safety），底層絕不進入 `valueless_by_exception`。回傳建構之數值參考。 |
+| `emplace(il, Args&&... args)` | `template <typename U, typename... Args>`<br>`constexpr T& emplace(std::initializer_list<U> il, Args&&... args);` | 透過 `std::initializer_list` 與轉發引數就地直接建構預期值。回傳建構之數值參考。 |
+| `emplace()`<br>*(針對 `expected<void, E>`)* | `constexpr void emplace() noexcept;` | 將 `expected<void, E>` 重設為成功狀態，銷毀既有錯誤值（若有）。保證 `noexcept`。 |
+
+> [!TIP]
+> **`emplace()` 概念約束與測試規範 (ISO C++23 對齊)**  
+> 依據 C++23 標準，`expected<T, E>::emplace` 要求目標型別滿足 `std::is_nothrow_constructible_v<T, Args...>` 或 `std::is_nothrow_move_constructible_v<T>` 約束。在撰寫自訂型別生命週期追蹤器（如 `LifetimeCounter`）或測試案例時，建議將建構子適當標記為 `noexcept`，以順利通過嚴格標準庫之概念約束檢查。
+
 ---
 
 ## 鏈式單子操作 (Monadic Operations)
@@ -148,6 +160,7 @@ constexpr auto transform_error(F&& f) & -> /* 轉換錯誤型別 */;
 - 建構式支援預設建構 `expected<void, E>()` 表示成功。
 - `value()` 回傳 `void`。若為錯誤狀態則拋出異常或終止。
 - `operator*()` 僅作為語法斷言，回傳 `void`。
+- `emplace()` 重設為成功狀態，銷毀既有錯誤值（若有），保證 `noexcept`。
 
 ---
 

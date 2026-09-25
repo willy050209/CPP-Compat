@@ -101,9 +101,21 @@ CPO 是全域函式物件，透過毒丸技術（Poison-Pill）嚴格隔離引�
 ### 2. `compat::ranges::dangling` 與 `borrowed_iterator_t<R>`
 - 當傳入臨時右值 Range 且該 Range **不滿足** `borrowed_range` 時，演算法安全回傳 `dangling` 標記物件，防止編譯出持有懸空迭代器的危險程式碼。
 
-### 3. `single_view` 借用生命週期安全約束 (Lifetime Safety)
-- 根據 ISO C++ 標準規範，`single_view<T>` **僅在 `T` 為引用或指標等本身即具備借用特性的型別時**，才特化 `enable_borrowed_range<single_view<T>> = true`。
-- 若 `single_view<T>` 持有實體值（Value Object），將臨時右值 `single_view` 傳入演算法時，回傳之迭代器將被強制標記為 `dangling`，杜絕使用者取得指向已銷毀臨時單元素視圖內部成員的懸空指標。
+### 3. 自訂點變數樣板 `compat::ranges::enable_borrowed_range<R>`
+- **跨後端統一介面**：在 `compat::ranges` 命名空間提供統一的變數樣板（C++20 原生環境對接 `std::ranges::enable_borrowed_range`，舊環境/Fallback 由自研模組完整模擬）。
+- **借用概念推導合約**：`borrowed_range<R>` 概念要求：
+  ```cpp
+  is_lvalue_reference_v<R> || enable_borrowed_range<remove_cvref_t<R>>
+  ```
+- **內建 View 借用支援矩陣**：
+  | 視圖型別 | `enable_borrowed_range` 數值 | 說明 |
+  | :--- | :---: | :--- |
+  | `subrange<I, S, K>` | `true` | 純迭代器區間，消亡後內部迭代器仍有效 |
+  | `empty_view<T>` | `true` | 空視圖，無元素生命週期相依 |
+  | `iota_view<W, Bound>` | `true` | 生成數值迭代器，值由迭代器內部持有 |
+  | `owning_view<R>` | `enable_borrowed_range<R>` | 依據底層包裝之容器/範圍借用性自動繼承 |
+  | `single_view<T>` | `false` | **非借用**（持有實體值），右值傳入時迭代器強制退化為 `dangling`，防止指向已銷毀臨時物件 |
+  | `concat_view<Views...>` | `false` | 複合視圖結構體消亡後無效 |
 
 ---
 

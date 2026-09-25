@@ -162,6 +162,41 @@ struct compat::formatter<MyType, CharT> {
 
 ---
 
+## 格式化錯誤診斷與編譯期/執行期驗證差異 (Compile-time vs. Runtime Format Validation)
+
+`compat::format` 在原生現代標準與自研 Fallback 模式下，依循 C++ 標準最佳化分流：
+
+### 1. 常數格式字串之編譯期靜態檢查 (C++20 原生 `std::format`)
+- 當傳遞常數字面量（如 `compat::format("{2}", 1)` 或 `compat::format("{0} {}", 1, 2)`）至原生 C++20 `std::format` 時，格式字串會經由 `std::format_string<Args...>` 在編譯期（`consteval`）直接解析。
+- **編譯期中斷**：任何語法不合法（索引越界、混用自動與手動下標、無效閉合花括號）將直接觸發編譯器錯誤（Static Assertion / Consteval Diagnostic），**絕不會進入執行期拋出例外**。
+
+### 2. 動態格式字串之執行期例外 (Native `std::vformat`)
+- 若格式字串在執行期動態建構（如以非 `consteval` 的 `std::string` 變數傳入），C++20 原生模式應使用 `std::vformat(fmt, std::make_format_args(...))` 調用。
+- **例外型別**：若動態格式規格有誤，標準庫將拋出 `std::format_error`。
+
+### 3. 自研 Fallback 引擎執行期安全防護 (SelfFormat)
+- 在 C++11/14/17 或強制 Fallback 模式（`COMPAT_FORCE_SELF_IMPLEMENTATION=1`）下，格式規格在執行期進行嚴格語法分析：
+  - 遇到語法錯誤或引數不符時，拋出 `std::invalid_argument`。
+  - 在關閉例外的環境（`-fno-exceptions` 或 MSVC `/EHs-c-`）下，安全路由至 `COMPAT_THROW_OR_ABORT` 執行 fail-fast 終止（`std::abort()`），杜絕未定義行為。
+
+### 4. 跨後端單元測試撰寫建議
+- **避免使用 `TEST_ASSERT_THROWS` 測試常數字串**：對無效格式字串常數使用 `TEST_ASSERT_THROWS(compat::format("{2}", 1), ...)` 會在 C++20 原生編譯期直接編譯失敗。
+- **建議測試模式**：
+  ```cpp
+  #if !COMPAT_HAS_STD_FORMAT
+      // 自研 Fallback 模式：以動態 std::string 測試執行期 std::invalid_argument
+      std::string invalid_fmt = "{2}";
+      TEST_ASSERT_THROWS(compat::format(invalid_fmt, 1, 2), std::invalid_argument);
+  #else
+      // C++20 原生模式：以 std::vformat 測試動態格式字串之 std::format_error
+      std::string invalid_fmt = "{2}";
+      int a = 1, b = 2;
+      TEST_ASSERT_THROWS(std::vformat(invalid_fmt, std::make_format_args(a, b)), std::format_error);
+  #endif
+  ```
+
+---
+
 ## 範例程式碼 (Example)
 
 ### 1. 寬度、對齊與填充
