@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Config.hpp"
 #include "detail/SelfRanges.hpp"
@@ -56,6 +56,7 @@ namespace compat {
         using std::ranges::dangling;
         using std::ranges::borrowed_iterator_t;
         using std::ranges::borrowed_subrange_t;
+        using std::ranges::enable_borrowed_range;
 
         using std::ranges::empty_view;
         using std::ranges::single_view;

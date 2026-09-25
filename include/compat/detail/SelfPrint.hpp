@@ -1855,7 +1855,9 @@ FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_v
     if (spec.empty()) {
         s = std::format("{}", formatted_arg);
     } else {
-        std::string fmt_str = "{" + std::string(spec.data(), spec.size()) + "}";
+        std::string fmt_str = (spec.empty() || spec.front() != ':')
+            ? "{:" + std::string(spec.data(), spec.size()) + "}"
+            : "{" + std::string(spec.data(), spec.size()) + "}";
         s = std::vformat(fmt_str, std::make_format_args(formatted_arg));
     }
     buf.append(s.data(), s.size());

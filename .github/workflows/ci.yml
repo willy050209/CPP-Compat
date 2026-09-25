@@ -15,34 +15,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         std: [11, 14, 17, 20, 23]
-        mode: [default]
-        flags: ['']
-        include:
-          # Dual-mode verification: Forced Fallback mode on modern C++20 and C++23
-          - os: ubuntu-latest
-            std: 20
-            mode: fallback
-            flags: -DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1
-          - os: ubuntu-latest
-            std: 23
-            mode: fallback
-            flags: -DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1
-          - os: windows-latest
-            std: 20
-            mode: fallback
-            flags: -DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1
-          - os: windows-latest
-            std: 23
-            mode: fallback
-            flags: -DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1
-          - os: macos-latest
-            std: 20
-            mode: fallback
-            flags: -DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1
-          - os: macos-latest
-            std: 23
-            mode: fallback
-            flags: -DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1
+        mode: [default, fallback]
         exclude:
           - os: windows-latest
             std: 11
@@ -57,11 +30,16 @@ jobs:
           python-version: '3.11'
 
       - name: Configure CMake
-        run: >
-          cmake -B build
-          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
-          -DCMAKE_BUILD_TYPE=Release
-          ${{ matrix.flags }}
+        shell: bash
+        run: |
+          EXTRA_FLAGS=""
+          if [ "${{ matrix.mode }}" = "fallback" ]; then
+            EXTRA_FLAGS="-DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1"
+          fi
+          cmake -B build \
+            -DCMAKE_CXX_STANDARD=${{ matrix.std }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            $EXTRA_FLAGS
 
       - name: Build
         run: cmake --build build --config Release

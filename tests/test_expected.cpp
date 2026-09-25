@@ -34,11 +34,11 @@ struct LifetimeCounter {
     }
 
     int id{0};
-    LifetimeCounter() : id(0) { construct_count++; }
-    explicit LifetimeCounter(int i) : id(i) { construct_count++; }
-    LifetimeCounter(const LifetimeCounter& o) : id(o.id) { copy_count++; }
+    LifetimeCounter() noexcept : id(0) { construct_count++; }
+    explicit LifetimeCounter(int i) noexcept : id(i) { construct_count++; }
+    LifetimeCounter(const LifetimeCounter& o) noexcept : id(o.id) { copy_count++; }
     LifetimeCounter(LifetimeCounter&& o) noexcept : id(o.id) { move_count++; o.id = -1; }
-    LifetimeCounter& operator=(const LifetimeCounter& o) {
+    LifetimeCounter& operator=(const LifetimeCounter& o) noexcept {
         id = o.id;
         return *this;
     }
@@ -47,7 +47,7 @@ struct LifetimeCounter {
         o.id = -1;
         return *this;
     }
-    ~LifetimeCounter() { destroy_count++; }
+    ~LifetimeCounter() noexcept { destroy_count++; }
 };
 
 int LifetimeCounter::construct_count = 0;

@@ -197,14 +197,30 @@ void run_test_format() {
 
     // TEST-FMT-003: index validation & error handling
 #if COMPAT_HAS_EXCEPTIONS
+#  if !COMPAT_HAS_STD_FORMAT
     {
         // Out of bounds manual index
-        TEST_ASSERT_THROWS(compat::format("{2}", 1, 2), std::invalid_argument);
+        std::string oob_fmt = "{2}";
+        TEST_ASSERT_THROWS(compat::format(oob_fmt, 1, 2), std::invalid_argument);
 
         // Mixed automatic and manual indexing
-        TEST_ASSERT_THROWS(compat::format("{0} {}", 1, 2), std::invalid_argument);
-        TEST_ASSERT_THROWS(compat::format("{} {0}", 1, 2), std::invalid_argument);
+        std::string mixed_fmt1 = "{0} {}";
+        TEST_ASSERT_THROWS(compat::format(mixed_fmt1, 1, 2), std::invalid_argument);
+        std::string mixed_fmt2 = "{} {0}";
+        TEST_ASSERT_THROWS(compat::format(mixed_fmt2, 1, 2), std::invalid_argument);
     }
+#  else
+    {
+        int a = 1, b = 2;
+        std::string oob_fmt = "{2}";
+        TEST_ASSERT_THROWS(std::vformat(oob_fmt, std::make_format_args(a, b)), std::format_error);
+
+        std::string mixed_fmt1 = "{0} {}";
+        TEST_ASSERT_THROWS(std::vformat(mixed_fmt1, std::make_format_args(a, b)), std::format_error);
+        std::string mixed_fmt2 = "{} {0}";
+        TEST_ASSERT_THROWS(std::vformat(mixed_fmt2, std::make_format_args(a, b)), std::format_error);
+    }
+#  endif
 #endif
 
     // TEST-FMT-004: default floating precision preserves significant figures without 6-digit %g truncation

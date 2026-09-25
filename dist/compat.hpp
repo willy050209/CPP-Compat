@@ -813,6 +813,46 @@ public:
     }
 
     /// <summary>
+    /// In-place constructs value inside expected.
+    /// </summary>
+    /// <typeparam name="Args">Constructor argument types.</typeparam>
+    /// <param name="args">Forwarded arguments.</param>
+    /// <returns>Reference to constructed value.</returns>
+    template <typename... Args>
+    T& emplace(Args&&... args) {
+        if constexpr (std::is_nothrow_constructible<T, Args...>::value) {
+            m_var.template emplace<T>(std::forward<Args>(args)...);
+        } else if constexpr (std::is_nothrow_move_constructible<T>::value) {
+            T temp(std::forward<Args>(args)...);
+            m_var.template emplace<T>(std::move(temp));
+        } else {
+            m_var.template emplace<T>(std::forward<Args>(args)...);
+        }
+        return std::get<T>(m_var);
+    }
+
+    /// <summary>
+    /// In-place constructs value inside expected from initializer_list and forwarded arguments.
+    /// </summary>
+    /// <typeparam name="U">Initializer list element type.</typeparam>
+    /// <typeparam name="Args">Constructor argument types.</typeparam>
+    /// <param name="il">Initializer list.</param>
+    /// <param name="args">Forwarded arguments.</param>
+    /// <returns>Reference to constructed value.</returns>
+    template <typename U, typename... Args>
+    T& emplace(std::initializer_list<U> il, Args&&... args) {
+        if constexpr (std::is_nothrow_constructible<T, std::initializer_list<U>&, Args...>::value) {
+            m_var.template emplace<T>(il, std::forward<Args>(args)...);
+        } else if constexpr (std::is_nothrow_move_constructible<T>::value) {
+            T temp(il, std::forward<Args>(args)...);
+            m_var.template emplace<T>(std::move(temp));
+        } else {
+            m_var.template emplace<T>(il, std::forward<Args>(args)...);
+        }
+        return std::get<T>(m_var);
+    }
+
+    /// <summary>
     /// Checks whether expected contains a value.
     /// </summary>
     /// <returns>True if value is present, false if error.</returns>
@@ -1373,6 +1413,13 @@ public:
     expected& operator=(unexpected<E>&& unexp) {
         m_var = std::move(unexp);
         return *this;
+    }
+
+    /// <summary>
+    /// Emplaces value into expected<void, E>, clearing any error state.
+    /// </summary>
+    void emplace() noexcept {
+        m_var = std::monostate{};
     }
 
     /// <summary>
@@ -10787,6 +10834,7 @@ namespace compat {
         using std::ranges::dangling;
         using std::ranges::borrowed_iterator_t;
         using std::ranges::borrowed_subrange_t;
+        using std::ranges::enable_borrowed_range;
 
         using std::ranges::empty_view;
         using std::ranges::single_view;
@@ -13603,7 +13651,9 @@ FormatArgToBufferWithSpec(stack_buffer<512>& buf, const T& arg, compat::string_v
     if (spec.empty()) {
         s = std::format("{}", formatted_arg);
     } else {
-        std::string fmt_str = "{" + std::string(spec.data(), spec.size()) + "}";
+        std::string fmt_str = (spec.empty() || spec.front() != ':')
+            ? "{:" + std::string(spec.data(), spec.size()) + "}"
+            : "{" + std::string(spec.data(), spec.size()) + "}";
         s = std::vformat(fmt_str, std::make_format_args(formatted_arg));
     }
     buf.append(s.data(), s.size());
