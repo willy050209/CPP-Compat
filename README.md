@@ -289,7 +289,6 @@ cmake --build build-clang-cxx11
 - 純函數設計（Fail-fast）：`[[nodiscard]]`、`noexcept`、`constexpr` / `COMPAT_CONSTEXPR_14`
 - 禁止 `using namespace std` 於標頭檔中污染使用者命名空間
 - 全原始碼與標頭檔嚴格遵循 **UTF-8 BOM** 編碼與 `#pragma once`
-- 禁止包含 `<iostream>` 於任何發行標頭檔
 
 ---
 
