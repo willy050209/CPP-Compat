@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../Config.hpp"
 #include "../Optional.hpp"
@@ -1186,6 +1186,7 @@ namespace compat {
                                 ++first;
                             }
                         }
+                        return {first, i};
                     }
                     return {first, first};
                 }

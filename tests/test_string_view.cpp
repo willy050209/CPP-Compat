@@ -127,5 +127,67 @@ void run_test_string_view() {
     oss << sv1;
     TEST_ASSERT(oss.str() == "Hello, Modern C++!");
 
+    // 9. 迭代器走訪 (begin, end, cbegin, cend, rbegin, rend, crbegin, crend)
+    std::string fwd_str;
+    for (auto it = sv1.begin(); it != sv1.end(); ++it) {
+        fwd_str.push_back(*it);
+    }
+    TEST_ASSERT(fwd_str == "Hello, Modern C++!");
+
+    std::string cfwd_str;
+    for (auto it = sv1.cbegin(); it != sv1.cend(); ++it) {
+        cfwd_str.push_back(*it);
+    }
+    TEST_ASSERT(cfwd_str == "Hello, Modern C++!");
+
+    std::string rev_str;
+    for (auto it = sv1.rbegin(); it != sv1.rend(); ++it) {
+        rev_str.push_back(*it);
+    }
+    TEST_ASSERT(rev_str == "!++C nredoM ,olleH");
+
+    std::string crev_str;
+    for (auto it = sv1.crbegin(); it != sv1.crend(); ++it) {
+        crev_str.push_back(*it);
+    }
+    TEST_ASSERT(crev_str == "!++C nredoM ,olleH");
+
+    // 10. 容量上限 (max_size)
+    TEST_ASSERT(sv1.max_size() > 0);
+
+    // 11. 物件置換 (swap)
+    compat::string_view sv_sw1 = "apple";
+    compat::string_view sv_sw2 = "banana";
+    sv_sw1.swap(sv_sw2);
+    TEST_ASSERT(sv_sw1 == "banana");
+    TEST_ASSERT(sv_sw2 == "apple");
+
+    // 12. 緩衝區拷貝 (copy)
+    char copy_buf[10] = {0};
+    std::size_t copied = sv_sw1.copy(copy_buf, 4, 1); // "anan" from "banana"
+    copy_buf[copied] = '\0';
+    TEST_ASSERT(copied == 4);
+    TEST_ASSERT(std::string(copy_buf) == "anan");
+
+    // 13. 字元集搜尋 (find_first_of, find_last_of, find_first_not_of, find_last_not_of)
+    compat::string_view sv_target = "abc...def---123";
+    TEST_ASSERT(sv_target.find_first_of(".-") == 3);
+    TEST_ASSERT(sv_target.find_first_of('.') == 3);
+    TEST_ASSERT(sv_target.find_last_of(".-") == 11);
+    TEST_ASSERT(sv_target.find_last_of('-') == 11);
+    TEST_ASSERT(sv_target.find_first_not_of("abc.") == 6); // 'd'
+    TEST_ASSERT(sv_target.find_last_not_of("123-") == 8);  // 'f'
+    TEST_ASSERT(sv_target.find_first_of("xyz") == compat::string_view::npos);
+    TEST_ASSERT(sv_target.find_first_not_of("abcdef.-123") == compat::string_view::npos);
+
+    // 14. 前後綴判定 (starts_with, ends_with)
+    compat::string_view sv_fix = "antigravity";
+    TEST_ASSERT(sv_fix.starts_with("anti"));
+    TEST_ASSERT(sv_fix.starts_with('a'));
+    TEST_ASSERT(!sv_fix.starts_with("gravity"));
+    TEST_ASSERT(sv_fix.ends_with("gravity"));
+    TEST_ASSERT(sv_fix.ends_with('y'));
+    TEST_ASSERT(!sv_fix.ends_with("anti"));
+
     std::cout << "[PASS] test_string_view passed." << std::endl;
 }

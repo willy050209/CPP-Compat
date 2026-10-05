@@ -37,6 +37,14 @@
   - [x] 重新打包 `dist/compat.hpp` 與 `dist/compat.ixx`
   - [x] 在 `CPP-Compat-test.vcxproj` 的所有組態設定中加入 `/utf-8` 編譯器選項
   - [x] 同步最新版單頭檔至 `CPP-Compat-test`，在 MSVC x64 Debug 與 Release 下驗證文字與格式化發牌輸出完全正確
+- [x] Full API Inventory & Test Coverage Phase: 完成全模組 API 盤點、測試補齊與 Bug 修復
+  - [x] 建立全新 `tests/test_memory.cpp` 涵蓋所有未初始記憶體複製/搬移/填充/建構 CPO 與回滾安全 (Rollback Guard)
+  - [x] 擴充 `tests/test_algorithm.cpp` 補齊 15 項核心演算法與結果型別測試
+  - [x] 發現並修復 `SelfAlgorithm.hpp` 中 `remove_if_fn` 回傳範圍 Bug
+  - [x] 在 `SelfStringView.hpp` 與 `tests/test_string_view.cpp` 補齊反向疊代器、`copy`、`max_size`、`find_*_of` 與 `find_*_not_of`
+  - [x] 擴充 `tests/test_optional.cpp`（全比較運算子矩陣、nullopt 語義）、`tests/test_expected.cpp`（unexpect 標籤建構、value_or）、`tests/test_ranges.cpp`（常數/反向 CPO、subrange、概念型別別名）
+  - [x] 於 `tests/test_main.cpp` 整合 8 大模組測試進入點，單元測試斷言數提升至 749 項 (100% 通過)
+  - [x] 重新生成 `dist/compat.hpp` 與 `dist/compat.ixx`
 
 
 

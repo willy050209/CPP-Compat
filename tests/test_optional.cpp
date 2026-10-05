@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include <compat/Optional.hpp>
 #include <memory>
 #include <string>
@@ -82,6 +82,78 @@ void run_test_optional() {
     // make_optional
     auto opt_made = compat::make_optional<int>(123);
     TEST_ASSERT(opt_made.has_value() && *opt_made == 123);
+
+    // TEST-OPT-006: Copy constructor & Copy assignment
+    compat::optional<std::string> opt_copy_src("copy_test");
+    compat::optional<std::string> opt_copy_dst = opt_copy_src;
+    TEST_ASSERT(opt_copy_dst.has_value() && *opt_copy_dst == "copy_test");
+    compat::optional<std::string> opt_copy_assigned;
+    opt_copy_assigned = opt_copy_src;
+    TEST_ASSERT(opt_copy_assigned.has_value() && *opt_copy_assigned == "copy_test");
+
+    // TEST-OPT-007: nullopt construction & assignment
+    compat::optional<int> opt_null(compat::nullopt);
+    TEST_ASSERT(!opt_null.has_value());
+    compat::optional<int> opt_to_clear(999);
+    TEST_ASSERT(opt_to_clear.has_value());
+    opt_to_clear = compat::nullopt;
+    TEST_ASSERT(!opt_to_clear.has_value());
+
+    // TEST-OPT-008: value() on engaged optional
+    compat::optional<int> opt_val(888);
+    TEST_ASSERT(opt_val.value() == 888);
+    opt_val.value() = 999;
+    TEST_ASSERT(*opt_val == 999);
+
+    // TEST-OPT-009: Rvalue value_or & Rvalue dereference
+    compat::optional<std::string> opt_rval("moved_string");
+    std::string extracted = std::move(opt_rval).value_or("fallback");
+    TEST_ASSERT(extracted == "moved_string");
+
+    compat::optional<std::string> opt_rval_empty;
+    std::string fallback_res = std::move(opt_rval_empty).value_or("fallback");
+    TEST_ASSERT(fallback_res == "fallback");
+
+    // TEST-OPT-010: multi-arg make_optional
+    auto opt_pair = compat::make_optional<std::pair<int, std::string>>(42, std::string("piecewise"));
+    TEST_ASSERT(opt_pair.has_value());
+    TEST_ASSERT(opt_pair->first == 42 && opt_pair->second == "piecewise");
+
+    auto opt_pair_made = compat::make_optional<std::pair<int, int>>(10, 20);
+    TEST_ASSERT(opt_pair_made.has_value());
+    TEST_ASSERT(opt_pair_made->first == 10 && opt_pair_made->second == 20);
+
+    // TEST-OPT-011: Full comparison operator matrix
+    compat::optional<int> o_none1;
+    compat::optional<int> o_none2(compat::nullopt);
+    compat::optional<int> o_10(10);
+    compat::optional<int> o_10_dup(10);
+    compat::optional<int> o_20(20);
+
+    // With value
+    TEST_ASSERT(o_10 == 10);
+    TEST_ASSERT(10 == o_10);
+    TEST_ASSERT(o_10 != 20);
+    TEST_ASSERT(20 != o_10);
+    TEST_ASSERT(!(o_none1 == 10));
+    TEST_ASSERT(!(10 == o_none1));
+
+    // With nullopt
+    TEST_ASSERT(o_none1 == compat::nullopt);
+    TEST_ASSERT(compat::nullopt == o_none1);
+    TEST_ASSERT(!(o_10 == compat::nullopt));
+    TEST_ASSERT(!(compat::nullopt == o_10));
+    TEST_ASSERT(o_10 != compat::nullopt);
+    TEST_ASSERT(compat::nullopt != o_10);
+    TEST_ASSERT(!(o_none1 != compat::nullopt));
+    TEST_ASSERT(!(compat::nullopt != o_none1));
+
+    // Between optionals
+    TEST_ASSERT(o_none1 == o_none2);
+    TEST_ASSERT(o_10 == o_10_dup);
+    TEST_ASSERT(o_10 != o_20);
+    TEST_ASSERT(o_10 != o_none1);
+    TEST_ASSERT(o_none1 != o_10);
 
     std::cout << "[PASS] test_optional passed." << std::endl;
 }

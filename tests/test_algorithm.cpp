@@ -528,6 +528,118 @@ namespace {
         TEST_ASSERT(arr[0].score == 70 && arr[2].score == 95);
     }
 
+    void test_supplemental_algorithms() {
+        // 1. lexicographical_compare
+        std::vector<int> v1 = {1, 2, 3};
+        std::vector<int> v2 = {1, 2, 4};
+        std::vector<int> v3 = {1, 2, 3, 0};
+        TEST_ASSERT(compat::ranges::lexicographical_compare(v1, v2));
+        TEST_ASSERT(!compat::ranges::lexicographical_compare(v2, v1));
+        TEST_ASSERT(compat::ranges::lexicographical_compare(v1, v3));
+        TEST_ASSERT(!compat::ranges::lexicographical_compare(v1, v1));
+
+        // 2. copy_backward
+        std::vector<int> src_cb = {10, 20, 30};
+        std::vector<int> dst_cb(5, 0);
+        auto cb_res = compat::ranges::copy_backward(src_cb, dst_cb.end());
+        TEST_ASSERT(cb_res.in == src_cb.end());
+        TEST_ASSERT(cb_res.out == dst_cb.begin() + 2);
+        TEST_ASSERT(dst_cb[2] == 10 && dst_cb[3] == 20 && dst_cb[4] == 30);
+
+        // 3. move & move_backward
+        std::vector<std::string> move_src;
+        move_src.push_back("hello");
+        move_src.push_back("modern");
+        move_src.push_back("cpp");
+        std::vector<std::string> move_dst(3);
+
+        auto mv_res = compat::ranges::move(move_src, move_dst.begin());
+        TEST_ASSERT(mv_res.in == move_src.end());
+        TEST_ASSERT(mv_res.out == move_dst.end());
+        TEST_ASSERT(move_dst[0] == "hello" && move_dst[1] == "modern" && move_dst[2] == "cpp");
+
+        std::vector<std::string> mb_dst(5);
+        auto mb_res = compat::ranges::move_backward(move_dst, mb_dst.end());
+        TEST_ASSERT(mb_res.out == mb_dst.begin() + 2);
+        TEST_ASSERT(mb_dst[2] == "hello" && mb_dst[3] == "modern" && mb_dst[4] == "cpp");
+
+        // 4. generate_n
+        std::vector<int> gen_vec(4, 0);
+        int val_gen = 100;
+        auto gen_it = compat::ranges::generate_n(gen_vec.begin(), 3, [&val_gen]() { return val_gen++; });
+        TEST_ASSERT(gen_it == gen_vec.begin() + 3);
+        TEST_ASSERT(gen_vec[0] == 100 && gen_vec[1] == 101 && gen_vec[2] == 102 && gen_vec[3] == 0);
+
+        // 5. remove & remove_if
+        std::vector<int> rem_v = {1, 2, 3, 2, 4, 2, 5};
+        auto rem_sub = compat::ranges::remove(rem_v, 2);
+        rem_v.erase(rem_sub.begin(), rem_sub.end());
+        TEST_ASSERT(rem_v.size() == 4);
+        TEST_ASSERT(rem_v[0] == 1 && rem_v[1] == 3 && rem_v[2] == 4 && rem_v[3] == 5);
+
+        auto rem_if_sub = compat::ranges::remove_if(rem_v, [](int x) { return x % 2 != 0; });
+        rem_v.erase(rem_if_sub.begin(), rem_if_sub.end());
+        TEST_ASSERT(rem_v.size() == 1 && rem_v[0] == 4);
+
+        // 6. swap_ranges
+        std::vector<int> sw1 = {1, 2, 3};
+        std::vector<int> sw2 = {7, 8, 9};
+        auto sw_res = compat::ranges::swap_ranges(sw1, sw2);
+        TEST_ASSERT(sw_res.in1 == sw1.end() && sw_res.in2 == sw2.end());
+        TEST_ASSERT(sw1[0] == 7 && sw1[1] == 8 && sw1[2] == 9);
+        TEST_ASSERT(sw2[0] == 1 && sw2[1] == 2 && sw2[2] == 3);
+
+        // 7. reverse_copy
+        std::vector<int> rev_src = {1, 2, 3, 4};
+        std::vector<int> rev_dst(4, 0);
+        auto rev_res = compat::ranges::reverse_copy(rev_src, rev_dst.begin());
+        TEST_ASSERT(rev_res.in == rev_src.end() && rev_res.out == rev_dst.end());
+        TEST_ASSERT(rev_dst[0] == 4 && rev_dst[1] == 3 && rev_dst[2] == 2 && rev_dst[3] == 1);
+
+        // 8. partition_point
+        std::vector<int> part_pts = {2, 4, 6, 1, 3, 5};
+        auto pt = compat::ranges::partition_point(part_pts, [](int x) { return x % 2 == 0; });
+        TEST_ASSERT(pt == part_pts.begin() + 3 && *pt == 1);
+
+        // 9. is_sorted_until
+        std::vector<int> sort_u = {1, 2, 4, 3, 5};
+        auto su_it = compat::ranges::is_sorted_until(sort_u);
+        TEST_ASSERT(su_it == sort_u.begin() + 3 && *su_it == 3);
+
+        // 10. stable_sort
+        struct StableItem {
+            int key;
+            int order;
+        };
+        std::vector<StableItem> stable_vec = {
+            {2, 1}, {1, 1}, {2, 2}, {1, 2}, {2, 3}
+        };
+        compat::ranges::stable_sort(stable_vec, {}, &StableItem::key);
+        TEST_ASSERT(stable_vec[0].key == 1 && stable_vec[0].order == 1);
+        TEST_ASSERT(stable_vec[1].key == 1 && stable_vec[1].order == 2);
+        TEST_ASSERT(stable_vec[2].key == 2 && stable_vec[2].order == 1);
+        TEST_ASSERT(stable_vec[3].key == 2 && stable_vec[3].order == 2);
+        TEST_ASSERT(stable_vec[4].key == 2 && stable_vec[4].order == 3);
+
+        // 11. equal_range
+        std::vector<int> eq_vec = {1, 2, 3, 3, 3, 4, 5};
+        auto eq_sub = compat::ranges::equal_range(eq_vec, 3);
+        TEST_ASSERT(eq_sub.begin() == eq_vec.begin() + 2);
+        TEST_ASSERT(eq_sub.end() == eq_vec.begin() + 5);
+        TEST_ASSERT(std::distance(eq_sub.begin(), eq_sub.end()) == 3);
+
+        // 12. is_heap_until
+        std::vector<int> heap_u = {9, 7, 8, 5, 6, 10, 1};
+        auto hu_it = compat::ranges::is_heap_until(heap_u);
+        TEST_ASSERT(hu_it == heap_u.begin() + 5 && *hu_it == 10);
+
+        // 13. minmax_element
+        std::vector<int> mm_vec = {7, 2, 9, 1, 5, 8};
+        auto mm_res = compat::ranges::minmax_element(mm_vec);
+        TEST_ASSERT(mm_res.min == mm_vec.begin() + 3 && *mm_res.min == 1);
+        TEST_ASSERT(mm_res.max == mm_vec.begin() + 2 && *mm_res.max == 9);
+    }
+
 } // namespace
 
 void run_test_algorithm() {
@@ -548,5 +660,6 @@ void run_test_algorithm() {
     test_numeric_and_random();
     test_uninitialized_memory();
     test_user_overload_resolution();
+    test_supplemental_algorithms();
     std::cout << "  test_algorithm passed." << std::endl;
 }

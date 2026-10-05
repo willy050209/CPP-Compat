@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include <compat/Ranges.hpp>
 #include <compat/View.hpp>
 
@@ -33,10 +33,41 @@ namespace {
 
         std::vector<int> vec = {10, 20, 30};
         TEST_ASSERT(*compat::ranges::begin(vec) == 10);
+        TEST_ASSERT(*compat::ranges::cbegin(vec) == 10);
+        TEST_ASSERT(compat::ranges::cend(vec) == compat::ranges::cbegin(vec) + 3);
+        TEST_ASSERT(*compat::ranges::rbegin(vec) == 30);
+        TEST_ASSERT(compat::ranges::rend(vec) == compat::ranges::rbegin(vec) + 3);
+        TEST_ASSERT(*compat::ranges::crbegin(vec) == 30);
+        TEST_ASSERT(compat::ranges::crend(vec) == compat::ranges::crbegin(vec) + 3);
         TEST_ASSERT(compat::ranges::size(vec) == 3);
         TEST_ASSERT(compat::ranges::ssize(vec) == 3);
         TEST_ASSERT(!compat::ranges::empty(vec));
         TEST_ASSERT(compat::ranges::data(vec) == vec.data());
+        TEST_ASSERT(compat::ranges::cdata(vec) == vec.data());
+
+        // Subrange & views::empty
+        auto sub = compat::ranges::subrange<std::vector<int>::iterator>(vec.begin(), vec.end());
+        TEST_ASSERT(sub.size() == 3);
+        TEST_ASSERT(*sub.begin() == 10);
+
+        auto empty_v = compat::views::empty<double>;
+        TEST_ASSERT(empty_v.empty());
+        TEST_ASSERT(empty_v.size() == 0);
+
+        // Dangling & subrange_kind
+        compat::ranges::dangling dang{};
+        (void)dang;
+        static_assert(compat::ranges::subrange_kind::sized != compat::ranges::subrange_kind::unsized, "subrange_kind check");
+
+        // Type aliases & traits
+        static_assert(std::is_same<compat::ranges::range_value_t<std::vector<int>>, int>::value, "range_value_t check");
+        static_assert(std::is_integral<compat::ranges::range_difference_t<std::vector<int>>>::value, "range_difference_t check");
+        static_assert(std::is_same<compat::ranges::range_reference_t<std::vector<int>>, int&>::value, "range_reference_t check");
+        static_assert(std::is_unsigned<compat::ranges::range_size_t<std::vector<int>>>::value, "range_size_t check");
+        static_assert(std::is_same<compat::ranges::iterator_t<std::vector<int>>, std::vector<int>::iterator>::value, "iterator_t check");
+
+        // from_range tag check
+        (void)compat::from_range;
 
         // Concepts / Traits checks
         TEST_ASSERT(compat::ranges::range<std::vector<int>>::value);

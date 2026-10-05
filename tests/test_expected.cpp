@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include <compat/Expected.hpp>
 #include <string>
 #include <cstdint>
@@ -540,6 +540,26 @@ void run_test_expected() {
         TEST_ASSERT(!ev.has_value());
         ev.emplace();
         TEST_ASSERT(ev.has_value());
+    }
+
+    // unexpect tag constructor for value and void
+    {
+        compat::expected<int, std::string> exp_tag(compat::unexpect, "tag error");
+        TEST_ASSERT(!exp_tag.has_value());
+        TEST_ASSERT(exp_tag.error() == "tag error");
+
+        compat::expected<void, std::string> exp_void_tag(compat::unexpect, "void tag error");
+        TEST_ASSERT(!exp_void_tag.has_value());
+        TEST_ASSERT(exp_void_tag.error() == "void tag error");
+    }
+
+    // value_or method
+    {
+        compat::expected<int, std::string> val_ok_exp(42);
+        compat::expected<int, std::string> val_err_exp(compat::unexpected<std::string>("fail"));
+
+        TEST_ASSERT(val_ok_exp.value_or(100) == 42);
+        TEST_ASSERT(val_err_exp.value_or(100) == 100);
     }
 
     std::cout << "[PASS] test_expected passed." << std::endl;

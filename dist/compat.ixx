@@ -4878,6 +4878,8 @@ public:
     using const_reference = const char&;
     using const_iterator = const char*;
     using iterator = const_iterator;
+    using reverse_iterator = std::reverse_iterator<const_iterator>;
+    using const_reverse_iterator = reverse_iterator;
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
 
@@ -4941,6 +4943,14 @@ public:
     /// <returns>True if empty, false otherwise.</returns>
     COMPAT_ALWAYS_INLINE constexpr bool empty() const noexcept {
         return m_size == 0;
+    }
+
+    /// <summary>
+    /// Returns the maximum number of characters the view can hold.
+    /// </summary>
+    /// <returns>Maximum number of characters.</returns>
+    COMPAT_ALWAYS_INLINE constexpr size_type max_size() const noexcept {
+        return (static_cast<size_type>(-1) - 1) / sizeof(char);
     }
 
     /// <summary>
@@ -5014,6 +5024,38 @@ public:
     }
 
     /// <summary>
+    /// Returns a reverse iterator to the beginning of the reversed view.
+    /// </summary>
+    /// <returns>Reverse iterator pointing to the last character.</returns>
+    constexpr const_reverse_iterator rbegin() const noexcept {
+        return const_reverse_iterator(end());
+    }
+
+    /// <summary>
+    /// Returns a reverse iterator to the end of the reversed view.
+    /// </summary>
+    /// <returns>Reverse iterator pointing past the first character.</returns>
+    constexpr const_reverse_iterator rend() const noexcept {
+        return const_reverse_iterator(begin());
+    }
+
+    /// <summary>
+    /// Returns a const reverse iterator to the beginning of the reversed view.
+    /// </summary>
+    /// <returns>Const reverse iterator pointing to the last character.</returns>
+    constexpr const_reverse_iterator crbegin() const noexcept {
+        return const_reverse_iterator(end());
+    }
+
+    /// <summary>
+    /// Returns a const reverse iterator to the end of the reversed view.
+    /// </summary>
+    /// <returns>Const reverse iterator pointing past the first character.</returns>
+    constexpr const_reverse_iterator crend() const noexcept {
+        return const_reverse_iterator(begin());
+    }
+
+    /// <summary>
     /// Shrinks the view from the front by n characters.
     /// </summary>
     /// <param name="n">Number of characters to remove.</param>
@@ -5056,6 +5098,25 @@ public:
         }
         size_type rcount = (count > m_size - pos) ? (m_size - pos) : count;
         return string_view(m_data + pos, rcount);
+    }
+
+    /// <summary>
+    /// Copies characters into destination buffer.
+    /// </summary>
+    /// <param name="dest">Pointer to destination buffer.</param>
+    /// <param name="count">Requested character count.</param>
+    /// <param name="pos">Starting offset.</param>
+    /// <returns>Number of characters copied.</returns>
+    /// <exception cref="std::out_of_range">Thrown if pos is greater than size().</exception>
+    COMPAT_CONSTEXPR_14 size_type copy(char* dest, size_type count, size_type pos = 0) const {
+        if (pos > m_size) {
+            COMPAT_THROW_OR_ABORT(std::out_of_range("compat::string_view::copy out of range"));
+        }
+        size_type rcount = (count > m_size - pos) ? (m_size - pos) : count;
+        if (rcount > 0 && dest) {
+            std::memcpy(dest, m_data + pos, rcount);
+        }
+        return rcount;
     }
 
     /// <summary>
@@ -5220,6 +5281,112 @@ public:
     /// <returns>Position of match, or npos if not found.</returns>
     COMPAT_CONSTEXPR_14 size_type rfind(const char* s, size_type pos = npos) const noexcept {
         return s ? rfind(string_view(s), pos) : npos;
+    }
+
+    /// <summary>
+    /// Finds the first character equal to one of the characters in the given view.
+    /// </summary>
+    COMPAT_CONSTEXPR_14 size_type find_first_of(string_view v, size_type pos = 0) const noexcept {
+        for (size_type i = pos; i < m_size; ++i) {
+            if (v.find(m_data[i]) != npos) {
+                return i;
+            }
+        }
+        return npos;
+    }
+    COMPAT_CONSTEXPR_14 size_type find_first_of(char c, size_type pos = 0) const noexcept {
+        return find(c, pos);
+    }
+    COMPAT_CONSTEXPR_14 size_type find_first_of(const char* s, size_type pos, size_type count) const noexcept {
+        return find_first_of(string_view(s, count), pos);
+    }
+    COMPAT_CONSTEXPR_14 size_type find_first_of(const char* s, size_type pos = 0) const noexcept {
+        return s ? find_first_of(string_view(s), pos) : npos;
+    }
+
+    /// <summary>
+    /// Finds the last character equal to one of the characters in the given view.
+    /// </summary>
+    COMPAT_CONSTEXPR_14 size_type find_last_of(string_view v, size_type pos = npos) const noexcept {
+        if (m_size == 0) return npos;
+        size_type cur = (pos < m_size) ? pos : (m_size - 1);
+        while (true) {
+            if (v.find(m_data[cur]) != npos) {
+                return cur;
+            }
+            if (cur == 0) break;
+            --cur;
+        }
+        return npos;
+    }
+    COMPAT_CONSTEXPR_14 size_type find_last_of(char c, size_type pos = npos) const noexcept {
+        return rfind(c, pos);
+    }
+    COMPAT_CONSTEXPR_14 size_type find_last_of(const char* s, size_type pos, size_type count) const noexcept {
+        return find_last_of(string_view(s, count), pos);
+    }
+    COMPAT_CONSTEXPR_14 size_type find_last_of(const char* s, size_type pos = npos) const noexcept {
+        return s ? find_last_of(string_view(s), pos) : npos;
+    }
+
+    /// <summary>
+    /// Finds the first character not equal to any of the characters in the given view.
+    /// </summary>
+    COMPAT_CONSTEXPR_14 size_type find_first_not_of(string_view v, size_type pos = 0) const noexcept {
+        for (size_type i = pos; i < m_size; ++i) {
+            if (v.find(m_data[i]) == npos) {
+                return i;
+            }
+        }
+        return npos;
+    }
+    COMPAT_CONSTEXPR_14 size_type find_first_not_of(char c, size_type pos = 0) const noexcept {
+        for (size_type i = pos; i < m_size; ++i) {
+            if (m_data[i] != c) {
+                return i;
+            }
+        }
+        return npos;
+    }
+    COMPAT_CONSTEXPR_14 size_type find_first_not_of(const char* s, size_type pos, size_type count) const noexcept {
+        return find_first_not_of(string_view(s, count), pos);
+    }
+    COMPAT_CONSTEXPR_14 size_type find_first_not_of(const char* s, size_type pos = 0) const noexcept {
+        return s ? find_first_not_of(string_view(s), pos) : npos;
+    }
+
+    /// <summary>
+    /// Finds the last character not equal to any of the characters in the given view.
+    /// </summary>
+    COMPAT_CONSTEXPR_14 size_type find_last_not_of(string_view v, size_type pos = npos) const noexcept {
+        if (m_size == 0) return npos;
+        size_type cur = (pos < m_size) ? pos : (m_size - 1);
+        while (true) {
+            if (v.find(m_data[cur]) == npos) {
+                return cur;
+            }
+            if (cur == 0) break;
+            --cur;
+        }
+        return npos;
+    }
+    COMPAT_CONSTEXPR_14 size_type find_last_not_of(char c, size_type pos = npos) const noexcept {
+        if (m_size == 0) return npos;
+        size_type cur = (pos < m_size) ? pos : (m_size - 1);
+        while (true) {
+            if (m_data[cur] != c) {
+                return cur;
+            }
+            if (cur == 0) break;
+            --cur;
+        }
+        return npos;
+    }
+    COMPAT_CONSTEXPR_14 size_type find_last_not_of(const char* s, size_type pos, size_type count) const noexcept {
+        return find_last_not_of(string_view(s, count), pos);
+    }
+    COMPAT_CONSTEXPR_14 size_type find_last_not_of(const char* s, size_type pos = npos) const noexcept {
+        return s ? find_last_not_of(string_view(s), pos) : npos;
     }
 
     /// <summary>
@@ -8848,6 +9015,7 @@ export namespace compat {
                                 ++first;
                             }
                         }
+                        return {first, i};
                     }
                     return {first, first};
                 }
