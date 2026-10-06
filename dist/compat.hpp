@@ -140,6 +140,13 @@ namespace detail {
 #  define COMPAT_CONSTEXPR_14 inline
 #endif
 
+// Constexpr support for C++17+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  define COMPAT_CONSTEXPR_17 constexpr
+#else
+#  define COMPAT_CONSTEXPR_17 inline
+#endif
+
 // Constexpr support for C++20+
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
 #  define COMPAT_CONSTEXPR_20 constexpr
@@ -236,8 +243,14 @@ namespace detail {
 #  endif
 
 // Feature detection: std::print (C++23+)
+// Note: MinGW-w64 libstdc++ defines __cpp_lib_print but fails to link std::__open_terminal /
+// std::__write_to_terminal on Windows (GCC Bugzilla #113834). Use SelfPrint on MinGW.
 #  if defined(__cpp_lib_print) && (__cpp_lib_print >= 202207L)
-#    define COMPAT_HAS_STD_PRINT 1
+#    if defined(__MINGW32__) || defined(__MINGW64__)
+#      define COMPAT_HAS_STD_PRINT 0
+#    else
+#      define COMPAT_HAS_STD_PRINT 1
+#    endif
 #  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
 #    if __has_include(<print>)
 #      define COMPAT_HAS_STD_PRINT 1
@@ -6739,7 +6752,7 @@ public:
     /// Returns a reverse iterator to the beginning of the reversed view.
     /// </summary>
     /// <returns>Reverse iterator pointing to the last character.</returns>
-    constexpr const_reverse_iterator rbegin() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator rbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
@@ -6747,7 +6760,7 @@ public:
     /// Returns a reverse iterator to the end of the reversed view.
     /// </summary>
     /// <returns>Reverse iterator pointing past the first character.</returns>
-    constexpr const_reverse_iterator rend() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator rend() const noexcept {
         return const_reverse_iterator(begin());
     }
 
@@ -6755,7 +6768,7 @@ public:
     /// Returns a const reverse iterator to the beginning of the reversed view.
     /// </summary>
     /// <returns>Const reverse iterator pointing to the last character.</returns>
-    constexpr const_reverse_iterator crbegin() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator crbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
@@ -6763,7 +6776,7 @@ public:
     /// Returns a const reverse iterator to the end of the reversed view.
     /// </summary>
     /// <returns>Const reverse iterator pointing past the first character.</returns>
-    constexpr const_reverse_iterator crend() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator crend() const noexcept {
         return const_reverse_iterator(begin());
     }
 
@@ -9571,6 +9584,56 @@ namespace compat {
     template <typename T, typename U>
     inline bool operator!=(const optional<T>& lhs, const optional<U>& rhs) {
         return !(lhs == rhs);
+    }
+
+    template <typename T, typename U>
+    inline bool operator!=(const optional<T>& opt, const U& val) {
+        return !opt.has_value() || (*opt != val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator!=(const U& val, const optional<T>& opt) {
+        return !opt.has_value() || (val != *opt);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<(const optional<T>& opt, const U& val) {
+        return !opt.has_value() || (*opt < val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<(const U& val, const optional<T>& opt) {
+        return opt.has_value() && (val < *opt);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<=(const optional<T>& opt, const U& val) {
+        return !(val < opt);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<=(const U& val, const optional<T>& opt) {
+        return !(opt < val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator>(const optional<T>& opt, const U& val) {
+        return val < opt;
+    }
+
+    template <typename T, typename U>
+    inline bool operator>(const U& val, const optional<T>& opt) {
+        return opt < val;
+    }
+
+    template <typename T, typename U>
+    inline bool operator>=(const optional<T>& opt, const U& val) {
+        return !(opt < val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator>=(const U& val, const optional<T>& opt) {
+        return !(val < opt);
     }
 
 } // namespace compat
@@ -16672,6 +16735,7 @@ inline void println() {
 #undef COMPAT_HAS_EXCEPTIONS
 #undef COMPAT_THROW_OR_ABORT
 #undef COMPAT_CONSTEXPR_14
+#undef COMPAT_CONSTEXPR_17
 #undef COMPAT_ABI_TAG
 #undef COMPAT_HAS_STD_EXPECTED
 #undef COMPAT_HAS_STD_PRINT

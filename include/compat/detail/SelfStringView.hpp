@@ -228,7 +228,7 @@ public:
     /// Returns a reverse iterator to the beginning of the reversed view.
     /// </summary>
     /// <returns>Reverse iterator pointing to the last character.</returns>
-    constexpr const_reverse_iterator rbegin() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator rbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
@@ -236,7 +236,7 @@ public:
     /// Returns a reverse iterator to the end of the reversed view.
     /// </summary>
     /// <returns>Reverse iterator pointing past the first character.</returns>
-    constexpr const_reverse_iterator rend() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator rend() const noexcept {
         return const_reverse_iterator(begin());
     }
 
@@ -244,7 +244,7 @@ public:
     /// Returns a const reverse iterator to the beginning of the reversed view.
     /// </summary>
     /// <returns>Const reverse iterator pointing to the last character.</returns>
-    constexpr const_reverse_iterator crbegin() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator crbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
@@ -252,7 +252,7 @@ public:
     /// Returns a const reverse iterator to the end of the reversed view.
     /// </summary>
     /// <returns>Const reverse iterator pointing past the first character.</returns>
-    constexpr const_reverse_iterator crend() const noexcept {
+    COMPAT_CONSTEXPR_17 const_reverse_iterator crend() const noexcept {
         return const_reverse_iterator(begin());
     }
 

@@ -180,6 +180,7 @@ void run_test_string_view() {
     TEST_ASSERT(sv_target.find_first_of("xyz") == compat::string_view::npos);
     TEST_ASSERT(sv_target.find_first_not_of("abcdef.-123") == compat::string_view::npos);
 
+#if !COMPAT_HAS_STD_STRING_VIEW || (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) || defined(__cpp_lib_starts_ends_with)
     // 14. 前後綴判定 (starts_with, ends_with)
     compat::string_view sv_fix = "antigravity";
     TEST_ASSERT(sv_fix.starts_with("anti"));
@@ -188,6 +189,7 @@ void run_test_string_view() {
     TEST_ASSERT(sv_fix.ends_with("gravity"));
     TEST_ASSERT(sv_fix.ends_with('y'));
     TEST_ASSERT(!sv_fix.ends_with("anti"));
+#endif
 
     std::cout << "[PASS] test_string_view passed." << std::endl;
 }

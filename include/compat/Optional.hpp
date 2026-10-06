@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Config.hpp"
 
@@ -351,6 +351,56 @@ namespace compat {
     template <typename T, typename U>
     inline bool operator!=(const optional<T>& lhs, const optional<U>& rhs) {
         return !(lhs == rhs);
+    }
+
+    template <typename T, typename U>
+    inline bool operator!=(const optional<T>& opt, const U& val) {
+        return !opt.has_value() || (*opt != val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator!=(const U& val, const optional<T>& opt) {
+        return !opt.has_value() || (val != *opt);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<(const optional<T>& opt, const U& val) {
+        return !opt.has_value() || (*opt < val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<(const U& val, const optional<T>& opt) {
+        return opt.has_value() && (val < *opt);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<=(const optional<T>& opt, const U& val) {
+        return !(val < opt);
+    }
+
+    template <typename T, typename U>
+    inline bool operator<=(const U& val, const optional<T>& opt) {
+        return !(opt < val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator>(const optional<T>& opt, const U& val) {
+        return val < opt;
+    }
+
+    template <typename T, typename U>
+    inline bool operator>(const U& val, const optional<T>& opt) {
+        return opt < val;
+    }
+
+    template <typename T, typename U>
+    inline bool operator>=(const optional<T>& opt, const U& val) {
+        return !(opt < val);
+    }
+
+    template <typename T, typename U>
+    inline bool operator>=(const U& val, const optional<T>& opt) {
+        return !(val < opt);
     }
 
 } // namespace compat

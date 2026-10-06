@@ -99,6 +99,13 @@ namespace detail {
 #  define COMPAT_CONSTEXPR_14 inline
 #endif
 
+// Constexpr support for C++17+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  define COMPAT_CONSTEXPR_17 constexpr
+#else
+#  define COMPAT_CONSTEXPR_17 inline
+#endif
+
 // Constexpr support for C++20+
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20)
 #  define COMPAT_CONSTEXPR_20 constexpr
@@ -195,8 +202,14 @@ namespace detail {
 #  endif
 
 // Feature detection: std::print (C++23+)
+// Note: MinGW-w64 libstdc++ defines __cpp_lib_print but fails to link std::__open_terminal /
+// std::__write_to_terminal on Windows (GCC Bugzilla #113834). Use SelfPrint on MinGW.
 #  if defined(__cpp_lib_print) && (__cpp_lib_print >= 202207L)
-#    define COMPAT_HAS_STD_PRINT 1
+#    if defined(__MINGW32__) || defined(__MINGW64__)
+#      define COMPAT_HAS_STD_PRINT 0
+#    else
+#      define COMPAT_HAS_STD_PRINT 1
+#    endif
 #  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
 #    if __has_include(<print>)
 #      define COMPAT_HAS_STD_PRINT 1

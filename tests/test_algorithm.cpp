@@ -208,7 +208,7 @@ namespace {
         TEST_ASSERT(!not_found);
 
         // Find with projection
-        auto it = compat::ranges::find(items, "Bob", &Item::name);
+        auto it = compat::ranges::find(items, std::string("Bob"), &Item::name);
         TEST_ASSERT(it != items.end() && it->id == 2);
     }
 

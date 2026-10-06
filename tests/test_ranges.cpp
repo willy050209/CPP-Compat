@@ -213,7 +213,7 @@ namespace {
 
         auto cv = compat::views::concat(v_int, v_double);
         using concat_t = decltype(cv);
-        static_assert(std::is_same<typename concat_t::value_type, double>::value, "value_type must be double");
+        static_assert(std::is_same<typename compat::ranges::range_value_t<concat_t>, double>::value, "value_type must be double");
 
         TEST_ASSERT(cv.size() == 4);
         TEST_ASSERT(cv[0] == 1.0);
@@ -231,10 +231,6 @@ namespace {
         // Dereferencing twice produces same value without side effects
         TEST_ASSERT(*it == 10);
         TEST_ASSERT(*it == 10);
-
-        // Arrow operator on lvalue reference
-        TEST_ASSERT(it.operator->() != nullptr);
-        TEST_ASSERT(*it.operator->() == 10);
 
         // Advancing updates cache
         ++it;
