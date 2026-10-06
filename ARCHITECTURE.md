@@ -1,4 +1,4 @@
-# 系統架構手冊 (ARCHITECTURE.md)
+﻿# 系統架構手冊 (ARCHITECTURE.md)
 
 ## 1. 系統定位
 
@@ -15,10 +15,14 @@ Refinement Phase（2026-09）已完成全套 ISO C++23 對齊、-fno-exceptions 
 include/compat/
 ├── Config.hpp             <- 特性檢測巨集中樞（探測 __cpp_lib_*、ABI 隔離、例外開關）
 ├── StringView.hpp         <- string_view 轉接（C++17 原生 vs C++11 自研 Fallback）
+├── Optional.hpp           <- optional 轉接（C++17 原生 vs C++11 自研 Fallback）
 ├── Expected.hpp           <- expected/unexpected 轉接（C++23 / C++17 variant / C++11 union）
 ├── Format.hpp             <- format 轉接（C++20 原生 vs 自研格式引擎）+ compat::formatter<T>
 ├── Print.hpp              <- print/println 轉接（C++23 原生 vs 自研引擎）+ Windows UTF-8
 ├── Parse.hpp              <- parse<T>（支援整數、浮點、bool、string）+ from_chars 介面
+├── Ranges.hpp             <- ranges 轉接（C++20/23/26 概念、CPO、subrange、to 等）
+├── Memory.hpp             <- ranges memory 演算法轉接（construct_at, uninitialized_* 等）
+├── Filesystem.hpp         <- filesystem 轉接（C++17 原生 vs 自研 Win32/POSIX Fallback）
 ├── Compat.hpp             <- 總括標頭檔（包含上述所有模組）
 └── detail/
     ├── SelfStringView.hpp    <- C++11 自研 string_view（constexpr find/rfind/compare、std::hash）
@@ -26,7 +30,11 @@ include/compat/
     ├── SelfExpected.hpp      <- C++17+ std::variant 基礎 expected（含 void 特化、monadic ops）
     ├── SelfFormat.hpp        <- 自研格式引擎（支援 compat::formatter<T> 自訂型別）
     ├── SelfPrint.hpp         <- 自研串流輸出引擎（Windows WriteConsoleW UTF-8、fmt arg 邊界驗證）
-    └── SelfParse.hpp         <- 自研純函數無例外字串解析引擎（from_chars、零堆積、零 locale）
+    ├── SelfParse.hpp         <- 自研純函數無例外字串解析引擎（from_chars、零堆積、零 locale）
+    ├── SelfRanges.hpp        <- 自研 Ranges 核心概念與視圖引擎
+    ├── SelfAlgorithm.hpp     <- 自研受約束演算法引擎
+    ├── SelfMemory.hpp        <- 自研未初始化記憶體演算法與回滾保護
+    └── SelfFilesystem.hpp    <- 自研檔案系統引擎（零外部相依，Win32 Unicode + POSIX 原生）
 ```
 
 ---
@@ -41,7 +49,9 @@ include/compat/
 | `COMPAT_HAS_STD_FORMAT` | `1` 當 `std::format` 可用（C++20 + `__cpp_lib_format`） |
 | `COMPAT_HAS_STD_PRINT` | `1` 當 `std::print` 可用（C++23 + `__cpp_lib_print`） |
 | `COMPAT_HAS_STD_STRING_VIEW` | `1` 當 `std::string_view` 可用（C++17+） |
+| `COMPAT_HAS_STD_OPTIONAL` | `1` 當 `std::optional` 可用（C++17+） |
 | `COMPAT_HAS_VARIANT` | `1` 當 `std::variant` 可用（C++17+） |
+| `COMPAT_HAS_STD_FILESYSTEM` | `1` 當 `std::filesystem` 可用（C++17+ + `__cpp_lib_filesystem`） |
 
 ### 3.2 雙軌切換開關（互斥）
 
@@ -214,7 +224,31 @@ namespace compat {
 
 ---
 
-## 8. 導出工具架構
+## 8. Filesystem 架構
+
+### 8.1 雙軌路由
+```
+compat::filesystem
+├── [std native]   C++17+ + __cpp_lib_filesystem → alias std::filesystem
+└── [fallback]     C++11/14 或 COMPAT_FORCE_SELF_IMPLEMENTATION
+                   → detail/SelfFilesystem.hpp (純自研無第三方庫)
+```
+
+### 8.2 作業系統底層抽象（零外部依賴）
+- **Windows (MSVC / Clang-cl / MinGW)**：
+  - 直接呼叫 Win32 Unicode API（`FindFirstFileW`, `GetFileAttributesExW`, `CreateDirectoryW`, `DeleteFileW`, `CopyFileW`, `MoveFileExW` 等）。
+  - `path::value_type` 為 `wchar_t`，原生支援繁體中文、日文、Emoji 與特殊路徑字元。
+- **POSIX (Linux / macOS / Android)**：
+  - 直接呼叫標準 POSIX 系統呼叫（`stat`, `opendir`, `readdir`, `mkdir`, `unlink`, `rename`, `statvfs` 等）。
+  - `path::value_type` 為 `char` (UTF-8)。
+
+### 8.3 目錄疊代器與狀態管理
+- `directory_iterator`：透過 `std::shared_ptr<DirIterImpl>` 封裝目錄 handle，保證 iterator copy 合約符合 ISO C++ InputIterator 語意。
+- `recursive_directory_iterator`：維護 `std::vector<directory_iterator>` 呼叫堆疊，支援遞迴深度 `depth()`、目錄剪枝 `pop()` 與 `disable_recursion_pending()`。
+
+---
+
+## 9. 導出工具架構
 
 | 腳本 | 產出 | 說明 |
 | :--- | :--- | :--- |
@@ -224,7 +258,7 @@ namespace compat {
 
 ---
 
-## 9. CI 矩陣
+## 10. CI 矩陣
 
 ```
 .github/workflows/ci.yml
@@ -237,7 +271,7 @@ namespace compat {
 
 ---
 
-## 10. 效能基準（Refinement Phase 後）
+## 11. 效能基準（Refinement Phase 後）
 
 | 指標 | Baseline | Post-Impl | 狀態 |
 | :--- | :--- | :--- | :--- |

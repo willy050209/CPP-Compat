@@ -1,4 +1,4 @@
-# 專案進度狀態看板 (STATE.md)
+﻿# 專案進度狀態看板 (STATE.md)
 
 ## 當前進度狀態
 - [x] Phase 1: 需求釐清、技術調研與實作計畫核准 (Approved)
@@ -45,6 +45,14 @@
   - [x] 擴充 `tests/test_optional.cpp`（全比較運算子矩陣、nullopt 語義）、`tests/test_expected.cpp`（unexpect 標籤建構、value_or）、`tests/test_ranges.cpp`（常數/反向 CPO、subrange、概念型別別名）
   - [x] 於 `tests/test_main.cpp` 整合 8 大模組測試進入點，單元測試斷言數提升至 749 項 (100% 通過)
   - [x] 重新生成 `dist/compat.hpp` 與 `dist/compat.ixx`
+- [x] Filesystem Compatibility Phase: 實作 `<filesystem>` (compat::filesystem) 向下相容
+  - [x] 完成全 ISO C++17 `<filesystem>` 類別、列舉、常數與 API 盤點
+  - [x] 於 C++20 環境建立完整單元測試 `tests/test_filesystem.cpp` 並通過 `std::filesystem` 基準驗證
+  - [x] 實作 `Config.hpp` 特性探測 (`COMPAT_HAS_STD_FILESYSTEM`) 與雙軌轉接標頭 `Filesystem.hpp`
+  - [x] 純自研實現 `SelfFilesystem.hpp`（零外部相依，Win32 Unicode + POSIX 原生，包含 path、file_status、space_info、directory_entry、directory_iterator、recursive_directory_iterator、全套檔案操作）
+  - [x] 通過雙軌測試矩陣：原生模式 (824 斷言) 與強制 Fallback 模式 (832 斷言) 100% 全數通過
+  - [x] 撰寫官方 API 規格文件 `docs/filesystem.md`，更新 `docs/README.md`、`ARCHITECTURE.md`、`README.md`
+  - [x] 更新 `bundle_header.py`、`export_module.py`，重新打包 `dist/compat.hpp` (16,700 行) 與 `dist/compat.ixx` (16,711 行)，通過 26 項打包驗證斷言
 
 
 

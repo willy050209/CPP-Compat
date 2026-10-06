@@ -10,6 +10,7 @@ void run_test_string_view();
 void run_test_ranges();
 void run_test_algorithm();
 void run_test_memory();
+void run_test_filesystem();
 
 /// <summary>
 /// 單元測試套件整合進入點。
@@ -29,6 +30,7 @@ int main() {
     run_test_ranges();
     run_test_algorithm();
     run_test_memory();
+    run_test_filesystem();
 
 
     TestStats& stats = GetGlobalTestStats();

@@ -1,4 +1,4 @@
-# CPP-Compat（自研 C++ 標準庫向下相容層）
+﻿# CPP-Compat（自研 C++ 標準庫向下相容層）
 
 [![CI Build](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml/badge.svg)](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml)
 [![Standard](https://img.shields.io/badge/C%2B%2B-11%20%7C%2014%20%7C%2017%20%7C%2020%20%7C%2023%20%7C%2026-blue.svg)](#)
@@ -26,6 +26,7 @@
 - 🌊 [**視圖適配器 (docs/views.md)**](docs/views.md)：管道語法 (`|`)、C++20 視圖、C++23 `as_const`、C++26 `concat` 與 `cache_latest`
 - ⚡ [**受約束範圍演算法 (docs/algorithms.md)**](docs/algorithms.md)：Niebloids、投影支援 (`&Item::id`)、標籤結果型別 (`in_out_result`)
 - 📦 [**未初始化記憶體演算法 (docs/memory.md)**](docs/memory.md)：`construct_at`、`destroy_at`、`uninitialized_copy/fill/move` 等 RAII 物件生命週期演算法
+- 📂 [**檔案系統 (docs/filesystem.md)**](docs/filesystem.md)：`compat::filesystem`、`path`、`directory_entry`、`directory_iterator`、`recursive_directory_iterator`、全套檔案與目錄 CRUD / 屬性查詢 API (支援 Win32 Unicode 與 POSIX 原生)
 
 ---
 

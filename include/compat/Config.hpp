@@ -140,6 +140,7 @@ namespace detail {
 #  define COMPAT_HAS_STD_RANGES_IOTA            0
 #  define COMPAT_HAS_STD_RANGES_SHIFT           0
 #  define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
+#  define COMPAT_HAS_STD_FILESYSTEM             0
 
 #else
 
@@ -319,6 +320,19 @@ namespace detail {
 #    define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 1
 #  else
 #    define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
+#  endif
+
+// Feature detection: std::filesystem (C++17+)
+#  if defined(__cpp_lib_filesystem) && (__cpp_lib_filesystem >= 201703L)
+#    define COMPAT_HAS_STD_FILESYSTEM 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && defined(__has_include)
+#    if __has_include(<filesystem>)
+#      define COMPAT_HAS_STD_FILESYSTEM 1
+#    else
+#      define COMPAT_HAS_STD_FILESYSTEM 0
+#    endif
+#  else
+#    define COMPAT_HAS_STD_FILESYSTEM 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
