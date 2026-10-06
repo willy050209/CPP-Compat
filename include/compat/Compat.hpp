@@ -5,6 +5,7 @@
 
 #include "Config.hpp"
 #include "StringView.hpp"
+#include "Span.hpp"
 #include "Optional.hpp"
 #include "Expected.hpp"
 #include "Format.hpp"

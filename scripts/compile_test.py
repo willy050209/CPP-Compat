@@ -39,6 +39,21 @@ int main() {
         return 2;
     }
 
+    int nums[] = {10, 20, 30, 40, 50};
+    compat::span<int> sp(nums);
+    auto sub = sp.subspan(1, 3);
+    compat::println("Span test: size={}, front={}, back={}", sub.size(), sub.front(), sub.back());
+    if (sub.size() != 3 || sub.front() != 20 || sub.back() != 40) {
+        std::cerr << "Span test failed!" << std::endl;
+        return 3;
+    }
+
+    auto sub_clamped = sp.subspan(3, 100);
+    if (sub_clamped.size() != 2 || sub_clamped[0] != 40 || sub_clamped[1] != 50) {
+        std::cerr << "Span clamping test failed!" << std::endl;
+        return 4;
+    }
+
     compat::println("Single-header test passed successfully!");
     return 0;
 }
@@ -58,8 +73,21 @@ candidate_vcvars = [
 ]
 vcvars = next((p for p in candidate_vcvars if Path(p).exists()), candidate_vcvars[0])
 
+def safe_unlink(path):
+    import time
+    for _ in range(10):
+        try:
+            if path.exists():
+                path.unlink()
+            return
+        except OSError:
+            time.sleep(0.2)
+
 for std_flag in ["/std:c++20", "/std:c++17", "/std:c++14"]:
     print(f"\n--- Testing MSVC {std_flag} ---")
+    safe_unlink(test_exe)
+    safe_unlink(REPO_ROOT / "test_smoke_single_header.obj")
+
     bat_script = f"""@echo off
 call "{vcvars}" >nul 2>&1
 cl.exe {std_flag} /EHsc /W4 /I"{REPO_ROOT}" "{test_cpp}" /Fe"{test_exe}"
@@ -80,6 +108,8 @@ cl.exe {std_flag} /EHsc /W4 /I"{REPO_ROOT}" "{test_cpp}" /Fe"{test_exe}"
     if run_res.returncode != 0:
         print(f"[FAIL] Execution failed under {std_flag}")
         sys.exit(1)
+
+    safe_unlink(test_exe)
 
 # Cleanup
 for p in [test_cpp, test_exe, REPO_ROOT / "test_smoke_single_header.obj", REPO_ROOT / "run_cl.bat"]:

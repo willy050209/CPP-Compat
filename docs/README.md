@@ -13,6 +13,7 @@ CPP-Compat 採完全解耦與模組化設計。您可以包含總括標頭 `<com
 | :--- | :--- | :--- | :--- | :---: |
 | [**特性檢測與配置 (Config)**](config.md) | `<compat/Config.hpp>` | `compat`, `compat::detail` | 標準方言常數、特性檢測巨集、雙軌切換開關、Failure Policy Invariant (無例外安全終止)、全平臺編譯矩陣 | C++11 ~ C++26 |
 | [**字串檢視 (String View)**](string_view.md) | `<compat/StringView.hpp>` | `compat` | `compat::string_view`, `std::hash<compat::string_view>` | C++17 |
+| [**連續緩衝區視圖 (Span)**](span.md) | `<compat/Span.hpp>` | `compat` | `compat::span<T, Extent>`, `dynamic_extent`, `as_bytes`, `as_writable_bytes`, 強健子視圖邊界計算與自動安全箝位 (Subspan Clamping) | C++20 |
 | [**選擇性值 (Optional)**](optional.md) | `<compat/Optional.hpp>` | `compat` | `optional<T>`, `nullopt`, `bad_optional_access`, `make_optional`, `reset()`, `emplace()`, C++11 特殊成員傳遞 | C++17 |
 | [**期望值與錯誤處理 (Expected)**](expected.md) | `<compat/Expected.hpp>` | `compat` | `expected<T, E>`, `expected<void, E>`, `unexpected<E>`, `bad_expected_access`, `emplace()`, Monadic 操作, Lifetime Invariant (三種例外安全轉移策略) | C++23 |
 | [**格式化輸出 (Format)**](format.md) | `<compat/Format.hpp>` | `compat` | `format`, `formatter<T>` 自訂擴充, 標準格式規格語法 (`[[fill]align][sign][#][0][width][.precision][type]`), 自動/手動索引表, 編譯期靜態檢查 vs 動態例外分流, 浮點預設完整精度 (%.17g), 大精度防溢位緩衝, Unicode 東亞寬度 (UAX #11 / P1868R2) | C++20 |

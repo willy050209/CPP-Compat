@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_SOURCES = [
     "tests/test_main.cpp",
     "tests/test_string_view.cpp",
+    "tests/test_span.cpp",
     "tests/test_optional.cpp",
     "tests/test_expected.cpp",
     "tests/test_format.cpp",
@@ -45,9 +46,13 @@ def run_cmd(cmd_list_or_str, cwd=REPO_ROOT, shell=False):
 
 
 def main():
-    print("=" * 70)
-    print("  CPP-Compat Full Matrix Verification (g++, clang++, MSVC)")
-    print("=" * 70)
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    print("=" * 70, flush=True)
+    print("  CPP-Compat Full Matrix Verification (g++, clang++, MSVC)", flush=True)
+    print("=" * 70, flush=True)
 
     results = {}
 

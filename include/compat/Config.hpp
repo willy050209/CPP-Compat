@@ -156,6 +156,7 @@ namespace detail {
 #  define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
 #  define COMPAT_HAS_STD_FILESYSTEM             0
 #  define COMPAT_HAS_STD_CLAMP                  0
+#  define COMPAT_HAS_STD_SPAN                   0
 
 #else
 
@@ -363,6 +364,19 @@ namespace detail {
 #    define COMPAT_HAS_STD_CLAMP 1
 #  else
 #    define COMPAT_HAS_STD_CLAMP 0
+#  endif
+
+// Feature detection: std::span (C++20+)
+#  if defined(__cpp_lib_span) && (__cpp_lib_span >= 202002L)
+#    define COMPAT_HAS_STD_SPAN 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__has_include)
+#    if __has_include(<span>)
+#      define COMPAT_HAS_STD_SPAN 1
+#    else
+#      define COMPAT_HAS_STD_SPAN 0
+#    endif
+#  else
+#    define COMPAT_HAS_STD_SPAN 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)

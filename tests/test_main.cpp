@@ -7,6 +7,7 @@ void run_test_format();
 void run_test_parse();
 void run_test_print();
 void run_test_string_view();
+void run_test_span();
 void run_test_ranges();
 void run_test_algorithm();
 void run_test_memory();
@@ -22,6 +23,7 @@ int main() {
     std::cout << "========================================" << std::endl;
 
     run_test_string_view();
+    run_test_span();
     run_test_optional();
     run_test_expected();
     run_test_format();

@@ -59,6 +59,7 @@
 | `COMPAT_HAS_STD_RANGES_SHIFT` | `__cpp_lib_ranges_shift >= 202202L` (C++23) | 是否支援原生 `std::ranges::shift_left` / `shift_right` |
 | `COMPAT_HAS_STD_RANGES_GENERATE_RANDOM` | `__cpp_lib_ranges_generate_random >= 202403L` (C++26) | 是否支援原生 `std::ranges::generate_random` |
 | `COMPAT_HAS_STD_CLAMP` | `__cpp_lib_clamp >= 201603L` (C++17) | 是否支援原生 `std::clamp` |
+| `COMPAT_HAS_STD_SPAN` | `__cpp_lib_span >= 202002L` (C++20) | 是否支援原生 `std::span` |
 
 
 ---
