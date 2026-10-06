@@ -1,7 +1,7 @@
-﻿# 受約束範圍演算法 (compat::ranges algorithms)
+# 受約束範圍演算法 (compat::ranges algorithms)
 
 定義於標頭檔 [`<compat/Algorithm.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Algorithm.hpp)（或 [`<compat/Ranges.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Ranges.hpp)）。  
-所屬命名空間：`compat::ranges`。
+所屬命名空間：`compat`, `compat::ranges`。
 
 `compat::ranges` 演算法家族完全對齊 **ISO C++20 `std::ranges` 演算法**標準規格。  
 相較於傳統 C++ `<algorithm>`，範圍演算法具備以下現代特性：
@@ -196,6 +196,35 @@ auto it = compat::ranges::find_if(users, [](int s) { return s >= 90; }, &User::s
 
 ### 11. 極值與截斷操作 (Minimum / Maximum & Clamp)
 
+#### 1. 數值夾取 (compat::clamp - 向下相容 C++14 安全數值夾取)
+
+定義於命名空間 `compat`，完全對齊 **ISO C++17 `std::clamp`** 標準規格，具備向後相容 C++14/11 之雙軌實作：
+
+```cpp
+template <typename T>
+COMPAT_NODISCARD COMPAT_CONSTEXPR_14 const T& clamp(const T& val, const T& lo, const T& hi);
+
+template <typename T, typename Compare>
+COMPAT_NODISCARD COMPAT_CONSTEXPR_14 const T& clamp(const T& val, const T& lo, const T& hi, Compare comp);
+```
+
+- **契約保證與前置條件**：
+  - 區間下限不得大於上限：`!(hi < lo)` 或 `!comp(hi, lo)`。
+  - 在除錯模式下透過 `COMPAT_ASSERT` 進行快速失敗（Fail-Fast）前置斷言檢驗，避免帶病執行。
+- **回傳值**：
+  - 若 `val < lo`（或 `comp(val, lo)`）則回傳 `lo` 的 const 參考。
+  - 若 `hi < val`（或 `comp(hi, val)`）則回傳 `hi` 的 const 參考。
+  - 否則回傳 `val` 的 const 參考。
+- **常數運算**：在 C++14+ 環境下支援編譯期求值（`constexpr`）。
+- **複雜度**：$O(1)$ 最多進行 2 次比較。
+
+> [!NOTE]
+> **`compat::clamp` 與 `compat::ranges::clamp` 之區別**  
+> - **`compat::clamp`**（所屬命名空間：`compat`）：傳統三引數與四引數（含自訂述詞）值夾取函式，對齊 C++17 `std::clamp`，在 C++14/11 與無 ranges 環境下無縫運作。
+> - **`compat::ranges::clamp`**（所屬命名空間：`compat::ranges`）：對齊 C++20 `std::ranges::clamp`，額外支援自訂投影物件（如成員指標 `&User::score`）。
+
+#### 2. 範圍極值操作清單
+
 | 演算法 | 說明與標準版本 |
 | :--- | :--- |
 | `min(r, [comp], [proj])` / `min(a, b, [comp], [proj])` | 取得範圍或二者間之最小值 (C++20)。 |
@@ -204,7 +233,7 @@ auto it = compat::ranges::find_if(users, [](int s) { return s >= 90; }, &User::s
 | `min_element(r, [comp], [proj])` | 尋找指向最小值的元素迭代器 (C++20)。 |
 | `max_element(r, [comp], [proj])` | 尋找指向最大值的元素迭代器 (C++20)。 |
 | `minmax_element(r, [comp], [proj])` | 同時尋找最小與最大值迭代器，回傳 `minmax_element_result` (C++20)。 |
-| `clamp(val, lo, hi, [comp], [proj])` | 將數值截斷限制於 `[lo, hi]` 區間內 (C++20)。 |
+| `ranges::clamp(val, lo, hi, [comp], [proj])` | 將數值截斷限制於 `[lo, hi]` 區間內（支援投影） (C++20)。 |
 
 ---
 
@@ -247,6 +276,11 @@ int main() {
 
     int sum = compat::ranges::fold_left(numbers, 0, [](int acc, int x) { return acc + x; });
     compat::println("Total Sum: {}", sum);
+
+    // 4. 安全數值夾取 (compat::clamp - 向下相容 C++14)
+    int raw_score = 105;
+    int clamped_score = compat::clamp(raw_score, 0, 100);
+    compat::println("Clamped Score: {}", clamped_score); // 輸出 100
 
     return 0;
 }

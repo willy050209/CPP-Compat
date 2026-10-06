@@ -1,4 +1,4 @@
-﻿# CPP-Compat API 參考手冊 (API Reference Manual)
+# CPP-Compat API 參考手冊 (API Reference Manual)
 
 歡迎查閱 **CPP-Compat** 官方 API 規格與技術參考手冊。  
 本手冊以 **Microsoft Learn (MSDN)** 與 **C++ cppreference.com** 的標準結構編寫，詳盡列出各模組、類別、函式、概念（Concepts）與自訂點物件（Customization Point Objects, CPO）的規格合約、例外保證、複雜度與範例程式碼。
@@ -20,7 +20,7 @@ CPP-Compat 採完全解耦與模組化設計。您可以包含總括標頭 `<com
 | [**強型別解析 (Parse)**](parse.md) | `<compat/Parse.hpp>` | `compat` | `parse<T>`, `from_chars`（整數 2~36 進位、IEEE 754 次常態數 1e-320、下溢 out_of_range、失敗時輸出引數絕不被修改） | C++17 |
 | [**範圍基礎與概念 (Ranges)**](ranges.md) | `<compat/Ranges.hpp>` | `compat::ranges` | Range Concepts, CPO (`begin`, `end`, `size` 等), `enable_borrowed_range`, `subrange`, `dangling`, `single_view` 生命週期安全約束, `ranges::to` (C++23) | C++20 / C++23 / C++26 |
 | [**視圖適配器 (Views)**](views.md) | `<compat/View.hpp>` | `compat::views` | 管道運算子 (`\|`), C++20 核心視圖 (`iota`, `filter`, `transform` 等), C++23/26 視圖 (`as_const`, `cache_latest`, `concat`) | C++20 / C++23 / C++26 |
-| [**受約束範圍演算法 (Algorithms)**](algorithms.md) | `<compat/Algorithm.hpp>` | `compat::ranges` | Niebloid 函式物件, 投影 (`compat::identity`, 成員指標), 標籤結果型別 (`in_out_result` 等), 全 11 大類演算法家族 (42+ 新演算法) | C++20 / C++23 / C++26 |
+| [**受約束範圍演算法 (Algorithms)**](algorithms.md) | `<compat/Algorithm.hpp>` | `compat`, `compat::ranges` | Niebloid 函式物件, 數值夾取 (`compat::clamp`, 向下相容 C++14), 投影 (`compat::identity`, 成員指標), 標籤結果型別 (`in_out_result` 等), 全 11 大類演算法家族 (42+ 新演算法) | C++17 / C++20 / C++23 / C++26 |
 | [**未初始化記憶體 (Memory)**](memory.md) | `<compat/Memory.hpp>` | `compat::ranges` | `construct_at`, `destroy_at`, `destroy`, `uninitialized_copy/fill/move/construct`, RAII 回滾安全防護 | C++20 |
 | [**檔案系統 (Filesystem)**](filesystem.md) | `<compat/Filesystem.hpp>` | `compat::filesystem` | `path`, `filesystem_error`, `directory_entry`, `directory_iterator`, `recursive_directory_iterator`, `file_status`, `space_info`, 全套檔案系統 CRUD / 查詢 API (例外與 error_code 雙軌) | C++17 |
 

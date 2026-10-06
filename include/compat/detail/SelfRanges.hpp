@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../Config.hpp"
 
@@ -109,11 +109,7 @@ namespace self_ranges {
         /// </summary>
         struct default_sentinel_t {};
 
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-        inline constexpr default_sentinel_t default_sentinel{};
-#else
-        constexpr default_sentinel_t default_sentinel{};
-#endif
+        COMPAT_INLINE_VAR constexpr default_sentinel_t default_sentinel{};
 
         /// <summary>
         /// 懸空迭代器佔位型別 (對齊 C++20 std::ranges::dangling)。
@@ -624,13 +620,7 @@ namespace self_ranges {
         /// <summary>
         /// ISO C++23 範圍建構式標記常數實體 (對齊 std::from_range)。
         /// </summary>
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-        inline constexpr from_range_t from_range{};
-#else
-        namespace {
-            constexpr const from_range_t& from_range = static_const<from_range_t>::value;
-        }
-#endif
+        COMPAT_INLINE_VAR constexpr from_range_t from_range{};
 
         namespace detail {
             template <typename S, typename I>

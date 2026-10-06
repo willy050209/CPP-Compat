@@ -24,6 +24,9 @@ namespace {
         }
     };
 
+    COMPAT_INLINE_VAR constexpr int kTestInlineVarVal = 42;
+    COMPAT_INLINE_VAR constexpr const char* kTestInlineVarStr = "inline_var_ok";
+
     void test_non_modifying_algorithms() {
         std::vector<int> vec = {1, 2, 3, 4, 5, 6};
 
@@ -640,6 +643,52 @@ namespace {
         TEST_ASSERT(mm_res.max == mm_vec.begin() + 2 && *mm_res.max == 9);
     }
 
+    void test_clamp_and_inline_var() {
+        // COMPAT_INLINE_VAR checks
+        TEST_ASSERT(kTestInlineVarVal == 42);
+        TEST_ASSERT(std::string(kTestInlineVarStr) == "inline_var_ok");
+        const int* p1 = &kTestInlineVarVal;
+        TEST_ASSERT(*p1 == 42);
+
+        // compat::clamp basic clamping
+        TEST_ASSERT(compat::clamp(5, 1, 10) == 5);
+        TEST_ASSERT(compat::clamp(0, 1, 10) == 1);
+        TEST_ASSERT(compat::clamp(15, 1, 10) == 10);
+        TEST_ASSERT(compat::clamp(1, 1, 10) == 1);
+        TEST_ASSERT(compat::clamp(10, 1, 10) == 10);
+
+        // Reference return check (guaranteed by ISO C++)
+        int val = 5;
+        int lo = 1;
+        int hi = 10;
+        TEST_ASSERT(&compat::clamp(val, lo, hi) == &val);
+        int low_val = -5;
+        TEST_ASSERT(&compat::clamp(low_val, lo, hi) == &lo);
+        int high_val = 25;
+        TEST_ASSERT(&compat::clamp(high_val, lo, hi) == &hi);
+
+        // Floating point clamping
+        TEST_ASSERT(compat::clamp(3.14, 0.0, 5.0) == 3.14);
+        TEST_ASSERT(compat::clamp(-1.5, -1.0, 1.0) == -1.0);
+        TEST_ASSERT(compat::clamp(2.5, -1.0, 1.0) == 1.0);
+
+        // Custom comparator (descending order with std::greater<int>)
+        // In descending order, lo is 10, hi is 1 (comp(hi, lo) is 1 > 10, which is false)
+        TEST_ASSERT(compat::clamp(5, 10, 1, std::greater<int>()) == 5);
+        TEST_ASSERT(compat::clamp(15, 10, 1, std::greater<int>()) == 10);
+        TEST_ASSERT(compat::clamp(-5, 10, 1, std::greater<int>()) == 1);
+
+        // Constexpr evaluation in C++14+
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+        constexpr int c_val = compat::clamp(7, 2, 8);
+        static_assert(c_val == 7, "compat::clamp constexpr failed");
+        constexpr int c_lo = compat::clamp(0, 2, 8);
+        static_assert(c_lo == 2, "compat::clamp constexpr lower bound failed");
+        constexpr int c_hi = compat::clamp(10, 2, 8);
+        static_assert(c_hi == 8, "compat::clamp constexpr upper bound failed");
+#endif
+    }
+
 } // namespace
 
 void run_test_algorithm() {
@@ -661,5 +710,6 @@ void run_test_algorithm() {
     test_uninitialized_memory();
     test_user_overload_resolution();
     test_supplemental_algorithms();
+    test_clamp_and_inline_var();
     std::cout << "  test_algorithm passed." << std::endl;
 }

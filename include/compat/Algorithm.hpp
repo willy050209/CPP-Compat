@@ -5,8 +5,9 @@
 #include "Optional.hpp"
 #include "detail/SelfAlgorithm.hpp"
 
+#include <algorithm>
+
 #if COMPAT_HAS_STD_RANGES
-#  include <algorithm>
 #  include <functional>
 #  include <numeric>
 
@@ -232,5 +233,45 @@ namespace compat {
     namespace ranges {
         using namespace ::compat::detail::self_algo::ranges;
     }
+} // namespace compat
+#endif
+
+#if COMPAT_HAS_STD_CLAMP && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+namespace compat {
+    using std::clamp;
+} // namespace compat
+#else
+namespace compat {
+
+    /// <summary>
+    /// 將數值限定於 [lo, hi] 區間之夾取函式（向下相容 C++14，對齊 C++17 std::clamp）。
+    /// </summary>
+    /// <typeparam name="T">欲進行比較的數值型別。</typeparam>
+    /// <param name="val">欲夾取的數值。</param>
+    /// <param name="lo">區間下限，必須滿足 !(hi &lt; lo)。</param>
+    /// <param name="hi">區間上限。</param>
+    /// <returns>若 val &lt; lo 則回傳 lo；若 hi &lt; val 則回傳 hi；否則回傳 val。</returns>
+    template <typename T>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_14 const T& clamp(const T& val, const T& lo, const T& hi) {
+        COMPAT_ASSERT(!(hi < lo));
+        return (val < lo) ? lo : (hi < val) ? hi : val;
+    }
+
+    /// <summary>
+    /// 使用自訂比較謂詞將數值限定於 [lo, hi] 區間之夾取函式（向下相容 C++14，對齊 C++17 std::clamp）。
+    /// </summary>
+    /// <typeparam name="T">欲進行比較的數值型別。</typeparam>
+    /// <typeparam name="Compare">自訂比較函式物件型別。</typeparam>
+    /// <param name="val">欲夾取的數值。</param>
+    /// <param name="lo">區間下限，必須滿足 !comp(hi, lo)。</param>
+    /// <param name="hi">區間上限。</param>
+    /// <param name="comp">自訂二元比較述詞。</param>
+    /// <returns>若 comp(val, lo) 則回傳 lo；若 comp(hi, val) 則回傳 hi；否則回傳 val。</returns>
+    template <typename T, typename Compare>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_14 const T& clamp(const T& val, const T& lo, const T& hi, Compare comp) {
+        COMPAT_ASSERT(!comp(hi, lo));
+        return comp(val, lo) ? lo : comp(hi, val) ? hi : val;
+    }
+
 } // namespace compat
 #endif

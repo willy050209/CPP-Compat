@@ -58,6 +58,7 @@
 | `COMPAT_HAS_STD_RANGES_IOTA` | `__cpp_lib_ranges_iota >= 202202L` (C++23) | 是否支援原生 `std::ranges::iota` 演算法 |
 | `COMPAT_HAS_STD_RANGES_SHIFT` | `__cpp_lib_ranges_shift >= 202202L` (C++23) | 是否支援原生 `std::ranges::shift_left` / `shift_right` |
 | `COMPAT_HAS_STD_RANGES_GENERATE_RANDOM` | `__cpp_lib_ranges_generate_random >= 202403L` (C++26) | 是否支援原生 `std::ranges::generate_random` |
+| `COMPAT_HAS_STD_CLAMP` | `__cpp_lib_clamp >= 201603L` (C++17) | 是否支援原生 `std::clamp` |
 
 
 ---
@@ -85,9 +86,13 @@
 ```
 - **說明**：跨平台終止函式。保證先觸發 `std::abort()` 產生 Core Dump / Crash Report，後續緊跟 `__builtin_unreachable()`，徹底杜絕編譯器因推導不可達而進行錯誤的死碼消除（Dead Code Elimination）。
 
-### `COMPAT_CONSTEXPR_14` 與 `COMPAT_CONSTEXPR_20`
-- `COMPAT_CONSTEXPR_14`：在 C++14 及以上環境展開為 `constexpr`，在 C++11 環境展開為 `inline`，用於修飾包含迴圈、區域變數或修改內部狀態的函式。
-- `COMPAT_CONSTEXPR_20`：在 C++20 及以上環境展開為 `constexpr`，在 C++11/14/17 展開為 `inline`。
+### 巨集語法支援 (Constexpr & Inline Variables)
+- **`COMPAT_CONSTEXPR_14`**：在 C++14 及以上環境展開為 `constexpr`，在 C++11 環境展開為 `inline`，用於修飾包含迴圈、區域變數或修改內部狀態的函式。
+- **`COMPAT_CONSTEXPR_17`**：在 C++17 及以上環境展開為 `constexpr`，在 C++11/14 環境展開為 `inline`。
+- **`COMPAT_CONSTEXPR_20`**：在 C++20 及以上環境展開為 `constexpr`，在 C++11/14/17 環境展開為 `inline`。
+- **`COMPAT_INLINE_VAR`**：在 C++17 及以上環境展開為 `inline`，在 C++14/11 環境自動降階為 `static`。
+  - **設計目的**：在 C++14/11 模式下若直接撰寫 `inline constexpr`，MSVC 會擲出致命編譯錯誤 `error C7525: inline variables require at least '/std:c++17'`；反之若在標頭檔中使用裸全域變數，又會導致跨編譯單元符號多重定義違反 ODR（One Definition Rule）。
+  - **規範契約**：標頭檔命名空間中的常數定義**一律強制使用 `COMPAT_INLINE_VAR constexpr`**，嚴禁使用裸 `inline constexpr`。
 
 ---
 

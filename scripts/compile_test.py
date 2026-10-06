@@ -32,6 +32,13 @@ int main() {
     auto formatted = compat::format("Formatted {} and {}", "alpha", 999);
     compat::println("Format test: {}", formatted);
 
+    int clamped = compat::clamp(15, 1, 10);
+    compat::println("Clamp test: compat::clamp(15, 1, 10) = {}", clamped);
+    if (clamped != 10) {
+        std::cerr << "Clamp test failed!" << std::endl;
+        return 2;
+    }
+
     compat::println("Single-header test passed successfully!");
     return 0;
 }
@@ -43,9 +50,15 @@ test_exe = REPO_ROOT / "test_smoke_single_header.exe"
 with open(test_cpp, "w", encoding="utf-8-sig") as f:
     f.write(cpp_source)
 
-vcvars = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+candidate_vcvars = [
+    r"C:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvars64.bat",
+    r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+    r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+    r"C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+]
+vcvars = next((p for p in candidate_vcvars if Path(p).exists()), candidate_vcvars[0])
 
-for std_flag in ["/std:c++20", "/std:c++17"]:
+for std_flag in ["/std:c++20", "/std:c++17", "/std:c++14"]:
     print(f"\n--- Testing MSVC {std_flag} ---")
     bat_script = f"""@echo off
 call "{vcvars}" >nul 2>&1
@@ -73,4 +86,4 @@ for p in [test_cpp, test_exe, REPO_ROOT / "test_smoke_single_header.obj", REPO_R
     if p.exists():
         p.unlink()
 
-print("[SUCCESS] All single-header MSVC compiler tests (/std:c++20 and /std:c++17) passed!")
+print("[SUCCESS] All single-header MSVC compiler tests (/std:c++20, /std:c++17, and /std:c++14) passed!")

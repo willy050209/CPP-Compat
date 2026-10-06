@@ -113,6 +113,13 @@ namespace detail {
 #  define COMPAT_CONSTEXPR_20 inline
 #endif
 
+// Inline variable support (C++17+ uses inline, C++14/11 degrades to static to prevent MSVC C7525 & ODR violations)
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  define COMPAT_INLINE_VAR inline
+#else
+#  define COMPAT_INLINE_VAR static
+#endif
+
 
 // ABI tagging and inline namespace support for fallback implementations
 #ifndef COMPAT_ABI_TAG
@@ -148,6 +155,7 @@ namespace detail {
 #  define COMPAT_HAS_STD_RANGES_SHIFT           0
 #  define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
 #  define COMPAT_HAS_STD_FILESYSTEM             0
+#  define COMPAT_HAS_STD_CLAMP                  0
 
 #else
 
@@ -346,6 +354,15 @@ namespace detail {
 #    endif
 #  else
 #    define COMPAT_HAS_STD_FILESYSTEM 0
+#  endif
+
+// Feature detection: std::clamp (C++17+)
+#  if defined(__cpp_lib_clamp) && (__cpp_lib_clamp >= 201603L)
+#    define COMPAT_HAS_STD_CLAMP 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#    define COMPAT_HAS_STD_CLAMP 1
+#  else
+#    define COMPAT_HAS_STD_CLAMP 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)

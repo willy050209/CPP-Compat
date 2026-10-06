@@ -154,6 +154,13 @@ namespace detail {
 #  define COMPAT_CONSTEXPR_20 inline
 #endif
 
+// Inline variable support (C++17+ uses inline, C++14/11 degrades to static to prevent MSVC C7525 & ODR violations)
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  define COMPAT_INLINE_VAR inline
+#else
+#  define COMPAT_INLINE_VAR static
+#endif
+
 
 // ABI tagging and inline namespace support for fallback implementations
 #ifndef COMPAT_ABI_TAG
@@ -189,6 +196,7 @@ namespace detail {
 #  define COMPAT_HAS_STD_RANGES_SHIFT           0
 #  define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
 #  define COMPAT_HAS_STD_FILESYSTEM             0
+#  define COMPAT_HAS_STD_CLAMP                  0
 
 #else
 
@@ -387,6 +395,15 @@ namespace detail {
 #    endif
 #  else
 #    define COMPAT_HAS_STD_FILESYSTEM 0
+#  endif
+
+// Feature detection: std::clamp (C++17+)
+#  if defined(__cpp_lib_clamp) && (__cpp_lib_clamp >= 201603L)
+#    define COMPAT_HAS_STD_CLAMP 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#    define COMPAT_HAS_STD_CLAMP 1
+#  else
+#    define COMPAT_HAS_STD_CLAMP 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
@@ -3714,11 +3731,7 @@ namespace self_ranges {
         /// </summary>
         struct default_sentinel_t {};
 
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-        inline constexpr default_sentinel_t default_sentinel{};
-#else
-        constexpr default_sentinel_t default_sentinel{};
-#endif
+        COMPAT_INLINE_VAR constexpr default_sentinel_t default_sentinel{};
 
         /// <summary>
         /// 懸空迭代器佔位型別 (對齊 C++20 std::ranges::dangling)。
@@ -4229,13 +4242,7 @@ namespace self_ranges {
         /// <summary>
         /// ISO C++23 範圍建構式標記常數實體 (對齊 std::from_range)。
         /// </summary>
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-        inline constexpr from_range_t from_range{};
-#else
-        namespace {
-            constexpr const from_range_t& from_range = static_const<from_range_t>::value;
-        }
-#endif
+        COMPAT_INLINE_VAR constexpr from_range_t from_range{};
 
         namespace detail {
             template <typename S, typename I>
@@ -12949,7 +12956,6 @@ namespace compat {
 // ============================================================================
 
 #if COMPAT_HAS_STD_RANGES
-#  include <algorithm>
 #  include <functional>
 #  include <numeric>
 
@@ -13175,6 +13181,46 @@ namespace compat {
     namespace ranges {
         using namespace ::compat::detail::self_algo::ranges;
     }
+} // namespace compat
+#endif
+
+#if COMPAT_HAS_STD_CLAMP && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+namespace compat {
+    using std::clamp;
+} // namespace compat
+#else
+namespace compat {
+
+    /// <summary>
+    /// 將數值限定於 [lo, hi] 區間之夾取函式（向下相容 C++14，對齊 C++17 std::clamp）。
+    /// </summary>
+    /// <typeparam name="T">欲進行比較的數值型別。</typeparam>
+    /// <param name="val">欲夾取的數值。</param>
+    /// <param name="lo">區間下限，必須滿足 !(hi &lt; lo)。</param>
+    /// <param name="hi">區間上限。</param>
+    /// <returns>若 val &lt; lo 則回傳 lo；若 hi &lt; val 則回傳 hi；否則回傳 val。</returns>
+    template <typename T>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_14 const T& clamp(const T& val, const T& lo, const T& hi) {
+        COMPAT_ASSERT(!(hi < lo));
+        return (val < lo) ? lo : (hi < val) ? hi : val;
+    }
+
+    /// <summary>
+    /// 使用自訂比較謂詞將數值限定於 [lo, hi] 區間之夾取函式（向下相容 C++14，對齊 C++17 std::clamp）。
+    /// </summary>
+    /// <typeparam name="T">欲進行比較的數值型別。</typeparam>
+    /// <typeparam name="Compare">自訂比較函式物件型別。</typeparam>
+    /// <param name="val">欲夾取的數值。</param>
+    /// <param name="lo">區間下限，必須滿足 !comp(hi, lo)。</param>
+    /// <param name="hi">區間上限。</param>
+    /// <param name="comp">自訂二元比較述詞。</param>
+    /// <returns>若 comp(val, lo) 則回傳 lo；若 comp(hi, val) 則回傳 hi；否則回傳 val。</returns>
+    template <typename T, typename Compare>
+    COMPAT_NODISCARD COMPAT_CONSTEXPR_14 const T& clamp(const T& val, const T& lo, const T& hi, Compare comp) {
+        COMPAT_ASSERT(!comp(hi, lo));
+        return comp(val, lo) ? lo : comp(hi, val) ? hi : val;
+    }
+
 } // namespace compat
 #endif
 
@@ -14304,11 +14350,7 @@ private:
 
 using format_parse_context = basic_format_parse_context<char>;
 
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-alignas(64) inline constexpr char DigitsLut[200] = {
-#else
-alignas(64) static const char DigitsLut[200] = {
-#endif
+alignas(64) COMPAT_INLINE_VAR constexpr char DigitsLut[200] = {
     '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9',
     '1', '0', '1', '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9',
     '2', '0', '2', '1', '2', '2', '2', '3', '2', '4', '2', '5', '2', '6', '2', '7', '2', '8', '2', '9',
@@ -16756,6 +16798,7 @@ inline void println() {
 #undef COMPAT_HAS_STD_RANGES_SHIFT
 #undef COMPAT_HAS_STD_RANGES_GENERATE_RANDOM
 #undef COMPAT_HAS_STD_FILESYSTEM
+#undef COMPAT_HAS_STD_CLAMP
 #undef COMPAT_BAD_EXPECTED_ACCESS_DEFINED
 #undef COMPAT_HAS_STD_OPTIONAL
 
