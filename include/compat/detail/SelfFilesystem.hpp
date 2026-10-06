@@ -1425,18 +1425,18 @@ public:
     directory_entry& operator=(const directory_entry&) = default;
     directory_entry& operator=(directory_entry&&) noexcept = default;
 
-    explicit directory_entry(const path& p) : m_path(p) {
+    explicit directory_entry(const filesystem::path& p) : m_path(p) {
         refresh();
     }
-    directory_entry(const path& p, std::error_code& ec) : m_path(p) {
+    directory_entry(const filesystem::path& p, std::error_code& ec) : m_path(p) {
         refresh(ec);
     }
 
-    void assign(const path& p) {
+    void assign(const filesystem::path& p) {
         m_path = p;
         refresh();
     }
-    void replace_filename(const path& p) {
+    void replace_filename(const filesystem::path& p) {
         m_path.replace_filename(p);
         refresh();
     }
@@ -1448,7 +1448,7 @@ public:
         m_status = filesystem::status(m_path, ec);
     }
 
-    [[nodiscard]] const path& path() const noexcept { return m_path; }
+    [[nodiscard]] const filesystem::path& path() const noexcept { return m_path; }
     operator const filesystem::path&() const noexcept { return m_path; }
 
     [[nodiscard]] bool exists() const { return filesystem::exists(m_status); }

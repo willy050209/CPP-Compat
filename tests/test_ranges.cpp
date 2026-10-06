@@ -50,9 +50,15 @@ namespace {
         TEST_ASSERT(sub.size() == 3);
         TEST_ASSERT(*sub.begin() == 10);
 
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
         auto empty_v = compat::views::empty<double>;
         TEST_ASSERT(empty_v.empty());
         TEST_ASSERT(empty_v.size() == 0);
+#else
+        compat::ranges::empty_view<double> empty_v;
+        TEST_ASSERT(empty_v.empty());
+        TEST_ASSERT(empty_v.size() == 0);
+#endif
 
         // Dangling & subrange_kind
         compat::ranges::dangling dang{};
