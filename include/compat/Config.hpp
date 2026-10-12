@@ -157,6 +157,7 @@ namespace detail {
 #  define COMPAT_HAS_STD_FILESYSTEM             0
 #  define COMPAT_HAS_STD_CLAMP                  0
 #  define COMPAT_HAS_STD_SPAN                   0
+#  define COMPAT_HAS_STD_PROPAGATE_CONST        0
 
 #else
 
@@ -377,6 +378,17 @@ namespace detail {
 #    endif
 #  else
 #    define COMPAT_HAS_STD_SPAN 0
+#  endif
+
+// Feature detection: std::experimental::propagate_const (Library Fundamentals TS)
+#  if defined(__has_include)
+#    if __has_include(<experimental/propagate_const>) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#      define COMPAT_HAS_STD_PROPAGATE_CONST 1
+#    else
+#      define COMPAT_HAS_STD_PROPAGATE_CONST 0
+#    endif
+#  else
+#    define COMPAT_HAS_STD_PROPAGATE_CONST 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)

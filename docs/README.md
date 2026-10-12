@@ -24,6 +24,7 @@ CPP-Compat 採完全解耦與模組化設計。您可以包含總括標頭 `<com
 | [**受約束範圍演算法 (Algorithms)**](algorithms.md) | `<compat/Algorithm.hpp>` | `compat`, `compat::ranges` | Niebloid 函式物件, 數值夾取 (`compat::clamp`, 向下相容 C++14), 投影 (`compat::identity`, 成員指標), 標籤結果型別 (`in_out_result` 等), 全 11 大類演算法家族 (42+ 新演算法) | C++17 / C++20 / C++23 / C++26 |
 | [**未初始化記憶體 (Memory)**](memory.md) | `<compat/Memory.hpp>` | `compat::ranges` | `construct_at`, `destroy_at`, `destroy`, `uninitialized_copy/fill/move/construct`, RAII 回滾安全防護 | C++20 |
 | [**檔案系統 (Filesystem)**](filesystem.md) | `<compat/Filesystem.hpp>` | `compat::filesystem` | `path`, `filesystem_error`, `directory_entry`, `directory_iterator`, `recursive_directory_iterator`, `file_status`, `space_info`, 全套檔案系統 CRUD / 查詢 API (例外與 error_code 雙軌) | C++17 |
+| [**常數傳播指標 (Propagate Const)**](propagate_const.md) | `<compat/PropagateConst.hpp>` | `compat` | `compat::propagate_const<T>`, `compat::get_underlying`, 深常數性傳播 (Deep Const), Pimpl 慣用法安全防護, STL 容器雜湊與比較特化 | ISO/IEC TS 19568 |
 
 ---
 

@@ -17,6 +17,8 @@
 - 📚 [**API 參考首頁與導覽 (docs/README.md)**](docs/README.md)
 - ⚙️ [**特性檢測與配置 (docs/config.md)**](docs/config.md)：標準方言常數、特性探測巨集、雙軌開關
 - 🔤 [**字串檢視 (docs/string_view.md)**](docs/string_view.md)：`compat::string_view`、`std::hash` 特化
+- 📏 [**連續緩衝區視圖 (docs/span.md)**](docs/span.md)：`compat::span<T, Extent>`、`dynamic_extent`、`as_bytes`、自動邊界夾取安全保護
+- 🛡️ [**常數傳播指標 (docs/propagate_const.md)**](docs/propagate_const.md)：`compat::propagate_const<T>`、`get_underlying`、深常數性傳播 (Deep Const)、Pimpl 慣用法安全防護
 - 🎁 [**選用值容器 (docs/optional.md)**](docs/optional.md)：`compat::optional<T>`、`nullopt`、`bad_optional_access`
 - 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作、`emplace()` 就地建構與強例外安全保證
 - 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、標準格式規格語法（`[[fill]align][sign][#][0][width][.precision][type]`）、Unicode 東亞寬度 (UAX #11 / P1868R2)、編譯期靜態檢查與執行期例外防護、`formatter<T>` 自訂型別擴充
@@ -65,6 +67,8 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **特性檢測** | `<compat/Config.hpp>` | `compat`, `compat::detail` | 探測 `__cpp_lib_*` | `COMPAT_FORCE_SELF_IMPLEMENTATION` / `COMPAT_FORCE_STD_IMPLEMENTATION` |
 | **字串檢視** | `<compat/StringView.hpp>` | `compat` | `std::string_view` (C++17+) | 自研 `compat::string_view`（constexpr、`std::hash`）|
+| **連續緩衝區視圖** | `<compat/Span.hpp>` | `compat` | `std::span` (C++20+) | 自研 `compat::span<T, Extent>`（自動安全箝位、constexpr、位元組視圖）|
+| **常數傳播指標** | `<compat/PropagateConst.hpp>` | `compat` | `std::experimental::propagate_const` (TS v2/v3) | 自研 `compat::propagate_const<T>`（深常數性傳播、Pimpl 防護、STL 特化）|
 | **選用值容器** | `<compat/Optional.hpp>` | `compat` | `std::optional` (C++17+) | 自研 `compat::optional<T>` (Tagged Union, constexpr) |
 | **期望值/錯誤** | `<compat/Expected.hpp>` | `compat` | `std::expected`, `std::unexpected` | C++17: `std::variant`<br>C++11/14: Tagged Unrestricted Union<br>（完整支援 `emplace()` 與強例外安全） |
 | **格式化輸出** | `<compat/Format.hpp>` | `compat` | `std::format` (C++20+) | 自研格式化規格引擎（對齊/填充/進位/精度/東亞寬度）+ `compat::formatter<T>` |
@@ -74,6 +78,7 @@
 | **視圖適配器** | `<compat/View.hpp>` | `compat::views` | `std::views` (C++20+) | 自研管道 (`\|`)、核心 Views、C++26 `concat` 與 `cache_latest` |
 | **範圍演算法** | `<compat/Algorithm.hpp>`| `compat::ranges` | `std::ranges::*` (C++20+) | 自研 Niebloids、投影支援、標籤結果型別 (`in_out_result` 等) |
 | **記憶體演算法**| `<compat/Memory.hpp>` | `compat::ranges` | `std::ranges::*` (C++20+) | 自研未初始化物件建構/銷毀、RAII 回滾保護、標籤結果型別 |
+| **檔案系統** | `<compat/Filesystem.hpp>` | `compat::filesystem` | `std::filesystem` (C++17+) | 自研 `compat::filesystem`（跨平臺路徑操作、目錄迭代器、CRUD 查詢）|
 | **總括標頭** | `<compat/Compat.hpp>` | 全部聚合 | 聚合所有模組 | 聚合所有模組 |
 
 ---

@@ -60,6 +60,7 @@
 | `COMPAT_HAS_STD_RANGES_GENERATE_RANDOM` | `__cpp_lib_ranges_generate_random >= 202403L` (C++26) | 是否支援原生 `std::ranges::generate_random` |
 | `COMPAT_HAS_STD_CLAMP` | `__cpp_lib_clamp >= 201603L` (C++17) | 是否支援原生 `std::clamp` |
 | `COMPAT_HAS_STD_SPAN` | `__cpp_lib_span >= 202002L` (C++20) | 是否支援原生 `std::span` |
+| `COMPAT_HAS_STD_PROPAGATE_CONST` | `__has_include(<experimental/propagate_const>)` (C++14) | 是否支援原生 `std::experimental::propagate_const` (ISO/IEC TS 19568) |
 
 
 ---

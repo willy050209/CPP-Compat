@@ -54,6 +54,14 @@ int main() {
         return 4;
     }
 
+    int pc_val = 99;
+    compat::propagate_const<int*> pc(&pc_val);
+    compat::println("PropagateConst test: *pc = {}", *pc);
+    if (*pc != 99 || compat::get_underlying(pc) != &pc_val) {
+        std::cerr << "PropagateConst test failed!" << std::endl;
+        return 5;
+    }
+
     compat::println("Single-header test passed successfully!");
     return 0;
 }

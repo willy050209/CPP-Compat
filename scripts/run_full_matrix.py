@@ -29,6 +29,7 @@ TEST_SOURCES = [
     "tests/test_algorithm.cpp",
     "tests/test_memory.cpp",
     "tests/test_filesystem.cpp",
+    "tests/test_propagate_const.cpp",
 ]
 
 CANDIDATE_VCVARS = [
