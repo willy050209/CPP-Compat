@@ -381,7 +381,10 @@ namespace detail {
 #  endif
 
 // Feature detection: std::experimental::propagate_const (Library Fundamentals TS)
-#  if defined(__has_include)
+// Note: GCC libstdc++ <experimental/propagate_const> has a confirmed defect where default-construction
+// of propagate_const<T*> leaves scalar pointer members uninitialized (holding indeterminate/garbage values).
+// CPP-Compat defaults to its conforming, zero-overhead implementation with safe value-initialization.
+#  if defined(COMPAT_FORCE_STD_IMPLEMENTATION) && defined(__has_include)
 #    if __has_include(<experimental/propagate_const>) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
 #      define COMPAT_HAS_STD_PROPAGATE_CONST 1
 #    else

@@ -470,7 +470,10 @@ namespace detail {
 #  endif
 
 // Feature detection: std::experimental::propagate_const (Library Fundamentals TS)
-#  if defined(__has_include)
+// Note: GCC libstdc++ <experimental/propagate_const> has a confirmed defect where default-construction
+// of propagate_const<T*> leaves scalar pointer members uninitialized (holding indeterminate/garbage values).
+// CPP-Compat defaults to its conforming, zero-overhead implementation with safe value-initialization.
+#  if defined(COMPAT_FORCE_STD_IMPLEMENTATION) && defined(__has_include)
 #    if __has_include(<experimental/propagate_const>) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
 #      define COMPAT_HAS_STD_PROPAGATE_CONST 1
 #    else
@@ -12968,11 +12971,11 @@ export namespace compat {
         // --------------------------------------------------------------------
 
         /// <summary>
-        /// 預設建構子，預設初始化被包裝之指標物件。
+        /// 預設建構子，值初始化 (Value-initialize) 被包裝之指標物件 (指標歸零為 nullptr)。
         /// </summary>
         template <typename Dummy = T,
                   typename = typename std::enable_if<std::is_default_constructible<Dummy>::value>::type>
-        COMPAT_CONSTEXPR_14 propagate_const() : m_t() {}
+        COMPAT_CONSTEXPR_14 propagate_const() : m_t{} {}
 
         /// <summary>
         /// 移動建構子。
@@ -13076,8 +13079,15 @@ export namespace compat {
         /// <summary>
         /// 檢查被包裝之指標是否非空。
         /// </summary>
-        COMPAT_NODISCARD explicit COMPAT_CONSTEXPR_14 operator bool() const {
+        COMPAT_NODISCARD explicit COMPAT_CONSTEXPR_14 operator bool() const noexcept(noexcept(static_cast<bool>(std::declval<const T&>()))) {
             return static_cast<bool>(m_t);
+        }
+
+        /// <summary>
+        /// 邏輯非運算子，檢查被包裝之指標是否為空。
+        /// </summary>
+        COMPAT_NODISCARD COMPAT_CONSTEXPR_14 bool operator!() const noexcept(noexcept(!static_cast<bool>(std::declval<const T&>()))) {
+            return !static_cast<bool>(m_t);
         }
 
         /// <summary>

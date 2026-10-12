@@ -23,7 +23,9 @@ namespace {
         compat::propagate_const<int*> empty_p;
         TEST_ASSERT(empty_p.get() == nullptr);
         TEST_ASSERT(!empty_p);
+        TEST_ASSERT(!bool(empty_p));
         TEST_ASSERT(empty_p == nullptr);
+        TEST_ASSERT(nullptr == empty_p);
 
         // 2. 數值建構子
         compat::propagate_const<int*> p(&x);
@@ -77,6 +79,8 @@ namespace {
 
         // 移動賦值
         compat::propagate_const<std::unique_ptr<int>> up3;
+        TEST_ASSERT(!up3);
+        TEST_ASSERT(up3.get() == nullptr);
         up3 = std::move(up2);
         TEST_ASSERT(!up2);
         TEST_ASSERT(bool(up3));

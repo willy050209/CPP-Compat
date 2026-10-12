@@ -141,11 +141,11 @@ namespace compat {
         // --------------------------------------------------------------------
 
         /// <summary>
-        /// 預設建構子，預設初始化被包裝之指標物件。
+        /// 預設建構子，值初始化 (Value-initialize) 被包裝之指標物件 (指標歸零為 nullptr)。
         /// </summary>
         template <typename Dummy = T,
                   typename = typename std::enable_if<std::is_default_constructible<Dummy>::value>::type>
-        COMPAT_CONSTEXPR_14 propagate_const() : m_t() {}
+        COMPAT_CONSTEXPR_14 propagate_const() : m_t{} {}
 
         /// <summary>
         /// 移動建構子。
@@ -249,8 +249,15 @@ namespace compat {
         /// <summary>
         /// 檢查被包裝之指標是否非空。
         /// </summary>
-        COMPAT_NODISCARD explicit COMPAT_CONSTEXPR_14 operator bool() const {
+        COMPAT_NODISCARD explicit COMPAT_CONSTEXPR_14 operator bool() const noexcept(noexcept(static_cast<bool>(std::declval<const T&>()))) {
             return static_cast<bool>(m_t);
+        }
+
+        /// <summary>
+        /// 邏輯非運算子，檢查被包裝之指標是否為空。
+        /// </summary>
+        COMPAT_NODISCARD COMPAT_CONSTEXPR_14 bool operator!() const noexcept(noexcept(!static_cast<bool>(std::declval<const T&>()))) {
+            return !static_cast<bool>(m_t);
         }
 
         /// <summary>
