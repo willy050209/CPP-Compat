@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Config.hpp"
 #include "StringView.hpp"
@@ -28,3 +28,24 @@ inline std::string format(compat::string_view fmt, const Args&... args) {
 
 } // namespace compat
 #endif
+
+namespace compat {
+
+/// <summary>
+/// Converts an arithmetic or formattable value to std::string using the compat formatting engine.
+/// Provides a drop-in replacement for std::to_string with zero locale dependence and cross-platform consistency.
+/// </summary>
+/// <typeparam name="T">Type of value to convert.</typeparam>
+/// <param name="value">The value to convert.</param>
+/// <returns>Formatted std::string representation.</returns>
+template <typename T>
+COMPAT_NODISCARD inline std::string to_string(const T& value) {
+#if COMPAT_HAS_STD_FORMAT
+    return std::format("{}", value);
+#else
+    return detail::FormatToString("{}", value);
+#endif
+}
+
+} // namespace compat
+

@@ -25,6 +25,7 @@ CPP-Compat 採完全解耦與模組化設計。您可以包含總括標頭 `<com
 | [**未初始化記憶體 (Memory)**](memory.md) | `<compat/Memory.hpp>` | `compat::ranges` | `construct_at`, `destroy_at`, `destroy`, `uninitialized_copy/fill/move/construct`, RAII 回滾安全防護 | C++20 |
 | [**檔案系統 (Filesystem)**](filesystem.md) | `<compat/Filesystem.hpp>` | `compat::filesystem` | `path`, `filesystem_error`, `directory_entry`, `directory_iterator`, `recursive_directory_iterator`, `file_status`, `space_info`, 全套檔案系統 CRUD / 查詢 API (例外與 error_code 雙軌) | C++17 |
 | [**常數傳播指標 (Propagate Const)**](propagate_const.md) | `<compat/PropagateConst.hpp>` | `compat` | `compat::propagate_const<T>`, `compat::get_underlying`, 深常數性傳播 (Deep Const), Pimpl 慣用法安全防護, STL 容器雜湊與比較特化 | ISO/IEC TS 19568 |
+| [**讀寫互斥鎖 (Shared Mutex)**](shared_mutex.md) | `<compat/SharedMutex.hpp>` | `compat` | `compat::shared_mutex`, `compat::shared_lock<Mutex>`, 跨標準讀寫互斥鎖、C++14/libstdc++ 相容、C++11 雙閘門無餓死 RWLock | C++17 / C++14 |
 
 ---
 

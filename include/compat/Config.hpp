@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // Feature detection and configuration header for compat library.
 
@@ -158,6 +158,8 @@ namespace detail {
 #  define COMPAT_HAS_STD_CLAMP                  0
 #  define COMPAT_HAS_STD_SPAN                   0
 #  define COMPAT_HAS_STD_PROPAGATE_CONST        0
+#  define COMPAT_HAS_STD_SHARED_MUTEX           0
+#  define COMPAT_HAS_STD_SHARED_TIMED_MUTEX     0
 
 #else
 
@@ -392,6 +394,26 @@ namespace detail {
 #    endif
 #  else
 #    define COMPAT_HAS_STD_PROPAGATE_CONST 0
+#  endif
+
+// Feature detection: std::shared_mutex (C++17+)
+#  if defined(__cpp_lib_shared_mutex) && (__cpp_lib_shared_mutex >= 201505L)
+#    define COMPAT_HAS_STD_SHARED_MUTEX 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#    define COMPAT_HAS_STD_SHARED_MUTEX 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#    define COMPAT_HAS_STD_SHARED_MUTEX 1
+#  else
+#    define COMPAT_HAS_STD_SHARED_MUTEX 0
+#  endif
+
+// Feature detection: std::shared_timed_mutex & std::shared_lock (C++14+)
+#  if defined(__cpp_lib_shared_timed_mutex) && (__cpp_lib_shared_timed_mutex >= 201402L)
+#    define COMPAT_HAS_STD_SHARED_TIMED_MUTEX 1
+#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#    define COMPAT_HAS_STD_SHARED_TIMED_MUTEX 1
+#  else
+#    define COMPAT_HAS_STD_SHARED_TIMED_MUTEX 0
 #  endif
 
 #endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)

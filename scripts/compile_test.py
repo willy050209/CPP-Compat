@@ -62,6 +62,23 @@ int main() {
         return 5;
     }
 
+    compat::shared_mutex sm;
+    {
+        compat::shared_lock<compat::shared_mutex> slk(sm);
+        compat::println("SharedLock test: owns_lock = {}", slk.owns_lock());
+        if (!slk.owns_lock()) {
+            std::cerr << "SharedLock test failed!" << std::endl;
+            return 6;
+        }
+    }
+
+    std::string s_val = compat::to_string(12345);
+    compat::println("ToString test: compat::to_string(12345) = {}", s_val);
+    if (s_val != "12345") {
+        std::cerr << "ToString test failed!" << std::endl;
+        return 7;
+    }
+
     compat::println("Single-header test passed successfully!");
     return 0;
 }

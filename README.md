@@ -1,4 +1,4 @@
-﻿# CPP-Compat（自研 C++ 標準庫向下相容層）
+# CPP-Compat（自研 C++ 標準庫向下相容層）
 
 [![CI Build](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml/badge.svg)](https://github.com/Willy/CPP-Compat/actions/workflows/ci.yml)
 [![Standard](https://img.shields.io/badge/C%2B%2B-11%20%7C%2014%20%7C%2017%20%7C%2020%20%7C%2023%20%7C%2026-blue.svg)](#)
@@ -19,6 +19,7 @@
 - 🔤 [**字串檢視 (docs/string_view.md)**](docs/string_view.md)：`compat::string_view`、`std::hash` 特化
 - 📏 [**連續緩衝區視圖 (docs/span.md)**](docs/span.md)：`compat::span<T, Extent>`、`dynamic_extent`、`as_bytes`、自動邊界夾取安全保護
 - 🛡️ [**常數傳播指標 (docs/propagate_const.md)**](docs/propagate_const.md)：`compat::propagate_const<T>`、`get_underlying`、深常數性傳播 (Deep Const)、Pimpl 慣用法安全防護
+- 🔒 [**讀寫互斥鎖 (docs/shared_mutex.md)**](docs/shared_mutex.md)：`compat::shared_mutex`、`compat::shared_lock<Mutex>`、跨標準讀寫互斥鎖、C++14/libstdc++ 相容、C++11 雙閘門無餓死 RWLock
 - 🎁 [**選用值容器 (docs/optional.md)**](docs/optional.md)：`compat::optional<T>`、`nullopt`、`bad_optional_access`
 - 🎯 [**期望值與錯誤處理 (docs/expected.md)**](docs/expected.md)：`expected<T, E>`、`unexpected`、Monadic 操作、`emplace()` 就地建構與強例外安全保證
 - 📝 [**格式化輸出 (docs/format.md)**](docs/format.md)：`format`、標準格式規格語法（`[[fill]align][sign][#][0][width][.precision][type]`）、Unicode 東亞寬度 (UAX #11 / P1868R2)、編譯期靜態檢查與執行期例外防護、`formatter<T>` 自訂型別擴充

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // Master include header for compat library.
 // Zero external dependencies, downward compatible from C++23 to C++11.
@@ -17,4 +17,5 @@
 #include "Algorithm.hpp"
 #include "Filesystem.hpp"
 #include "PropagateConst.hpp"
+#include "SharedMutex.hpp"
 

@@ -30,6 +30,7 @@ TEST_SOURCES = [
     "tests/test_memory.cpp",
     "tests/test_filesystem.cpp",
     "tests/test_propagate_const.cpp",
+    "tests/test_shared_mutex.cpp",
 ]
 
 CANDIDATE_VCVARS = [

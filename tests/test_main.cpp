@@ -1,4 +1,4 @@
-﻿#include "test_helpers.hpp"
+#include "test_helpers.hpp"
 #include <iostream>
 
 void run_test_expected();
@@ -13,6 +13,7 @@ void run_test_algorithm();
 void run_test_memory();
 void run_test_filesystem();
 void run_test_propagate_const();
+void run_test_shared_mutex();
 
 /// <summary>
 /// 單元測試套件整合進入點。
@@ -35,6 +36,7 @@ int main() {
     run_test_memory();
     run_test_filesystem();
     run_test_propagate_const();
+    run_test_shared_mutex();
 
 
     TestStats& stats = GetGlobalTestStats();
