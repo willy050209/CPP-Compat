@@ -1,4 +1,4 @@
-﻿# 專案進度狀態看板 (STATE.md)
+# 專案進度狀態看板 (STATE.md)
 
 ## 當前進度狀態
 - [x] Phase 1: 需求釐清、技術調研與實作計畫核准 (Approved)
@@ -53,6 +53,14 @@
   - [x] 通過雙軌測試矩陣：原生模式 (824 斷言) 與強制 Fallback 模式 (832 斷言) 100% 全數通過
   - [x] 撰寫官方 API 規格文件 `docs/filesystem.md`，更新 `docs/README.md`、`ARCHITECTURE.md`、`README.md`
   - [x] 更新 `bundle_header.py`、`export_module.py`，重新打包 `dist/compat.hpp` (16,700 行) 與 `dist/compat.ixx` (16,711 行)，通過 26 項打包驗證斷言
+- [x] C++11 Seamless Upgrade & Packaging Audit Phase:
+  - [x] 解決漸進升級過渡期 ABI 撕裂：設計 `self_v1` 與 `std_v1` inline namespace，支援 `COMPAT_FORCE_SELF_IMPL` 鎖定跨 TU 二進位相容
+  - [x] 解決 C++11 constexpr 與 inline variable ODR 限制：以 `detail::static_const` / `COMPAT_INLINE_VAR` 取代 C++17 inline 變數，修復 `SelfStringView.hpp` constexpr 限制
+  - [x] 消除單標頭打包符號二義性：以 `#if !COMPAT_USE_STD_*` 條件防護自研模組（`SelfStringView.hpp`、`SelfFilesystem.hpp`），修復 MSVC C2872 衝突
+  - [x] CMake 下游依賴傳遞與多重部署途徑支援：更新 `CMakeLists.txt` 與 `cmake/compatConfig.cmake.in` 納入 `find_dependency(Threads)`，並在 `scripts/test_packaging.py` 新增實體 downstream install/consume 驗證
+  - [x] CI 工作流程與跨編譯器驗證矩陣跨平台升級：支援 MSVC、GCC、Clang 跨 TU ABI 隔離與煙霧驗證
+  - [x] 單元測試全面通過純 C++11 嚴格語法審核（0 generic lambda、0 數字分隔符、0 單參數 static_assert，-std=c++11 -pedantic 零警告）
+  - [x] 完善官方文件（`docs/config.md`、`README.md`、`ARCHITECTURE.md`、`STATE.md`）
 
 
 

@@ -70,7 +70,7 @@ def main():
             if out_exe.exists():
                 out_exe.unlink()
 
-            extra_defs = ["-DCOMPAT_FORCE_FALLBACK=1", "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1"] if mode == "fallback" else []
+            extra_defs = ["-DCOMPAT_FORCE_FALLBACK=1", "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1", "-DCOMPAT_FORCE_SELF_IMPL=1"] if mode == "fallback" else []
             cmd = ["g++.exe", f"-std={std}", "-O2", "-I", "include"] + extra_defs + TEST_SOURCES + ["-o", str(out_exe)]
             code, stdout, stderr = run_cmd(cmd)
             if code != 0:
@@ -99,7 +99,7 @@ def main():
             if out_exe.exists():
                 out_exe.unlink()
 
-            extra_defs = ["-DCOMPAT_FORCE_FALLBACK=1", "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1"] if mode == "fallback" else []
+            extra_defs = ["-DCOMPAT_FORCE_FALLBACK=1", "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1", "-DCOMPAT_FORCE_SELF_IMPL=1"] if mode == "fallback" else []
             cmd = ["clang++.exe", f"-std={std}", "-O2", "-I", "include"] + extra_defs + TEST_SOURCES + ["-o", str(out_exe)]
             code, stdout, stderr = run_cmd(cmd)
             if code != 0:
@@ -130,7 +130,7 @@ def main():
             if out_exe.exists():
                 out_exe.unlink()
 
-            extra_defs = "/DCOMPAT_FORCE_FALLBACK=1 /DCOMPAT_FORCE_SELF_IMPLEMENTATION=1" if mode == "fallback" else ""
+            extra_defs = "/DCOMPAT_FORCE_FALLBACK=1 /DCOMPAT_FORCE_SELF_IMPLEMENTATION=1 /DCOMPAT_FORCE_SELF_IMPL=1" if mode == "fallback" else ""
             bat_content = f"""@echo off
 call "{VCVARS}" >nul 2>&1
 cl.exe /std:{std} /EHsc /O2 /W4 /utf-8 /I"include" {extra_defs} {test_sources_rel} /Fe"{out_exe}" >nul 2>&1

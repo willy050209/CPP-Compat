@@ -15,9 +15,4 @@ inline namespace COMPAT_STD_NS {
 #    error "Standard C++ library does not support requested modern features"
 #  endif
 #  include "detail/SelfStringView.hpp"
-namespace compat {
-inline namespace COMPAT_SELF_NS {
-    using string_view = detail::string_view;
-} // inline namespace COMPAT_SELF_NS
-} // namespace compat
 #endif

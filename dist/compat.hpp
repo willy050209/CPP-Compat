@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -22,7 +21,6 @@
 #include <cstring>
 #include <cwchar>
 #include <exception>
-#include <fstream>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -64,11 +62,17 @@
 
 // Global ABI lock toggle: forces self-contained C++11 fallback shims across all standards for ABI stability
 #if !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
-#  if defined(COMPAT_FORCE_FALLBACK)
+#  if defined(COMPAT_FORCE_SELF_IMPL)
+#    define COMPAT_FORCE_SELF_IMPLEMENTATION COMPAT_FORCE_SELF_IMPL
+#  elif defined(COMPAT_FORCE_FALLBACK)
 #    define COMPAT_FORCE_SELF_IMPLEMENTATION COMPAT_FORCE_FALLBACK
 #  else
 #    define COMPAT_FORCE_SELF_IMPLEMENTATION 0
 #  endif
+#endif
+
+#if !defined(COMPAT_FORCE_SELF_IMPL)
+#  define COMPAT_FORCE_SELF_IMPL COMPAT_FORCE_SELF_IMPLEMENTATION
 #endif
 
 #if !defined(COMPAT_FORCE_FALLBACK)
@@ -2031,6 +2035,21 @@ using detail::bad_expected_access;
 // Module Section: include/compat/detail/SelfFilesystem.hpp
 // ============================================================================
 
+#if !COMPAT_USE_STD_FILESYSTEM
+
+#include <string>
+#include <vector>
+#include <memory>
+#include <chrono>
+#include <system_error>
+#include <stdexcept>
+#include <algorithm>
+#include <utility>
+#include <cstdint>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
 #if defined(_WIN32)
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -3757,6 +3776,8 @@ inline uintmax_t remove_all(const path& p, std::error_code& ec) {
 } // inline namespace COMPAT_SELF_NS
 } // namespace filesystem
 } // namespace compat
+
+#endif // !COMPAT_USE_STD_FILESYSTEM
 
 // ============================================================================
 // Module Section: include/compat/detail/SelfRanges.hpp
@@ -6668,10 +6689,20 @@ namespace self_ranges {
 // Module Section: include/compat/detail/SelfStringView.hpp
 // ============================================================================
 
+#if !COMPAT_USE_STD_STRING_VIEW
+
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <ostream>
+#include <stdexcept>
+#include <algorithm>
+#include <functional>
+#include <iterator>
+
 namespace compat {
 namespace detail {
-inline namespace COMPAT_ABI_TAG {
-
 namespace string_view_helper {
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
     inline constexpr std::size_t ConstexprStrlen(const char* s) noexcept {
@@ -6723,6 +6754,11 @@ namespace string_view_helper {
 #endif
     }
 } // namespace string_view_helper
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
+
+namespace string_view_helper = detail::string_view_helper;
 
 /// <summary>
 /// Lightweight non-owning view of a character buffer, compatible with C++11 and later.
@@ -7433,17 +7469,16 @@ inline std::ostream& operator<<(std::ostream& os, string_view sv) {
     return os;
 }
 
-} // namespace COMPAT_ABI_TAG
-} // namespace detail
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 namespace std {
     /// <summary>
-    /// std::hash specialization for compat::detail::string_view using FNV-1a.
+    /// std::hash specialization for compat::string_view using FNV-1a.
     /// </summary>
     template <>
-    struct hash<compat::detail::string_view> {
-        std::size_t operator()(compat::detail::string_view sv) const noexcept {
+    struct hash<compat::string_view> {
+        std::size_t operator()(compat::string_view sv) const noexcept {
             std::size_t hash_val = 2166136261u;
             for (std::size_t i = 0; i < sv.size(); ++i) {
                 hash_val ^= static_cast<std::size_t>(static_cast<unsigned char>(sv[i]));
@@ -7453,6 +7488,8 @@ namespace std {
         }
     };
 } // namespace std
+
+#endif // !COMPAT_USE_STD_STRING_VIEW
 
 // ============================================================================
 // Module Section: include/compat/detail/SelfUnionExpected.hpp
@@ -14870,11 +14907,6 @@ inline namespace COMPAT_STD_NS {
 #  if defined(COMPAT_FORCE_STD_IMPLEMENTATION)
 #    error "Standard C++ library does not support requested modern features"
 #  endif
-namespace compat {
-inline namespace COMPAT_SELF_NS {
-    using string_view = detail::string_view;
-} // inline namespace COMPAT_SELF_NS
-} // namespace compat
 #endif
 
 // ============================================================================

@@ -34,7 +34,7 @@ jobs:
         run: |
           EXTRA_FLAGS=""
           if [ "${{ matrix.mode }}" = "fallback" ]; then
-            EXTRA_FLAGS="-DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1"
+            EXTRA_FLAGS="-DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1 -DCOMPAT_FORCE_SELF_IMPL=ON"
           fi
           cmake -B build \
             -DCMAKE_CXX_STANDARD=${{ matrix.std }} \
@@ -47,8 +47,9 @@ jobs:
       - name: Run Tests (CTest)
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Verify Packaging Scripts
+      - name: Verify Packaging Scripts & Cross-TU ABI Isolation
         run: |
           python scripts/bundle_header.py -v
           python scripts/export_module.py -v
           python scripts/test_packaging.py
+          python scripts/compile_test.py

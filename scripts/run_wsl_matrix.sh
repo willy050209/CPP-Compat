@@ -24,7 +24,7 @@ for COMPILER in "${COMPILERS[@]}"; do
             
             EXTRA_FLAGS=""
             if [ "${MODE}" = "fallback" ]; then
-                EXTRA_FLAGS="-DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1"
+                EXTRA_FLAGS="-DCOMPAT_FORCE_FALLBACK=ON -DCOMPAT_FORCE_SELF_IMPLEMENTATION=1 -DCOMPAT_FORCE_SELF_IMPL=ON"
             fi
             
             if cmake -B "${BDIR}" \

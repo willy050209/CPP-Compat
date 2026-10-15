@@ -24,6 +24,7 @@ foreach ($std in $standards) {
         if ($mode -eq "fallback") {
             $flags += "-DCOMPAT_FORCE_FALLBACK=ON"
             $flags += "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1"
+            $flags += "-DCOMPAT_FORCE_SELF_IMPL=ON"
         }
         
         & $cmake -B $bdir -S $root -G "Visual Studio 18 2026" -A x64 @flags

@@ -111,6 +111,12 @@ void run_test_string_view() {
     TEST_ASSERT(c >= a);
 
     // 7. 雜湊支援與 std::unordered_map 測試
+    std::size_t h1 = std::hash<compat::string_view>{}(compat::string_view("apple"));
+    std::size_t h2 = std::hash<compat::string_view>{}(compat::string_view("apple"));
+    std::size_t h3 = std::hash<compat::string_view>{}(compat::string_view("banana"));
+    TEST_ASSERT(h1 == h2);
+    TEST_ASSERT(h1 != h3);
+
     std::unordered_map<compat::string_view, int32_t> map;
     map["apple"] = 10;
     map["banana"] = 20;

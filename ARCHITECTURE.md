@@ -1,4 +1,4 @@
-﻿# 系統架構手冊 (ARCHITECTURE.md)
+# 系統架構手冊 (ARCHITECTURE.md)
 
 ## 1. 系統定位
 
@@ -13,14 +13,19 @@ Refinement Phase（2026-09）已完成全套 ISO C++23 對齊、-fno-exceptions 
 
 ```
 include/compat/
-├── Config.hpp             <- 特性檢測巨集中樞（探測 __cpp_lib_*、ABI 隔離、例外開關）
+├── Config.hpp             <- 特性檢測巨集中樞（探測 __cpp_lib_*、ABI 隔離 inline ns、C++11 ODR 防護、例外開關）
 ├── StringView.hpp         <- string_view 轉接（C++17 原生 vs C++11 自研 Fallback）
+├── Span.hpp               <- span<T, Extent> 轉接（C++20 原生 vs 自研邊界防護 Fallback）
+├── PropagateConst.hpp     <- propagate_const<T> 常數傳播指針（TS v2/v3 原生 vs 自研 Fallback）
+├── SharedMutex.hpp        <- shared_mutex 讀寫鎖轉接（C++17 原生 vs C++14 timed 降階 vs C++11 雙閘門鎖）
 ├── Optional.hpp           <- optional 轉接（C++17 原生 vs C++11 自研 Fallback）
 ├── Expected.hpp           <- expected/unexpected 轉接（C++23 / C++17 variant / C++11 union）
 ├── Format.hpp             <- format 轉接（C++20 原生 vs 自研格式引擎）+ compat::formatter<T>
 ├── Print.hpp              <- print/println 轉接（C++23 原生 vs 自研引擎）+ Windows UTF-8
 ├── Parse.hpp              <- parse<T>（支援整數、浮點、bool、string）+ from_chars 介面
 ├── Ranges.hpp             <- ranges 轉接（C++20/23/26 概念、CPO、subrange、to 等）
+├── View.hpp               <- views 視圖適配器轉接（管道語法 |、concat、cache_latest 等）
+├── Algorithm.hpp          <- ranges 演算法轉接（Niebloids、投影、結果標籤）
 ├── Memory.hpp             <- ranges memory 演算法轉接（construct_at, uninitialized_* 等）
 ├── Filesystem.hpp         <- filesystem 轉接（C++17 原生 vs 自研 Win32/POSIX Fallback）
 ├── Compat.hpp             <- 總括標頭檔（包含上述所有模組）
@@ -39,7 +44,7 @@ include/compat/
 
 ---
 
-## 3. Config.hpp 巨集系統
+## 3. Config.hpp 巨集系統與 ABI 防護架構
 
 ### 3.1 特性偵測旗標
 
@@ -48,16 +53,18 @@ include/compat/
 | `COMPAT_HAS_STD_EXPECTED` | `1` 當 `std::expected` 可用（C++23 + `__cpp_lib_expected`） |
 | `COMPAT_HAS_STD_FORMAT` | `1` 當 `std::format` 可用（C++20 + `__cpp_lib_format`） |
 | `COMPAT_HAS_STD_PRINT` | `1` 當 `std::print` 可用（C++23 + `__cpp_lib_print`） |
+| `COMPAT_HAS_STD_SPAN` | `1` 當 `std::span` 可用（C++20 + `__cpp_lib_span`） |
 | `COMPAT_HAS_STD_STRING_VIEW` | `1` 當 `std::string_view` 可用（C++17+） |
 | `COMPAT_HAS_STD_OPTIONAL` | `1` 當 `std::optional` 可用（C++17+） |
 | `COMPAT_HAS_VARIANT` | `1` 當 `std::variant` 可用（C++17+） |
 | `COMPAT_HAS_STD_FILESYSTEM` | `1` 當 `std::filesystem` 可用（C++17+ + `__cpp_lib_filesystem`） |
+| `COMPAT_HAS_STD_SHARED_MUTEX` | `1` 當 `std::shared_mutex` 可用（C++17+ + `__cpp_lib_shared_mutex`） |
 
-### 3.2 雙軌切換開關（互斥）
+### 3.2 雙軌切換開關與 ABI 鎖定（互斥）
 
 | 巨集 | 作用 |
 | :--- | :--- |
-| `COMPAT_FORCE_SELF_IMPLEMENTATION` | 強制所有模組使用自研 Fallback 實作（別名 `COMPAT_FORCE_FALLBACK`） |
+| `COMPAT_FORCE_SELF_IMPL` / `COMPAT_FORCE_SELF_IMPLEMENTATION` | 強制所有模組使用自研 Fallback 實作（相容 `COMPAT_FORCE_FALLBACK`）；跨標準過渡期鎖定 ABI 二進位相容 |
 | `COMPAT_FORCE_STD_IMPLEMENTATION` | 強制使用原生 std；若標準庫不符則 `#error` |
 | 同時定義兩者 | 觸發 `#error "Cannot force both self and std implementations simultaneously"` |
 
@@ -75,13 +82,51 @@ include/compat/
 
 在 `-fno-exceptions` / `/EHs-c-` 環境中，所有原本 `throw` 的路徑自動改為 `std::abort()`。
 
-### 3.4 ABI 隔離
+### 3.4 ABI 隔離與 Inline Namespace
+
+為避免大型專案在「舊模組 C++11 + 新模組 C++17/20」混編升級過渡期產生 ABI 撕裂與 ODR 靜默破壞，專案實作了嚴格的雙軌 Inline Namespace 隔離：
 
 ```cpp
-#define COMPAT_ABI_TAG compat_v1_fallback   // (or compat_v1_std)
+#define COMPAT_SELF_NS self_v1
+#define COMPAT_STD_NS  std_v1
+
+// 自研 Fallback 型別置於 compat::self_v1
+namespace compat {
+    inline namespace self_v1 {
+        class string_view { ... };
+    }
+}
+
+// 原生 std 型別別名置於 compat::std_v1
+namespace compat {
+    inline namespace std_v1 {
+        using string_view = std::string_view;
+    }
+}
 ```
 
-`detail/SelfStringView.hpp` 中的自研型別封裝在 `inline namespace COMPAT_ABI_TAG` 內，確保同一程式中不同 Fallback/原生翻譯單元的 `string_view` 不產生 ODR 衝突。
+1. **型別二進位隔離**：不同 TU 分別編譯為 `compat::self_v1::string_view` 與 `compat::std_v1::string_view`，符號名稱（Mangled Name）相異，Linker 能明確攔截型別混傳錯誤，杜絕靜默記憶體錯位。
+2. **無痛無縫升級**：單一專案升級編譯標準時，呼叫端代碼一律使用 `compat::string_view`，透明切換為原生 `std::string_view`。
+3. **單標頭打包防護**：自研標頭（如 `SelfStringView.hpp`、`SelfFilesystem.hpp`）以 `#if !COMPAT_USE_STD_*` 包裹，當啟用原生實作時跳過自研類別解析，徹底消除單標頭下 MSVC C2872 符號二義性。
+
+### 3.5 C++11 ODR 常數防護 (static_const)
+
+在 C++11 中缺乏 C++17 `inline constexpr` 變數支援。為避免標頭常數在多個 TU 包含時產生重複定義或指標比較不一致，專案使用靜態樣板結構包裝：
+
+```cpp
+namespace compat {
+    namespace detail {
+        template<typename T>
+        struct static_const {
+            static COMPAT_CONSTEXPR_14 T value;
+        };
+        template<typename T>
+        COMPAT_CONSTEXPR_14 T static_const<T>::value{};
+    }
+}
+```
+
+配合 `COMPAT_INLINE_VAR` 巨集：在 C++17+ 展開為 `inline constexpr`，在 C++11/14 展開為相容安全常數定義。
 
 ---
 
@@ -248,26 +293,29 @@ compat::filesystem
 
 ---
 
-## 9. 導出工具架構
+## 9. 導出與驗證工具架構
 
 | 腳本 | 產出 | 說明 |
 | :--- | :--- | :--- |
 | `scripts/bundle_header.py` | `dist/compat.hpp` | 拓撲排序內嵌所有標頭，尾端自動附加 `#undef` 清除所有內部巨集（保留 public API 巨集） |
 | `scripts/export_module.py` | `dist/compat.ixx` | GMF/Purview 分離，`export namespace compat`，剝除 `#include`，尾端附加 `#undef` 清除 |
-| `scripts/test_packaging.py` | — | 26 項打包驗證斷言（BOM、`#pragma once`、無內部 include、模組標頭、`#undef` 清除、public 巨集保留） |
+| `scripts/test_packaging.py` | — | 包含 26 項靜態打包驗證斷言（BOM、`#pragma once`、內部巨集清除）以及實體 CMake 安裝匯出、下游無手動宣告 `find_package(Threads)` 的消費測試 |
+| `scripts/compile_test.py` | — | 跨平臺（MSVC / GCC / Clang）多方言單標頭煙霧測試，以及跨編譯單元（TU1 C++11 + TU2 C++20）ABI 隔離與 `COMPAT_FORCE_SELF_IMPL` 鎖定防護測試 |
+| `scripts/run_full_matrix.py` | — | 30 組跨平臺編譯器矩陣驗證（GCC 11~23、Clang 11~23、MSVC 14~23 × Default / Fallback） |
 
 ---
 
-## 10. CI 矩陣
+## 10. CI 矩陣與 ABI 跨單元測試
 
 ```
 .github/workflows/ci.yml
-├── ubuntu-latest   × { c++11, c++14, c++17, c++20, c++23 } × { auto, COMPAT_FORCE_SELF_IMPLEMENTATION=ON }
-├── windows-latest  × { c++17, c++20, c++23 }               × { auto, COMPAT_FORCE_SELF_IMPLEMENTATION=ON }
-└── macos-latest    × { c++14, c++17, c++20, c++23 }        × { auto, COMPAT_FORCE_SELF_IMPLEMENTATION=ON }
+├── ubuntu-latest   × { c++11, c++14, c++17, c++20, c++23 } × { default, COMPAT_FORCE_SELF_IMPL=ON }
+├── windows-latest  × { c++17, c++20, c++23 }               × { default, COMPAT_FORCE_SELF_IMPL=ON }
+├── macos-latest    × { c++14, c++17, c++20, c++23 }        × { default, COMPAT_FORCE_SELF_IMPL=ON }
+└── packaging-ci    × { bundle/export, test_packaging.py, compile_test.py (Cross-TU ABI test) }
 ```
 
-三平台 × 多標準 × 雙模式，確保原生路徑與 Fallback 路徑行為一致。
+三平台 × 多標準 × 雙模式，加上獨立打包與跨 TU ABI 隔離檢核，確保原生路徑、Fallback 路徑與過渡期混編行為皆穩定可靠。
 
 ---
 

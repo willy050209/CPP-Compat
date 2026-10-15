@@ -2,6 +2,8 @@
 
 #include "../Config.hpp"
 
+#if !COMPAT_USE_STD_FILESYSTEM
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -1741,3 +1743,5 @@ inline uintmax_t remove_all(const path& p, std::error_code& ec) {
 } // inline namespace COMPAT_SELF_NS
 } // namespace filesystem
 } // namespace compat
+
+#endif // !COMPAT_USE_STD_FILESYSTEM

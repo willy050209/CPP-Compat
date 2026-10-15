@@ -23,11 +23,17 @@
 
 // Global ABI lock toggle: forces self-contained C++11 fallback shims across all standards for ABI stability
 #if !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
-#  if defined(COMPAT_FORCE_FALLBACK)
+#  if defined(COMPAT_FORCE_SELF_IMPL)
+#    define COMPAT_FORCE_SELF_IMPLEMENTATION COMPAT_FORCE_SELF_IMPL
+#  elif defined(COMPAT_FORCE_FALLBACK)
 #    define COMPAT_FORCE_SELF_IMPLEMENTATION COMPAT_FORCE_FALLBACK
 #  else
 #    define COMPAT_FORCE_SELF_IMPLEMENTATION 0
 #  endif
+#endif
+
+#if !defined(COMPAT_FORCE_SELF_IMPL)
+#  define COMPAT_FORCE_SELF_IMPL COMPAT_FORCE_SELF_IMPLEMENTATION
 #endif
 
 #if !defined(COMPAT_FORCE_FALLBACK)

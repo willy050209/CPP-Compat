@@ -27,9 +27,28 @@
 
 | 編譯選項 / 巨集 | 預設值 | 描述與行為 |
 | :--- | :--- | :--- |
-| `COMPAT_FORCE_SELF_IMPLEMENTATION`<br>（別名：`COMPAT_FORCE_FALLBACK`） | 未定義 | **強制啟用自研 Fallback 模式**。<br>即便當前編譯器支援現代標準（如 C++20/23），亦強制停用原生 STL 映射，全面啟用純自研降階實作。適合用於跨編譯器一致性測試或除錯。 |
+| `COMPAT_FORCE_SELF_IMPLEMENTATION`<br>（別名：`COMPAT_FORCE_SELF_IMPL`、`COMPAT_FORCE_FALLBACK`） | 未定義 / `0` | **強制啟用自研 Fallback / 鎖定過渡期 ABI**。<br>即便當前編譯器支援現代標準（如 C++17/20/23），亦強制停用原生 STL 映射，全面啟用純自研降階實作。<br>特別適用於**大型專案由 C++11 遷移至 C++17/20 之過渡期**：在舊靜態庫與新主程式間鎖定 `self_v1` ABI 佈局，徹底防止二進位佈局撕裂。 |
 | `COMPAT_FORCE_STD_IMPLEMENTATION` | 未定義 | **強制啟用原生 std 模式**。<br>若編譯器或標準庫版本不足以支援該功能，編譯器將觸發 `#error` 中斷編譯，防止意外降階。 |
 | *兩者同時定義* | - | 觸發編譯期 `#error`（互斥設定）。 |
+
+---
+
+## ABI 符號隔離與 ODR 防護架構 (ABI Safety & ODR Protection)
+
+為了達成「零修改切換回原生 `std::`」並防止混合標準編譯時的靜默記憶體崩潰，`Config.hpp` 提供了符號隔離與 C++11 ODR 安全機制：
+
+### 1. 元件級別 Inline Namespace 隔離
+* **自研實作**：置於 `namespace compat { inline namespace COMPAT_SELF_NS /* self_v1 */ { ... } }`。
+* **原生 std 別名**：置於 `namespace compat { inline namespace COMPAT_STD_NS /* std_v1 */ { ... } }`。
+* **效果**：
+  - **原始碼層級**：呼叫端一律撰寫 `compat::optional<T>`、`compat::string_view`，升級標準時 **100% 零修改代碼**。
+  - **二進位層級**：若未開啟鎖定旗標混編（如 TU1 採 C++11、TU2 採 C++20），Linker 會因符號不同（`self_v1` vs `std_v1`）而精確報錯攔截，絕不發生記憶體錯位（Silent ABI Corruption）。
+
+### 2. C++11 ODR 安全標籤與常數 (Static Const Idiom)
+C++11 缺乏 `inline variable` 語法，全域標籤若直接以 `constexpr` 定義會違反 ODR 唯一實體規則。
+`Config.hpp` 提供了：
+* `compat::detail::static_const<T>`：模板靜態成員封裝。
+* `COMPAT_INLINE_VARIABLE(type, name)`：在 C++17+ 展開為 `inline constexpr type name{}`，在 C++11/14 展開為繫結至唯一靜態常數實體之引用，已全面應用於 `nullopt`、`in_place`、`unexpect`、`default_sentinel`、`from_range`。
 
 ---
 

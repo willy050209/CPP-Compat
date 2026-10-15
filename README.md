@@ -55,10 +55,10 @@
 - **自訂型別格式化**：`compat::formatter<T>` 擴充介面，完全相容 `std::formatter<T>` 語意。
 - **強型別字串解析 `parse<T>`**：純函數、無例外、Fail-fast 安全轉換（支援 `int8_t`~`uint64_t`、`float`、`double`、`bool`、`string`）。
 - **`-fno-exceptions` 安全**：`COMPAT_THROW_OR_ABORT` 巨集在無例外環境中自動降階為 `std::abort()`。
-- **ABI 隔離**：`COMPAT_ABI_TAG` inline namespace 防止跨編譯單元混用時的 ODR 衝突。
+- **ABI 隔離與防護**：`self_v1` / `std_v1` 雙軌 inline namespace 與 `COMPAT_FORCE_SELF_IMPL` 鎖定，防止跨編譯單元混用時的 ODR 衝突與 ABI 撕裂。
 - **自動化發行工具**：
-  - 一鍵打包單一標頭檔：`dist/compat.hpp`（14,332 行，含 `#undef` 清除）
-  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（14,343 行，支援 `import compat;`）
+  - 一鍵打包單一標頭檔：`dist/compat.hpp`（18,539 行，含 `#undef` 清除）
+  - 一鍵導出標準 C++20 Module：`dist/compat.ixx`（18,529 行，支援 `import compat;`）
 
 ---
 
@@ -204,13 +204,13 @@ int main() {
 
 ---
 
-## 編譯模式開關
+## 編譯模式開關與 ABI 鎖定
 
 | CMake 選項 | 對應巨集 | 效果 |
 | :--- | :--- | :--- |
-| `-DCOMPAT_FORCE_SELF_IMPLEMENTATION=ON` | `COMPAT_FORCE_SELF_IMPLEMENTATION` | 強制所有模組使用自研 Fallback（相容 `COMPAT_FORCE_FALLBACK`）|
+| `-DCOMPAT_FORCE_SELF_IMPL=ON` / `-DCOMPAT_FORCE_SELF_IMPLEMENTATION=ON` | `COMPAT_FORCE_SELF_IMPL` / `COMPAT_FORCE_SELF_IMPLEMENTATION` | 強制所有模組使用自研 Fallback（相容 `COMPAT_FORCE_FALLBACK`）；跨 C++11 與 C++17/20 混編時鎖定 ABI 避免撕裂 |
 | `-DCOMPAT_FORCE_STD_IMPLEMENTATION=ON` | `COMPAT_FORCE_STD_IMPLEMENTATION` | 強制使用原生 std；標準庫不符時 `#error` |
-| 兩者同時 | — | 編譯錯誤（互斥）|
+| 兩者同時 | — | 編譯錯誤（互斥） |
 
 ### -fno-exceptions 支援
 
@@ -218,23 +218,78 @@ int main() {
 
 ```cmake
 target_compile_options(my_target PRIVATE /EHs-c-)
-target_compile_definitions(my_target PRIVATE COMPAT_FORCE_SELF_IMPLEMENTATION)
+target_compile_definitions(my_target PRIVATE COMPAT_FORCE_SELF_IMPL)
 ```
 
 ---
 
-## 單一標頭檔與 C++20 Module 導出
+## 整合與部署方式 (Deployment Options)
+
+CPP-Compat 不僅提供便捷的單一標頭檔，亦完整支援現代 CMake 專案的細粒度模組化部署，大幅縮減編譯時間：
+
+### 方式 1：CMake 套件安裝與消費（推薦大型專案）
+專案支援標準 CMake 安裝導出機制，自動處理相依性傳遞（如 `Threads::Threads`）：
+```bash
+# 安裝至系統或自訂路徑
+cmake -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
+cmake --install build
+```
+在您的專案 `CMakeLists.txt` 中直接引用：
+```cmake
+find_package(compat CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE compat::compat)
+```
+消費者可按需只引入所需之個別標頭（如 `#include <compat/StringView.hpp>` 或 `#include <compat/Expected.hpp>`），避免包含未使用的巨型模組。
+
+### 方式 2：CMake 子專案或 FetchContent
+```cmake
+# 方法 A: Git Submodule / 子目錄
+add_subdirectory(third_party/CPP-Compat)
+target_link_libraries(my_app PRIVATE compat::compat)
+
+# 方法 B: FetchContent
+include(FetchContent)
+FetchContent_Declare(
+    compat
+    GIT_REPOSITORY https://github.com/Willy/CPP-Compat.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(compat)
+target_link_libraries(my_app PRIVATE compat::compat)
+```
+
+### 方式 3：直接引入模組原始碼目錄 (Modular Header-Only)
+無須執行安裝，將本儲存庫的 `include/` 目錄加入編譯包含路徑即可立即使用個別模組：
+```cmake
+target_include_directories(my_app PRIVATE path/to/CPP-Compat/include)
+```
+
+### 方式 4：單一標頭檔整合 (Single Header)
+適合快速原型開發、微型工具或無 CMake 之環境：
+```cpp
+#include "compat.hpp"
+```
+
+### 方式 5：標準 C++20 Module (C++20 Modules)
+支援現代 C++20 模組建置管線，享有極速編譯期解析：
+```cpp
+import compat;
+```
+
+---
+
+## 單一標頭檔與 C++20 Module 導出工具
 
 本專案提供自動化 Python 發行工具：
 
 ```bash
 # 1. 自動拓撲排序打包為單一標頭檔（含 #undef 清除內部巨集）
 python scripts/bundle_header.py
-# 產出: dist/compat.hpp (12,845 行，UTF-8 BOM 驗證)
+# 產出: dist/compat.hpp (UTF-8 BOM 驗證)
 
 # 2. 自動導出為標準 C++20 Module 介面單元
 python scripts/export_module.py
-# 產出: dist/compat.ixx (12,856 行，支援 import compat;)
+# 產出: dist/compat.ixx (支援 import compat;)
 ```
 
 ---

@@ -1,6 +1,9 @@
 ﻿#pragma once
 
 #include "../Config.hpp"
+
+#if !COMPAT_USE_STD_STRING_VIEW
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -13,8 +16,6 @@
 
 namespace compat {
 namespace detail {
-inline namespace COMPAT_ABI_TAG {
-
 namespace string_view_helper {
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
     inline constexpr std::size_t ConstexprStrlen(const char* s) noexcept {
@@ -66,6 +67,11 @@ namespace string_view_helper {
 #endif
     }
 } // namespace string_view_helper
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
+
+namespace string_view_helper = detail::string_view_helper;
 
 /// <summary>
 /// Lightweight non-owning view of a character buffer, compatible with C++11 and later.
@@ -776,17 +782,16 @@ inline std::ostream& operator<<(std::ostream& os, string_view sv) {
     return os;
 }
 
-} // namespace COMPAT_ABI_TAG
-} // namespace detail
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 namespace std {
     /// <summary>
-    /// std::hash specialization for compat::detail::string_view using FNV-1a.
+    /// std::hash specialization for compat::string_view using FNV-1a.
     /// </summary>
     template <>
-    struct hash<compat::detail::string_view> {
-        std::size_t operator()(compat::detail::string_view sv) const noexcept {
+    struct hash<compat::string_view> {
+        std::size_t operator()(compat::string_view sv) const noexcept {
             std::size_t hash_val = 2166136261u;
             for (std::size_t i = 0; i < sv.size(); ++i) {
                 hash_val ^= static_cast<std::size_t>(static_cast<unsigned char>(sv[i]));
@@ -796,3 +801,5 @@ namespace std {
         }
     };
 } // namespace std
+
+#endif // !COMPAT_USE_STD_STRING_VIEW

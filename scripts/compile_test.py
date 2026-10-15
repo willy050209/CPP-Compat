@@ -8,6 +8,7 @@ Compiles and runs a smoke test using dist/compat.hpp with MSVC.
 
 import os
 import sys
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -108,46 +109,70 @@ def safe_unlink(path):
         except OSError:
             time.sleep(0.2)
 
-for std_flag in ["/std:c++20", "/std:c++17", "/std:c++14"]:
-    print(f"\n--- Testing MSVC {std_flag} ---")
-    safe_unlink(test_exe)
-    safe_unlink(REPO_ROOT / "test_smoke_single_header.obj")
 
-    bat_script = f"""@echo off
+def run_smoke_tests():
+    has_msvc = Path(vcvars).exists()
+    if sys.platform == "win32" and has_msvc:
+        for std_flag in ["/std:c++20", "/std:c++17", "/std:c++14"]:
+            print(f"\n--- Testing MSVC {std_flag} ---")
+            safe_unlink(test_exe)
+            safe_unlink(REPO_ROOT / "test_smoke_single_header.obj")
+
+            bat_script = f"""@echo off
 call "{vcvars}" >nul 2>&1
 cl.exe {std_flag} /EHsc /W4 /I"{REPO_ROOT}" "{test_cpp}" /Fe"{test_exe}"
 """
-    bat_path = REPO_ROOT / "run_cl.bat"
-    bat_path.write_text(bat_script, encoding="utf-8")
+            bat_path = REPO_ROOT / "run_cl.bat"
+            bat_path.write_text(bat_script, encoding="utf-8")
 
-    res = subprocess.run(["cmd.exe", "/c", str(bat_path)], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    print(res.stdout)
-    if res.stderr:
-        print(res.stderr)
-    if res.returncode != 0:
-        print(f"[FAIL] Compilation failed under {std_flag}")
-        sys.exit(1)
+            res = subprocess.run(["cmd.exe", "/c", str(bat_path)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+            print(res.stdout)
+            if res.stderr:
+                print(res.stderr)
+            if res.returncode != 0:
+                print(f"[FAIL] Compilation failed under {std_flag}")
+                sys.exit(1)
 
-    run_res = subprocess.run([str(test_exe)], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    print("Execution output:\n" + run_res.stdout)
-    if run_res.returncode != 0:
-        print(f"[FAIL] Execution failed under {std_flag}")
-        sys.exit(1)
+            run_res = subprocess.run([str(test_exe)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+            print("Execution output:\n" + run_res.stdout)
+            if run_res.returncode != 0:
+                print(f"[FAIL] Execution failed under {std_flag}")
+                sys.exit(1)
 
-    safe_unlink(test_exe)
+            safe_unlink(test_exe)
+        print("[SUCCESS] All single-header MSVC compiler tests (/std:c++20, /std:c++17, and /std:c++14) passed!")
 
-# Cleanup
-for p in [test_cpp, test_exe, REPO_ROOT / "test_smoke_single_header.obj", REPO_ROOT / "run_cl.bat"]:
-    if p.exists():
-        p.unlink()
+    cxx = shutil.which("g++") or shutil.which("g++.exe") or shutil.which("clang++") or shutil.which("clang++.exe")
+    if cxx:
+        print(f"\n--- Testing {cxx} single-header smoke test (-std=c++11, -std=c++20) ---")
+        for std in ["c++11", "c++20"]:
+            safe_unlink(test_exe)
+            cmd = [cxx, f"-std={std}", "-pedantic", "-Wall", "-Wextra", f"-I{REPO_ROOT}", str(test_cpp), "-o", str(test_exe)]
+            res = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"[FAIL] {cxx} compile failed under -std={std}:\n{res.stderr}")
+                sys.exit(1)
+            run_res = subprocess.run([str(test_exe)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+            if run_res.returncode != 0:
+                print(f"[FAIL] {cxx} execution failed under -std={std}:\n{run_res.stderr}")
+                sys.exit(1)
+            safe_unlink(test_exe)
+        print(f"[SUCCESS] {cxx} single-header tests passed!")
 
-print("[SUCCESS] All single-header MSVC compiler tests (/std:c++20, /std:c++17, and /std:c++14) passed!")
+    # Cleanup
+    for p in [test_cpp, test_exe, REPO_ROOT / "test_smoke_single_header.obj", REPO_ROOT / "run_cl.bat"]:
+        safe_unlink(p)
 
 
 def test_cross_tu_abi():
     print("\n" + "=" * 70)
     print("  Testing Cross-TU ABI Isolation & Seamless Upgrade")
     print("=" * 70)
+
+    cxx = shutil.which("g++") or shutil.which("g++.exe") or shutil.which("clang++") or shutil.which("clang++.exe")
+    if not cxx:
+        print("[SKIP] No g++ or clang++ found on PATH for cross-TU ABI verification.")
+        return
 
     tu_header = REPO_ROOT / "test_tu_abi.hpp"
     tu_legacy = REPO_ROOT / "test_tu_legacy.cpp"
@@ -186,23 +211,23 @@ int main() {
 }
 """, encoding="utf-8-sig")
 
-    # 1. Positive case: COMPAT_FORCE_SELF_IMPLEMENTATION=1 allows seamless C++11 lib + C++20 app
-    print("\n--- [Positive Case] C++11 Library + C++20 Binary with COMPAT_FORCE_SELF_IMPLEMENTATION=1 ---")
+    # 1. Positive case: COMPAT_FORCE_SELF_IMPL=1 allows seamless C++11 lib + C++20 app
+    print(f"\n--- [Positive Case] C++11 Library + C++20 Binary with COMPAT_FORCE_SELF_IMPL=1 ({cxx}) ---")
     safe_unlink(obj_legacy)
     safe_unlink(obj_modern)
     safe_unlink(exe_mixed)
 
-    r1 = subprocess.run(["g++.exe", "-std=c++11", "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1", "-Iinclude", "-c", str(tu_legacy), "-o", str(obj_legacy)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    r1 = subprocess.run([cxx, "-std=c++11", "-DCOMPAT_FORCE_SELF_IMPL=1", "-Iinclude", "-c", str(tu_legacy), "-o", str(obj_legacy)], cwd=str(REPO_ROOT), capture_output=True, text=True)
     if r1.returncode != 0:
         print(f"[FAIL] TU Legacy compile failed:\n{r1.stderr}")
         sys.exit(1)
 
-    r2 = subprocess.run(["g++.exe", "-std=c++20", "-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1", "-Iinclude", "-c", str(tu_modern), "-o", str(obj_modern)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    r2 = subprocess.run([cxx, "-std=c++20", "-DCOMPAT_FORCE_SELF_IMPL=1", "-Iinclude", "-c", str(tu_modern), "-o", str(obj_modern)], cwd=str(REPO_ROOT), capture_output=True, text=True)
     if r2.returncode != 0:
         print(f"[FAIL] TU Modern compile failed:\n{r2.stderr}")
         sys.exit(1)
 
-    r3 = subprocess.run(["g++.exe", str(obj_legacy), str(obj_modern), "-o", str(exe_mixed)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    r3 = subprocess.run([cxx, str(obj_legacy), str(obj_modern), "-o", str(exe_mixed)], cwd=str(REPO_ROOT), capture_output=True, text=True)
     if r3.returncode != 0:
         print(f"[FAIL] Mixed standard linking failed:\n{r3.stderr}")
         sys.exit(1)
@@ -215,14 +240,14 @@ int main() {
     print("[PASS] Positive case: C++11 and C++20 mixed-standard linkage executed flawlessly with locked self ABI.")
 
     # 2. Negative case: Without COMPAT_FORCE_SELF_IMPLEMENTATION, inline namespaces block mismatched ABI at link time
-    print("\n--- [Negative Case] Mismatched ABI Guard (C++11 default vs C++20 default without lock) ---")
+    print(f"\n--- [Negative Case] Mismatched ABI Guard (C++11 default vs C++20 default without lock) ({cxx}) ---")
     safe_unlink(obj_legacy)
     safe_unlink(obj_modern)
     safe_unlink(exe_mixed)
 
-    n1 = subprocess.run(["g++.exe", "-std=c++11", "-Iinclude", "-c", str(tu_legacy), "-o", str(obj_legacy)], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    n2 = subprocess.run(["g++.exe", "-std=c++20", "-Iinclude", "-c", str(tu_modern), "-o", str(obj_modern)], cwd=str(REPO_ROOT), capture_output=True, text=True)
-    n3 = subprocess.run(["g++.exe", str(obj_legacy), str(obj_modern), "-o", str(exe_mixed)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    n1 = subprocess.run([cxx, "-std=c++11", "-Iinclude", "-c", str(tu_legacy), "-o", str(obj_legacy)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    n2 = subprocess.run([cxx, "-std=c++20", "-Iinclude", "-c", str(tu_modern), "-o", str(obj_modern)], cwd=str(REPO_ROOT), capture_output=True, text=True)
+    n3 = subprocess.run([cxx, str(obj_legacy), str(obj_modern), "-o", str(exe_mixed)], cwd=str(REPO_ROOT), capture_output=True, text=True)
 
     if n3.returncode != 0:
         print("[PASS] Negative guard verified: Linker successfully blocked mismatched ABI (unresolved symbol detected)!")
@@ -238,6 +263,7 @@ int main() {
 
 
 if __name__ == "__main__":
+    run_smoke_tests()
     test_cross_tu_abi()
     print("\n" + "=" * 70)
     print("  ALL COMPILATION AND ABI ISOLATION TESTS COMPLETED SUCCESSFULLY!")
