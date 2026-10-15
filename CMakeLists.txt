@@ -1,62 +1,81 @@
-cmake_minimum_required(VERSION 3.15)
-project(CPP_Compat VERSION 1.0.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.14...3.30)
+project(compat VERSION 1.0.0 LANGUAGES CXX)
 
-# Support CMAKE_CXX_STANDARD (11, 14, 17, 20, 23). Default to 20 if not specified.
-if(NOT DEFINED CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 20)
+# Top-level project detection
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set(COMPAT_IS_TOP_LEVEL ON)
+else()
+    set(COMPAT_IS_TOP_LEVEL OFF)
 endif()
 
+# Build options
+option(COMPAT_BUILD_TESTS "Build unit tests" ${COMPAT_IS_TOP_LEVEL})
+option(COMPAT_BUILD_BENCHMARKS "Build benchmark suite" OFF)
+option(COMPAT_BUILD_EXAMPLES "Build example executable" ${COMPAT_IS_TOP_LEVEL})
+option(COMPAT_BUILD_MODULE "Build C++20 module target from dist/compat.ixx" OFF)
+option(COMPAT_INSTALL "Generate install and packaging targets" ${COMPAT_IS_TOP_LEVEL})
+option(COMPAT_FORCE_SELF_IMPL "Force C++11 self-implementation across all standards for ABI stability" OFF)
+option(COMPAT_FORCE_SELF_IMPLEMENTATION "Force C++11 self-implementation across all standards for ABI stability" OFF)
+option(COMPAT_FORCE_FALLBACK "Force C++11 self-implementation across all standards for ABI stability" OFF)
+
+# Standard selection: Defaults to C++11 for maximum backward compatibility baseline
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 11)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Options to force fallback / self-implementation shims instead of std
-option(COMPAT_FORCE_FALLBACK "Force use of self-contained fallback shims instead of std" OFF)
-option(COMPAT_FORCE_SELF_IMPLEMENTATION "Force use of self-contained fallback shims instead of std" OFF)
+include(GNUInstallDirs)
 
-# HEADER-ONLY interface target
+# Header-only interface target
 add_library(compat INTERFACE)
+add_library(compat::compat ALIAS compat)
+
 target_include_directories(compat INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-if(COMPAT_FORCE_FALLBACK OR COMPAT_FORCE_SELF_IMPLEMENTATION)
-    target_compile_definitions(compat INTERFACE COMPAT_FORCE_FALLBACK=1 COMPAT_FORCE_SELF_IMPLEMENTATION=1)
-endif()
+target_compile_features(compat INTERFACE cxx_std_11)
 
-# Strict warning flags (MSVC /W4, GCC -Wall -Wextra)
-if(MSVC)
-    target_compile_options(compat INTERFACE
-        /W4
-        /utf-8
-        /Zc:__cplusplus
-    )
-else()
-    target_compile_options(compat INTERFACE
-        -Wall
-        -Wextra
-    )
+# Compiler warnings and compatibility options
+target_compile_options(compat INTERFACE
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus /utf-8 /W4>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra>
+)
+
+# Multi-threading support (SharedMutex & Print)
+find_package(Threads REQUIRED)
+target_link_libraries(compat INTERFACE Threads::Threads)
+
+# GCC / Clang < 9.0 filesystem linkage compatibility
+target_link_libraries(compat INTERFACE
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0>>:stdc++fs>
+    $<$<AND:$<CXX_COMPILER_ID:Clang>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0>>:c++fs>
+)
+
+if(COMPAT_FORCE_SELF_IMPL OR COMPAT_FORCE_SELF_IMPLEMENTATION OR COMPAT_FORCE_FALLBACK)
+    target_compile_definitions(compat INTERFACE COMPAT_FORCE_SELF_IMPLEMENTATION=1)
 endif()
 
 # Application target: compat_app (src/main.cpp)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+if(COMPAT_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
     add_executable(compat_app src/main.cpp)
     target_link_libraries(compat_app PRIVATE compat)
 endif()
 
-# Testing target: compat_test (tests/*.cpp)
-enable_testing()
-
-file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
-if(TEST_SOURCES)
-    add_executable(compat_test ${TEST_SOURCES})
-    target_link_libraries(compat_test PRIVATE compat)
-    add_test(NAME compat_unit_tests COMMAND compat_test)
+# Unit tests target: compat_test (tests/*.cpp)
+if(COMPAT_BUILD_TESTS)
+    enable_testing()
+    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
+    if(TEST_SOURCES)
+        add_executable(compat_test ${TEST_SOURCES})
+        target_link_libraries(compat_test PRIVATE compat)
+        add_test(NAME compat_unit_tests COMMAND compat_test)
+    endif()
 endif()
 
 # Benchmark target: compat_benchmark (benchmark/*.cpp)
-option(COMPAT_BUILD_BENCHMARKS "Build benchmark suite" ON)
-
 if(COMPAT_BUILD_BENCHMARKS)
     file(GLOB BENCHMARK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/*.cpp")
     if(BENCHMARK_SOURCES)
@@ -73,4 +92,41 @@ if(COMPAT_BUILD_BENCHMARKS)
             target_compile_options(compat_benchmark PRIVATE -std=c++23 -O3)
         endif()
     endif()
+endif()
+
+# Installation and packaging export
+if(COMPAT_INSTALL)
+    include(CMakePackageConfigHelpers)
+
+    install(TARGETS compat
+        EXPORT compatTargets
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+    install(EXPORT compatTargets
+        FILE compatTargets.cmake
+        NAMESPACE compat::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/compat
+    )
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/compatConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/compatConfig.cmake"
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/compat
+    )
+
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/compatConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+        ARCH_INDEPENDENT
+    )
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/compatConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/compatConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/compat
+    )
 endif()

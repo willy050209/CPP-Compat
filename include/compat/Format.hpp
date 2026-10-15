@@ -1,18 +1,21 @@
-#pragma once
+﻿#pragma once
 
 #include "Config.hpp"
 #include "StringView.hpp"
 #include "detail/SelfPrint.hpp"
 
-#if COMPAT_HAS_STD_FORMAT
+#if COMPAT_USE_STD_FORMAT
 #  include <format>
 namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::format;
     using std::formatter;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 #  include "detail/SelfFormat.hpp"
 namespace compat {
+inline namespace COMPAT_SELF_NS {
 
 /// <summary>
 /// Formats arguments into a std::string according to the format string.
@@ -26,6 +29,7 @@ inline std::string format(compat::string_view fmt, const Args&... args) {
     return detail::FormatToString(fmt, args...);
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif
 
@@ -40,7 +44,7 @@ namespace compat {
 /// <returns>Formatted std::string representation.</returns>
 template <typename T>
 COMPAT_NODISCARD inline std::string to_string(const T& value) {
-#if COMPAT_HAS_STD_FORMAT
+#if COMPAT_USE_STD_FORMAT
     return std::format("{}", value);
 #else
     return detail::FormatToString("{}", value);

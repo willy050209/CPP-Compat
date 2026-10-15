@@ -36,16 +36,22 @@ RE_DEFINE = re.compile(r'^\s*#\s*define\s+(COMPAT_[A-Za-z0-9_]+)')
 # to prevent polluting consumer code, while retaining public API macros (e.g. COMPAT_NODISCARD).
 DEFAULT_CLEANUP_MACROS = [
     "COMPAT_CPLUSPLUS",
+    "COMPAT_CXX_VERSION",
     "COMPAT_CXX_11",
     "COMPAT_CXX_14",
     "COMPAT_CXX_17",
     "COMPAT_CXX_20",
     "COMPAT_CXX_23",
     "COMPAT_CXX_26",
+    "COMPAT_SELF_NS",
+    "COMPAT_STD_NS",
+    "COMPAT_INLINE_VARIABLE",
+    "COMPAT_CXX14_CONSTEXPR",
     "COMPAT_HAS_EXCEPTIONS",
     "COMPAT_THROW_OR_ABORT",
     "COMPAT_CONSTEXPR_14",
     "COMPAT_CONSTEXPR_17",
+    "COMPAT_CONSTEXPR_20",
     "COMPAT_ABI_TAG",
     "COMPAT_HAS_STD_EXPECTED",
     "COMPAT_HAS_STD_PRINT",
@@ -71,6 +77,31 @@ DEFAULT_CLEANUP_MACROS = [
     "COMPAT_HAS_STD_PROPAGATE_CONST",
     "COMPAT_HAS_STD_SHARED_MUTEX",
     "COMPAT_HAS_STD_SHARED_TIMED_MUTEX",
+    "COMPAT_USE_STD_OPTIONAL",
+    "COMPAT_USE_STD_STRING_VIEW",
+    "COMPAT_USE_STD_VARIANT",
+    "COMPAT_USE_STD_EXPECTED",
+    "COMPAT_USE_STD_FORMAT",
+    "COMPAT_USE_STD_PRINT",
+    "COMPAT_USE_STD_SPAN",
+    "COMPAT_USE_STD_SHARED_MUTEX",
+    "COMPAT_USE_STD_SHARED_TIMED_MUTEX",
+    "COMPAT_USE_STD_FILESYSTEM",
+    "COMPAT_USE_STD_RANGES",
+    "COMPAT_USE_STD_VIEWS_CONCAT",
+    "COMPAT_USE_STD_VIEWS_CACHE_LATEST",
+    "COMPAT_USE_STD_VIEWS_AS_CONST",
+    "COMPAT_USE_STD_CONSTANT_RANGE",
+    "COMPAT_USE_STD_RANGES_CONTAINS",
+    "COMPAT_USE_STD_RANGES_STARTS_WITH",
+    "COMPAT_USE_STD_RANGES_FOLD",
+    "COMPAT_USE_STD_RANGES_TO",
+    "COMPAT_USE_STD_RANGES_FIND_LAST",
+    "COMPAT_USE_STD_RANGES_IOTA",
+    "COMPAT_USE_STD_RANGES_SHIFT",
+    "COMPAT_USE_STD_RANGES_GENERATE_RANDOM",
+    "COMPAT_USE_STD_CLAMP",
+    "COMPAT_USE_STD_PROPAGATE_CONST",
     "COMPAT_BAD_EXPECTED_ACCESS_DEFINED",
 ]
 
@@ -81,6 +112,16 @@ PUBLIC_API_MACROS = {
     "COMPAT_FORCE_FALLBACK",
     "COMPAT_FORCE_SELF_IMPLEMENTATION",
     "COMPAT_FORCE_STD_IMPLEMENTATION",
+    "COMPAT_FORCE_SELF_OPTIONAL",
+    "COMPAT_FORCE_SELF_STRING_VIEW",
+    "COMPAT_FORCE_SELF_VARIANT",
+    "COMPAT_FORCE_SELF_EXPECTED",
+    "COMPAT_FORCE_SELF_FORMAT",
+    "COMPAT_FORCE_SELF_PRINT",
+    "COMPAT_FORCE_SELF_SPAN",
+    "COMPAT_FORCE_SELF_SHARED_MUTEX",
+    "COMPAT_FORCE_SELF_FILESYSTEM",
+    "COMPAT_FORCE_SELF_RANGES",
     "COMPAT_ENABLE_VARIANT_EXPECTED",
     "COMPAT_ENABLE_UNION_EXPECTED",
 }
@@ -90,7 +131,7 @@ def collect_cleanup_macros(parsed_data: dict[Path, dict]) -> list[str]:
     """
     Collects internal private helper macros from parsed headers to emit in the cleanup block.
     Retains public API macros while ensuring all internal helper macros (COMPAT_CXX_*,
-    COMPAT_HAS_*, COMPAT_CPLUSPLUS, etc.) are undefined.
+    COMPAT_HAS_*, COMPAT_USE_STD_*, COMPAT_CPLUSPLUS, etc.) are undefined.
     """
     cleanup_set = set(DEFAULT_CLEANUP_MACROS)
 
@@ -103,6 +144,7 @@ def collect_cleanup_macros(parsed_data: dict[Path, dict]) -> list[str]:
                     continue
                 if (macro_name.startswith("COMPAT_CXX_") or
                     macro_name.startswith("COMPAT_HAS_") or
+                    macro_name.startswith("COMPAT_USE_STD_") or
                     macro_name.startswith("COMPAT_INTERNAL_") or
                     macro_name in cleanup_set):
                     cleanup_set.add(macro_name)

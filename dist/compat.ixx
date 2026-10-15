@@ -107,6 +107,7 @@ export module compat;
 #endif
 
 // C++ standard level constants
+#define COMPAT_CXX_VERSION COMPAT_CPLUSPLUS
 #define COMPAT_CXX_11 201103L
 #define COMPAT_CXX_14 201402L
 #define COMPAT_CXX_17 201703L
@@ -114,16 +115,21 @@ export module compat;
 #define COMPAT_CXX_23 202302L
 #define COMPAT_CXX_26 202602L
 
-// Backwards-compatible alias handling for forcing self/fallback implementation
-#if defined(COMPAT_FORCE_FALLBACK) && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
-#  define COMPAT_FORCE_SELF_IMPLEMENTATION 1
+// Global ABI lock toggle: forces self-contained C++11 fallback shims across all standards for ABI stability
+#if !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#  if defined(COMPAT_FORCE_FALLBACK)
+#    define COMPAT_FORCE_SELF_IMPLEMENTATION COMPAT_FORCE_FALLBACK
+#  else
+#    define COMPAT_FORCE_SELF_IMPLEMENTATION 0
+#  endif
 #endif
-#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION) && !defined(COMPAT_FORCE_FALLBACK)
-#  define COMPAT_FORCE_FALLBACK 1
+
+#if !defined(COMPAT_FORCE_FALLBACK)
+#  define COMPAT_FORCE_FALLBACK COMPAT_FORCE_SELF_IMPLEMENTATION
 #endif
 
 // Mutual exclusion check
-#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION) && defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#if (COMPAT_FORCE_SELF_IMPLEMENTATION) && defined(COMPAT_FORCE_STD_IMPLEMENTATION)
 #  error "Cannot force both self and std implementations simultaneously"
 #endif
 
@@ -185,11 +191,15 @@ namespace detail {
 #  define COMPAT_UNLIKELY(x) (x)
 #endif
 
-// Constexpr support for C++14+
+// Constexpr support for C++11 and C++14+
+#define COMPAT_CONSTEXPR constexpr
+
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
-#  define COMPAT_CONSTEXPR_14 constexpr
+#  define COMPAT_CXX14_CONSTEXPR constexpr
+#  define COMPAT_CONSTEXPR_14    constexpr
 #else
-#  define COMPAT_CONSTEXPR_14 inline
+#  define COMPAT_CXX14_CONSTEXPR inline
+#  define COMPAT_CONSTEXPR_14    inline
 #endif
 
 // Constexpr support for C++17+
@@ -206,17 +216,44 @@ namespace detail {
 #  define COMPAT_CONSTEXPR_20 inline
 #endif
 
-// Inline variable support (C++17+ uses inline, C++14/11 degrades to static to prevent MSVC C7525 & ODR violations)
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-#  define COMPAT_INLINE_VAR inline
-#else
-#  define COMPAT_INLINE_VAR static
+// ABI tagging and inline namespace support
+#ifndef COMPAT_SELF_NS
+#  define COMPAT_SELF_NS self_v1
 #endif
 
+#ifndef COMPAT_STD_NS
+#  define COMPAT_STD_NS std_v1
+#endif
 
-// ABI tagging and inline namespace support for fallback implementations
 #ifndef COMPAT_ABI_TAG
 #  define COMPAT_ABI_TAG abi_v1
+#endif
+
+export namespace compat {
+namespace detail {
+
+    /// <summary>
+    /// C++11 向下相容之靜態常數樣板（Static Const Idiom），確保多個編譯單元取址時具有唯一實體。
+    /// </summary>
+    template <typename T>
+    struct static_const {
+        static constexpr T value{};
+    };
+
+    template <typename T>
+    constexpr T static_const<T>::value;
+
+} // namespace detail
+} // namespace compat
+
+// Inline variable support (C++17+ uses inline constexpr, C++14/11 binds to unique static_const reference)
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  define COMPAT_INLINE_VARIABLE(type, name) inline constexpr type name{}
+#  define COMPAT_INLINE_VAR inline
+#else
+#  define COMPAT_INLINE_VARIABLE(type, name) \
+       namespace { constexpr const type& name = ::compat::detail::static_const<type>::value; }
+#  define COMPAT_INLINE_VAR static
 #endif
 
 // Probe standard library version header if available
@@ -225,290 +262,326 @@ namespace detail {
 #  endif
 #endif
 
-#if defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+// ============================================================================
+// Feature detection and Component-level switches
+// ============================================================================
+#if (COMPAT_FORCE_SELF_IMPLEMENTATION)
 
 // Forced self-implementation mode: disable all native C++ standard features
-#  define COMPAT_HAS_STD_EXPECTED           0
-#  define COMPAT_HAS_STD_PRINT              0
-#  define COMPAT_HAS_STD_FORMAT             0
-#  define COMPAT_HAS_STD_STRING_VIEW        0
-#  define COMPAT_HAS_STD_VARIANT            0
-#  define COMPAT_HAS_STD_RANGES             0
-#  define COMPAT_HAS_STD_VIEWS_CONCAT       0
-#  define COMPAT_HAS_STD_VIEWS_CACHE_LATEST 0
-#  define COMPAT_HAS_STD_VIEWS_AS_CONST     0
-#  define COMPAT_HAS_STD_CONSTANT_RANGE     0
-#  define COMPAT_HAS_STD_RANGES_CONTAINS    0
-#  define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
-#  define COMPAT_HAS_STD_RANGES_FOLD            0
-#  define COMPAT_HAS_STD_RANGES_TO              0
-#  define COMPAT_HAS_STD_RANGES_FIND_LAST       0
-#  define COMPAT_HAS_STD_RANGES_IOTA            0
-#  define COMPAT_HAS_STD_RANGES_SHIFT           0
-#  define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
-#  define COMPAT_HAS_STD_FILESYSTEM             0
-#  define COMPAT_HAS_STD_CLAMP                  0
-#  define COMPAT_HAS_STD_SPAN                   0
-#  define COMPAT_HAS_STD_PROPAGATE_CONST        0
-#  define COMPAT_HAS_STD_SHARED_MUTEX           0
-#  define COMPAT_HAS_STD_SHARED_TIMED_MUTEX     0
+#  define COMPAT_USE_STD_OPTIONAL           0
+#  define COMPAT_USE_STD_STRING_VIEW        0
+#  define COMPAT_USE_STD_VARIANT            0
+#  define COMPAT_USE_STD_EXPECTED           0
+#  define COMPAT_USE_STD_FORMAT             0
+#  define COMPAT_USE_STD_PRINT              0
+#  define COMPAT_USE_STD_SPAN               0
+#  define COMPAT_USE_STD_SHARED_MUTEX       0
+#  define COMPAT_USE_STD_SHARED_TIMED_MUTEX 0
+#  define COMPAT_USE_STD_FILESYSTEM         0
+#  define COMPAT_USE_STD_RANGES             0
+#  define COMPAT_USE_STD_VIEWS_CONCAT       0
+#  define COMPAT_USE_STD_VIEWS_CACHE_LATEST 0
+#  define COMPAT_USE_STD_VIEWS_AS_CONST     0
+#  define COMPAT_USE_STD_CONSTANT_RANGE     0
+#  define COMPAT_USE_STD_RANGES_CONTAINS    0
+#  define COMPAT_USE_STD_RANGES_STARTS_WITH 0
+#  define COMPAT_USE_STD_RANGES_FOLD        0
+#  define COMPAT_USE_STD_RANGES_TO          0
+#  define COMPAT_USE_STD_RANGES_FIND_LAST   0
+#  define COMPAT_USE_STD_RANGES_IOTA        0
+#  define COMPAT_USE_STD_RANGES_SHIFT       0
+#  define COMPAT_USE_STD_RANGES_GENERATE_RANDOM 0
+#  define COMPAT_USE_STD_CLAMP              0
+#  define COMPAT_USE_STD_PROPAGATE_CONST    0
 
 #else
 
-// Feature detection: std::string_view (C++17+)
-#  if defined(__cpp_lib_string_view) && (__cpp_lib_string_view >= 201606L)
-#    define COMPAT_HAS_STD_STRING_VIEW 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-#    define COMPAT_HAS_STD_STRING_VIEW 1
+// 1. Optional (C++17+)
+#  if !defined(COMPAT_FORCE_SELF_OPTIONAL) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && defined(__has_include)
+#    if __has_include(<optional>)
+#      define COMPAT_USE_STD_OPTIONAL 1
+#    else
+#      define COMPAT_USE_STD_OPTIONAL 0
+#    endif
 #  else
-#    define COMPAT_HAS_STD_STRING_VIEW 0
+#    define COMPAT_USE_STD_OPTIONAL 0
 #  endif
 
-// Feature detection: std::variant (C++17+)
-#  if defined(__cpp_lib_variant) && (__cpp_lib_variant >= 201606L)
-#    define COMPAT_HAS_STD_VARIANT 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-#    define COMPAT_HAS_STD_VARIANT 1
+// 2. StringView (C++17+)
+#  if !defined(COMPAT_FORCE_SELF_STRING_VIEW) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && (defined(__cpp_lib_string_view) || defined(__has_include))
+#    if defined(__cpp_lib_string_view) && (__cpp_lib_string_view >= 201606L)
+#      define COMPAT_USE_STD_STRING_VIEW 1
+#    elif defined(__has_include) && __has_include(<string_view>)
+#      define COMPAT_USE_STD_STRING_VIEW 1
+#    else
+#      define COMPAT_USE_STD_STRING_VIEW 0
+#    endif
 #  else
-#    define COMPAT_HAS_STD_VARIANT 0
+#    define COMPAT_USE_STD_STRING_VIEW 0
 #  endif
 
-// Feature detection: std::format (C++20+)
+// 3. Variant (C++17+)
+#  if !defined(COMPAT_FORCE_SELF_VARIANT) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && (defined(__cpp_lib_variant) || defined(__has_include))
+#    if defined(__cpp_lib_variant) && (__cpp_lib_variant >= 201606L)
+#      define COMPAT_USE_STD_VARIANT 1
+#    elif defined(__has_include) && __has_include(<variant>)
+#      define COMPAT_USE_STD_VARIANT 1
+#    else
+#      define COMPAT_USE_STD_VARIANT 0
+#    endif
+#  else
+#    define COMPAT_USE_STD_VARIANT 0
+#  endif
+
+// 4. Format (C++20+)
 // Note: libstdc++ prior to GCC 14 does not implement P1868R2 (Unicode East Asian Width / UAX #11)
-// and corrupts multibyte UTF-8 characters when truncating with precision specifications.
-#  if defined(__cpp_lib_format) && (__cpp_lib_format >= 201907L)
-#    if defined(_GLIBCXX_RELEASE) && (_GLIBCXX_RELEASE < 14)
-#      define COMPAT_HAS_STD_FORMAT 0
+#  if !defined(COMPAT_FORCE_SELF_FORMAT) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && (defined(__cpp_lib_format) || defined(__has_include))
+#    if defined(__cpp_lib_format) && (__cpp_lib_format >= 201907L)
+#      if defined(_GLIBCXX_RELEASE) && (_GLIBCXX_RELEASE < 14)
+#        define COMPAT_USE_STD_FORMAT 0
+#      else
+#        define COMPAT_USE_STD_FORMAT 1
+#      endif
+#    elif defined(__has_include) && __has_include(<format>) && (!defined(_GLIBCXX_RELEASE) || (_GLIBCXX_RELEASE >= 14))
+#      define COMPAT_USE_STD_FORMAT 1
 #    else
-#      define COMPAT_HAS_STD_FORMAT 1
-#    endif
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__has_include)
-#    if __has_include(<format>) && (!defined(_GLIBCXX_RELEASE) || (_GLIBCXX_RELEASE >= 14))
-#      define COMPAT_HAS_STD_FORMAT 1
-#    else
-#      define COMPAT_HAS_STD_FORMAT 0
-#    endif
-#  else
-#    define COMPAT_HAS_STD_FORMAT 0
-#  endif
-
-// Feature detection: std::expected (C++23+)
-#  if defined(__cpp_lib_expected) && (__cpp_lib_expected >= 202202L)
-#    define COMPAT_HAS_STD_EXPECTED 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
-#    if __has_include(<expected>)
-#      define COMPAT_HAS_STD_EXPECTED 1
-#    else
-#      define COMPAT_HAS_STD_EXPECTED 0
+#      define COMPAT_USE_STD_FORMAT 0
 #    endif
 #  else
-#    define COMPAT_HAS_STD_EXPECTED 0
+#    define COMPAT_USE_STD_FORMAT 0
 #  endif
 
-// Feature detection: std::print (C++23+)
+// 5. Expected (C++23+)
+#  if !defined(COMPAT_FORCE_SELF_EXPECTED) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && (defined(__cpp_lib_expected) || defined(__has_include))
+#    if defined(__cpp_lib_expected) && (__cpp_lib_expected >= 202202L)
+#      define COMPAT_USE_STD_EXPECTED 1
+#    elif defined(_MSC_VER) && defined(__has_include) && __has_include(<expected>)
+#      define COMPAT_USE_STD_EXPECTED 1
+#    else
+#      define COMPAT_USE_STD_EXPECTED 0
+#    endif
+#  else
+#    define COMPAT_USE_STD_EXPECTED 0
+#  endif
+
+// 6. Print (C++23+)
 // Note: MinGW-w64 libstdc++ defines __cpp_lib_print but fails to link std::__open_terminal /
 // std::__write_to_terminal on Windows (GCC Bugzilla #113834). Use SelfPrint on MinGW.
-#  if defined(__cpp_lib_print) && (__cpp_lib_print >= 202207L)
-#    if defined(__MINGW32__) || defined(__MINGW64__)
-#      define COMPAT_HAS_STD_PRINT 0
+#  if !defined(COMPAT_FORCE_SELF_PRINT) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && (defined(__cpp_lib_print) || defined(__has_include))
+#    if defined(__cpp_lib_print) && (__cpp_lib_print >= 202207L)
+#      if defined(__MINGW32__) || defined(__MINGW64__)
+#        define COMPAT_USE_STD_PRINT 0
+#      else
+#        define COMPAT_USE_STD_PRINT 1
+#      endif
+#    elif defined(_MSC_VER) && defined(__has_include) && __has_include(<print>)
+#      define COMPAT_USE_STD_PRINT 1
 #    else
-#      define COMPAT_HAS_STD_PRINT 1
-#    endif
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && defined(__has_include)
-#    if __has_include(<print>)
-#      define COMPAT_HAS_STD_PRINT 1
-#    else
-#      define COMPAT_HAS_STD_PRINT 0
-#    endif
-#  else
-#    define COMPAT_HAS_STD_PRINT 0
-#  endif
-
-// Feature detection: std::ranges (C++20+)
-#  if defined(__cpp_lib_ranges) && (__cpp_lib_ranges >= 201911L)
-#    define COMPAT_HAS_STD_RANGES 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__has_include)
-#    if __has_include(<ranges>)
-#      define COMPAT_HAS_STD_RANGES 1
-#    else
-#      define COMPAT_HAS_STD_RANGES 0
+#      define COMPAT_USE_STD_PRINT 0
 #    endif
 #  else
-#    define COMPAT_HAS_STD_RANGES 0
+#    define COMPAT_USE_STD_PRINT 0
 #  endif
 
-// Feature detection: std::views::as_const (C++23+)
-#  if defined(__cpp_lib_ranges_as_const) && (__cpp_lib_ranges_as_const >= 202207L)
-#    define COMPAT_HAS_STD_VIEWS_AS_CONST 1
-#  elif defined(__cpp_lib_ranges_as_const)
-#    define COMPAT_HAS_STD_VIEWS_AS_CONST 1
-#  else
-#    define COMPAT_HAS_STD_VIEWS_AS_CONST 0
-#  endif
-
-// Feature detection: std::ranges::constant_range (C++26 / P2728R6)
-#  if defined(__cpp_lib_ranges_constant_range) && (__cpp_lib_ranges_constant_range >= 202302L)
-#    define COMPAT_HAS_STD_CONSTANT_RANGE 1
-#  else
-#    define COMPAT_HAS_STD_CONSTANT_RANGE 0
-#  endif
-
-// Feature detection: std::views::concat (C++26 / P2542R8)
-#  if defined(__cpp_lib_ranges_concat) && (__cpp_lib_ranges_concat >= 202403L)
-#    define COMPAT_HAS_STD_VIEWS_CONCAT 1
-#  else
-#    define COMPAT_HAS_STD_VIEWS_CONCAT 0
-#  endif
-
-// Feature detection: std::views::cache_latest (C++26 / P3138R5)
-#  if defined(__cpp_lib_ranges_cache_latest) && (__cpp_lib_ranges_cache_latest >= 202406L)
-#    define COMPAT_HAS_STD_VIEWS_CACHE_LATEST 1
-#  else
-#    define COMPAT_HAS_STD_VIEWS_CACHE_LATEST 0
-#  endif
-
-// Feature detection: std::ranges::contains (C++23+)
-#  if defined(__cpp_lib_ranges_contains) && (__cpp_lib_ranges_contains >= 202207L)
-#    define COMPAT_HAS_STD_RANGES_CONTAINS 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_CONTAINS 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_CONTAINS 0
-#  endif
-
-// Feature detection: std::ranges::starts_with / ends_with (C++23+)
-#  if defined(__cpp_lib_ranges_starts_ends_with) && (__cpp_lib_ranges_starts_ends_with >= 202106L)
-#    define COMPAT_HAS_STD_RANGES_STARTS_WITH 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_STARTS_WITH 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_STARTS_WITH 0
-#  endif
-
-// Feature detection: std::ranges::fold_left etc. (C++23+)
-#  if defined(__cpp_lib_ranges_fold) && (__cpp_lib_ranges_fold >= 202207L)
-#    define COMPAT_HAS_STD_RANGES_FOLD 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_FOLD 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_FOLD 0
-#  endif
-
-// Feature detection: std::ranges::to (C++23 / P1206R7)
-// Note: GCC 14 libstdc++ has a known bug (Bugzilla 115200) in std::ranges::to calling
-// __c.emplace(__c.end(), *__it) instead of emplace_hint for associative containers.
-#  if defined(__cpp_lib_ranges_to_container) && (__cpp_lib_ranges_to_container >= 202202L) && !defined(__GLIBCXX__)
-#    define COMPAT_HAS_STD_RANGES_TO 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_TO 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_TO 0
-#  endif
-
-// Feature detection: std::ranges::find_last (C++23+)
-#  if defined(__cpp_lib_ranges_find_last) && (__cpp_lib_ranges_find_last >= 202207L)
-#    define COMPAT_HAS_STD_RANGES_FIND_LAST 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_FIND_LAST 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_FIND_LAST 0
-#  endif
-
-// Feature detection: std::ranges::iota (C++23+)
-#  if defined(__cpp_lib_ranges_iota) && (__cpp_lib_ranges_iota >= 202202L)
-#    define COMPAT_HAS_STD_RANGES_IOTA 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_IOTA 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_IOTA 0
-#  endif
-
-// Feature detection: std::ranges::shift_left / shift_right (C++23+)
-#  if defined(__cpp_lib_ranges_shift) && (__cpp_lib_ranges_shift >= 202202L)
-#    define COMPAT_HAS_STD_RANGES_SHIFT 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_HAS_STD_RANGES
-#    define COMPAT_HAS_STD_RANGES_SHIFT 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_SHIFT 0
-#  endif
-
-// Feature detection: std::ranges::generate_random (C++26+)
-#  if defined(__cpp_lib_ranges_generate_random) && (__cpp_lib_ranges_generate_random >= 202403L)
-#    define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 1
-#  else
-#    define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM 0
-#  endif
-
-// Feature detection: std::filesystem (C++17+)
-#  if defined(__cpp_lib_filesystem) && (__cpp_lib_filesystem >= 201703L)
-#    define COMPAT_HAS_STD_FILESYSTEM 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && defined(__has_include)
-#    if __has_include(<filesystem>)
-#      define COMPAT_HAS_STD_FILESYSTEM 1
+// 7. Ranges (C++20+)
+#  if !defined(COMPAT_FORCE_SELF_RANGES) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && (defined(__cpp_lib_ranges) || defined(__has_include))
+#    if defined(__cpp_lib_ranges) && (__cpp_lib_ranges >= 201911L)
+#      define COMPAT_USE_STD_RANGES 1
+#    elif defined(__has_include) && __has_include(<ranges>)
+#      define COMPAT_USE_STD_RANGES 1
 #    else
-#      define COMPAT_HAS_STD_FILESYSTEM 0
+#      define COMPAT_USE_STD_RANGES 0
 #    endif
 #  else
-#    define COMPAT_HAS_STD_FILESYSTEM 0
+#    define COMPAT_USE_STD_RANGES 0
 #  endif
 
-// Feature detection: std::clamp (C++17+)
-#  if defined(__cpp_lib_clamp) && (__cpp_lib_clamp >= 201603L)
-#    define COMPAT_HAS_STD_CLAMP 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-#    define COMPAT_HAS_STD_CLAMP 1
+// 8. Views as_const, concat, cache_latest, etc.
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_as_const) && (__cpp_lib_ranges_as_const >= 202207L)
+#    define COMPAT_USE_STD_VIEWS_AS_CONST 1
 #  else
-#    define COMPAT_HAS_STD_CLAMP 0
+#    define COMPAT_USE_STD_VIEWS_AS_CONST 0
 #  endif
 
-// Feature detection: std::span (C++20+)
-#  if defined(__cpp_lib_span) && (__cpp_lib_span >= 202002L)
-#    define COMPAT_HAS_STD_SPAN 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__has_include)
-#    if __has_include(<span>)
-#      define COMPAT_HAS_STD_SPAN 1
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_constant_range) && (__cpp_lib_ranges_constant_range >= 202302L)
+#    define COMPAT_USE_STD_CONSTANT_RANGE 1
+#  else
+#    define COMPAT_USE_STD_CONSTANT_RANGE 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_concat) && (__cpp_lib_ranges_concat >= 202403L)
+#    define COMPAT_USE_STD_VIEWS_CONCAT 1
+#  else
+#    define COMPAT_USE_STD_VIEWS_CONCAT 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_cache_latest) && (__cpp_lib_ranges_cache_latest >= 202406L)
+#    define COMPAT_USE_STD_VIEWS_CACHE_LATEST 1
+#  else
+#    define COMPAT_USE_STD_VIEWS_CACHE_LATEST 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_contains) && (__cpp_lib_ranges_contains >= 202207L)
+#    define COMPAT_USE_STD_RANGES_CONTAINS 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_CONTAINS 1
+#  else
+#    define COMPAT_USE_STD_RANGES_CONTAINS 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_starts_ends_with) && (__cpp_lib_ranges_starts_ends_with >= 202106L)
+#    define COMPAT_USE_STD_RANGES_STARTS_WITH 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_STARTS_WITH 1
+#  else
+#    define COMPAT_USE_STD_RANGES_STARTS_WITH 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_fold) && (__cpp_lib_ranges_fold >= 202207L)
+#    define COMPAT_USE_STD_RANGES_FOLD 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_FOLD 1
+#  else
+#    define COMPAT_USE_STD_RANGES_FOLD 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_to_container) && (__cpp_lib_ranges_to_container >= 202202L) && !defined(__GLIBCXX__)
+#    define COMPAT_USE_STD_RANGES_TO 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_TO 1
+#  else
+#    define COMPAT_USE_STD_RANGES_TO 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_find_last) && (__cpp_lib_ranges_find_last >= 202207L)
+#    define COMPAT_USE_STD_RANGES_FIND_LAST 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_FIND_LAST 1
+#  else
+#    define COMPAT_USE_STD_RANGES_FIND_LAST 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_iota) && (__cpp_lib_ranges_iota >= 202202L)
+#    define COMPAT_USE_STD_RANGES_IOTA 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_IOTA 1
+#  else
+#    define COMPAT_USE_STD_RANGES_IOTA 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_shift) && (__cpp_lib_ranges_shift >= 202202L)
+#    define COMPAT_USE_STD_RANGES_SHIFT 1
+#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_23) && COMPAT_USE_STD_RANGES
+#    define COMPAT_USE_STD_RANGES_SHIFT 1
+#  else
+#    define COMPAT_USE_STD_RANGES_SHIFT 0
+#  endif
+
+#  if COMPAT_USE_STD_RANGES && defined(__cpp_lib_ranges_generate_random) && (__cpp_lib_ranges_generate_random >= 202403L)
+#    define COMPAT_USE_STD_RANGES_GENERATE_RANDOM 1
+#  else
+#    define COMPAT_USE_STD_RANGES_GENERATE_RANDOM 0
+#  endif
+
+// 9. Filesystem (C++17+)
+#  if !defined(COMPAT_FORCE_SELF_FILESYSTEM) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && (defined(__cpp_lib_filesystem) || defined(__has_include))
+#    if defined(__cpp_lib_filesystem) && (__cpp_lib_filesystem >= 201703L)
+#      define COMPAT_USE_STD_FILESYSTEM 1
+#    elif defined(__has_include) && __has_include(<filesystem>)
+#      define COMPAT_USE_STD_FILESYSTEM 1
 #    else
-#      define COMPAT_HAS_STD_SPAN 0
+#      define COMPAT_USE_STD_FILESYSTEM 0
 #    endif
 #  else
-#    define COMPAT_HAS_STD_SPAN 0
+#    define COMPAT_USE_STD_FILESYSTEM 0
 #  endif
 
-// Feature detection: std::experimental::propagate_const (Library Fundamentals TS)
-// Note: GCC libstdc++ <experimental/propagate_const> has a confirmed defect where default-construction
-// of propagate_const<T*> leaves scalar pointer members uninitialized (holding indeterminate/garbage values).
-// CPP-Compat defaults to its conforming, zero-overhead implementation with safe value-initialization.
+// 10. Clamp (C++17+)
+#  if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && (defined(__cpp_lib_clamp) || defined(__has_include))
+#    define COMPAT_USE_STD_CLAMP 1
+#  else
+#    define COMPAT_USE_STD_CLAMP 0
+#  endif
+
+// 11. Span (C++20+)
+#  if !defined(COMPAT_FORCE_SELF_SPAN) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && (defined(__cpp_lib_span) || defined(__has_include))
+#    if defined(__cpp_lib_span) && (__cpp_lib_span >= 202002L)
+#      define COMPAT_USE_STD_SPAN 1
+#    elif defined(__has_include) && __has_include(<span>)
+#      define COMPAT_USE_STD_SPAN 1
+#    else
+#      define COMPAT_USE_STD_SPAN 0
+#    endif
+#  else
+#    define COMPAT_USE_STD_SPAN 0
+#  endif
+
+// 12. PropagateConst (TS v2/v3)
 #  if defined(COMPAT_FORCE_STD_IMPLEMENTATION) && defined(__has_include)
 #    if __has_include(<experimental/propagate_const>) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
-#      define COMPAT_HAS_STD_PROPAGATE_CONST 1
+#      define COMPAT_USE_STD_PROPAGATE_CONST 1
 #    else
-#      define COMPAT_HAS_STD_PROPAGATE_CONST 0
+#      define COMPAT_USE_STD_PROPAGATE_CONST 0
 #    endif
 #  else
-#    define COMPAT_HAS_STD_PROPAGATE_CONST 0
+#    define COMPAT_USE_STD_PROPAGATE_CONST 0
 #  endif
 
-// Feature detection: std::shared_mutex (C++17+)
-#  if defined(__cpp_lib_shared_mutex) && (__cpp_lib_shared_mutex >= 201505L)
-#    define COMPAT_HAS_STD_SHARED_MUTEX 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
-#    define COMPAT_HAS_STD_SHARED_MUTEX 1
-#  elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
-#    define COMPAT_HAS_STD_SHARED_MUTEX 1
+// 13. SharedMutex (C++17+) & SharedTimedMutex (C++14+)
+#  if !defined(COMPAT_FORCE_SELF_SHARED_MUTEX) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && (defined(__cpp_lib_shared_mutex) || defined(__has_include))
+#    if defined(__cpp_lib_shared_mutex) && (__cpp_lib_shared_mutex >= 201505L)
+#      define COMPAT_USE_STD_SHARED_MUTEX 1
+#    elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#      define COMPAT_USE_STD_SHARED_MUTEX 1
+#    elif defined(_MSC_VER) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#      define COMPAT_USE_STD_SHARED_MUTEX 1
+#    else
+#      define COMPAT_USE_STD_SHARED_MUTEX 0
+#    endif
 #  else
-#    define COMPAT_HAS_STD_SHARED_MUTEX 0
+#    define COMPAT_USE_STD_SHARED_MUTEX 0
 #  endif
 
-// Feature detection: std::shared_timed_mutex & std::shared_lock (C++14+)
-#  if defined(__cpp_lib_shared_timed_mutex) && (__cpp_lib_shared_timed_mutex >= 201402L)
-#    define COMPAT_HAS_STD_SHARED_TIMED_MUTEX 1
-#  elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
-#    define COMPAT_HAS_STD_SHARED_TIMED_MUTEX 1
+#  if !defined(COMPAT_FORCE_SELF_SHARED_MUTEX) && (COMPAT_CPLUSPLUS >= COMPAT_CXX_14) && (defined(__cpp_lib_shared_timed_mutex) || defined(__has_include))
+#    if defined(__cpp_lib_shared_timed_mutex) && (__cpp_lib_shared_timed_mutex >= 201402L)
+#      define COMPAT_USE_STD_SHARED_TIMED_MUTEX 1
+#    elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+#      define COMPAT_USE_STD_SHARED_TIMED_MUTEX 1
+#    else
+#      define COMPAT_USE_STD_SHARED_TIMED_MUTEX 0
+#    endif
 #  else
-#    define COMPAT_HAS_STD_SHARED_TIMED_MUTEX 0
+#    define COMPAT_USE_STD_SHARED_TIMED_MUTEX 0
 #  endif
 
-#endif // !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#endif // !COMPAT_FORCE_SELF_IMPLEMENTATION
+
+// Backwards-compatible aliases from COMPAT_USE_STD_* to COMPAT_HAS_STD_*
+#define COMPAT_HAS_STD_OPTIONAL               COMPAT_USE_STD_OPTIONAL
+#define COMPAT_HAS_STD_STRING_VIEW            COMPAT_USE_STD_STRING_VIEW
+#define COMPAT_HAS_STD_VARIANT                COMPAT_USE_STD_VARIANT
+#define COMPAT_HAS_STD_EXPECTED               COMPAT_USE_STD_EXPECTED
+#define COMPAT_HAS_STD_FORMAT                 COMPAT_USE_STD_FORMAT
+#define COMPAT_HAS_STD_PRINT                  COMPAT_USE_STD_PRINT
+#define COMPAT_HAS_STD_SPAN                   COMPAT_USE_STD_SPAN
+#define COMPAT_HAS_STD_SHARED_MUTEX           COMPAT_USE_STD_SHARED_MUTEX
+#define COMPAT_HAS_STD_SHARED_TIMED_MUTEX     COMPAT_USE_STD_SHARED_TIMED_MUTEX
+#define COMPAT_HAS_STD_FILESYSTEM             COMPAT_USE_STD_FILESYSTEM
+#define COMPAT_HAS_STD_RANGES                 COMPAT_USE_STD_RANGES
+#define COMPAT_HAS_STD_VIEWS_CONCAT           COMPAT_USE_STD_VIEWS_CONCAT
+#define COMPAT_HAS_STD_VIEWS_CACHE_LATEST     COMPAT_USE_STD_VIEWS_CACHE_LATEST
+#define COMPAT_HAS_STD_VIEWS_AS_CONST         COMPAT_USE_STD_VIEWS_AS_CONST
+#define COMPAT_HAS_STD_CONSTANT_RANGE         COMPAT_USE_STD_CONSTANT_RANGE
+#define COMPAT_HAS_STD_RANGES_CONTAINS        COMPAT_USE_STD_RANGES_CONTAINS
+#define COMPAT_HAS_STD_RANGES_STARTS_WITH     COMPAT_USE_STD_RANGES_STARTS_WITH
+#define COMPAT_HAS_STD_RANGES_FOLD            COMPAT_USE_STD_RANGES_FOLD
+#define COMPAT_HAS_STD_RANGES_TO              COMPAT_USE_STD_RANGES_TO
+#define COMPAT_HAS_STD_RANGES_FIND_LAST       COMPAT_USE_STD_RANGES_FIND_LAST
+#define COMPAT_HAS_STD_RANGES_IOTA            COMPAT_USE_STD_RANGES_IOTA
+#define COMPAT_HAS_STD_RANGES_SHIFT           COMPAT_USE_STD_RANGES_SHIFT
+#define COMPAT_HAS_STD_RANGES_GENERATE_RANDOM COMPAT_USE_STD_RANGES_GENERATE_RANDOM
+#define COMPAT_HAS_STD_CLAMP                  COMPAT_USE_STD_CLAMP
+#define COMPAT_HAS_STD_PROPAGATE_CONST        COMPAT_USE_STD_PROPAGATE_CONST
 
 // Check if forced std implementation is supported by standard library
 #if defined(COMPAT_FORCE_STD_IMPLEMENTATION)
@@ -769,7 +842,7 @@ struct unexpect_t {
 /// <summary>
 /// In-place tag constant to trigger unexpected error value construction.
 /// </summary>
-constexpr unexpect_t unexpect{};
+COMPAT_INLINE_VARIABLE(unexpect_t, unexpect);
 
 /// <summary>
 /// Container holding an error value for expected types.
@@ -2015,6 +2088,7 @@ using detail::bad_expected_access;
 
 export namespace compat {
 namespace filesystem {
+inline namespace COMPAT_SELF_NS {
 
 // ============================================================================
 // 1. 列舉與位元遮罩 (Enumerations & Bitmasks)
@@ -3718,6 +3792,7 @@ inline uintmax_t remove_all(const path& p, std::error_code& ec) {
     return count;
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace filesystem
 } // namespace compat
 
@@ -3820,7 +3895,7 @@ namespace self_ranges {
         /// </summary>
         struct default_sentinel_t {};
 
-        COMPAT_INLINE_VAR constexpr default_sentinel_t default_sentinel{};
+        COMPAT_INLINE_VARIABLE(default_sentinel_t, default_sentinel);
 
         /// <summary>
         /// 懸空迭代器佔位型別 (對齊 C++20 std::ranges::dangling)。
@@ -4331,7 +4406,7 @@ namespace self_ranges {
         /// <summary>
         /// ISO C++23 範圍建構式標記常數實體 (對齊 std::from_range)。
         /// </summary>
-        COMPAT_INLINE_VAR constexpr from_range_t from_range{};
+        COMPAT_INLINE_VARIABLE(from_range_t, from_range);
 
         namespace detail {
             template <typename S, typename I>
@@ -7599,7 +7674,7 @@ struct unexpect_t {
 /// <summary>
 /// In-place tag constant to trigger unexpected error value construction.
 /// </summary>
-constexpr unexpect_t unexpect{};
+COMPAT_INLINE_VARIABLE(unexpect_t, unexpect);
 
 /// <summary>
 /// Container holding an error value for expected types.
@@ -9277,43 +9352,51 @@ using detail::bad_expected_access;
 // Module Section: include/compat/Expected.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_EXPECTED
+#if COMPAT_USE_STD_EXPECTED
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::expected;
     using std::unexpected;
     using std::unexpect_t;
     using std::unexpect;
     using std::bad_expected_access;
-}
-#elif COMPAT_HAS_STD_VARIANT
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
+#elif COMPAT_USE_STD_VARIANT
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
     using detail::expected;
     using detail::unexpected;
     using detail::unexpect_t;
     using detail::unexpect;
     using detail::bad_expected_access;
-}
+} // inline namespace COMPAT_SELF_NS
+} // namespace compat
 #else
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
     using detail::expected;
     using detail::unexpected;
     using detail::unexpect_t;
     using detail::unexpect;
     using detail::bad_expected_access;
-}
+} // inline namespace COMPAT_SELF_NS
+} // namespace compat
 #endif
 
 // ============================================================================
 // Module Section: include/compat/Filesystem.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_FILESYSTEM && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_FILESYSTEM
 
 export namespace compat {
 namespace filesystem {
+inline namespace COMPAT_STD_NS {
 
     using namespace ::std::filesystem;
 
+} // inline namespace COMPAT_STD_NS
 } // namespace filesystem
 } // namespace compat
 
@@ -9326,39 +9409,19 @@ namespace filesystem {
 // Module Section: include/compat/Optional.hpp
 // ============================================================================
 
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && defined(__has_include)
-#  if __has_include(<optional>)
-#    define COMPAT_HAS_STD_OPTIONAL 1
-#  else
-#    define COMPAT_HAS_STD_OPTIONAL 0
-#  endif
-#else
-#  define COMPAT_HAS_STD_OPTIONAL 0
-#endif
-
-
-#if COMPAT_HAS_STD_OPTIONAL && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_OPTIONAL
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::optional;
     using std::nullopt;
     using std::nullopt_t;
     using std::make_optional;
     using std::bad_optional_access;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 export namespace compat {
-
-    struct nullopt_t {
-        explicit constexpr nullopt_t(int) {}
-    };
-    constexpr nullopt_t nullopt{0};
-
-    class bad_optional_access : public std::exception {
-    public:
-        const char* what() const noexcept override { return "bad optional access"; }
-    };
-
-    namespace detail {
+namespace detail {
 
         template <typename T, bool IsTriviallyDestructible = std::is_trivially_destructible<T>::value>
         struct optional_storage_base {
@@ -9519,6 +9582,18 @@ export namespace compat {
         };
 
     } // namespace detail
+
+inline namespace COMPAT_SELF_NS {
+
+    struct nullopt_t {
+        explicit constexpr nullopt_t(int = 0) {}
+    };
+    COMPAT_INLINE_VARIABLE(nullopt_t, nullopt);
+
+    class bad_optional_access : public std::exception {
+    public:
+        const char* what() const noexcept override { return "bad optional access"; }
+    };
 
     template <typename T>
     class optional : public detail::optional_move_assign_base<T> {
@@ -9722,6 +9797,7 @@ export namespace compat {
         return !(val < opt);
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif
 
@@ -12825,35 +12901,59 @@ namespace ranges {
 // Module Section: include/compat/Memory.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_RANGES
+#if COMPAT_USE_STD_RANGES
 
 export namespace compat {
     namespace ranges {
-        using std::ranges::uninitialized_copy_result;
-        using std::ranges::uninitialized_copy_n_result;
-        using std::ranges::uninitialized_move_result;
-        using std::ranges::uninitialized_move_n_result;
+        inline namespace COMPAT_STD_NS {
+            using std::ranges::uninitialized_copy_result;
+            using std::ranges::uninitialized_copy_n_result;
+            using std::ranges::uninitialized_move_result;
+            using std::ranges::uninitialized_move_n_result;
 
-        using std::ranges::construct_at;
-        using std::ranges::destroy_at;
-        using std::ranges::destroy;
-        using std::ranges::destroy_n;
-        using std::ranges::uninitialized_copy;
-        using std::ranges::uninitialized_copy_n;
-        using std::ranges::uninitialized_fill;
-        using std::ranges::uninitialized_fill_n;
-        using std::ranges::uninitialized_move;
-        using std::ranges::uninitialized_move_n;
-        using std::ranges::uninitialized_default_construct;
-        using std::ranges::uninitialized_default_construct_n;
-        using std::ranges::uninitialized_value_construct;
-        using std::ranges::uninitialized_value_construct_n;
+            using std::ranges::construct_at;
+            using std::ranges::destroy_at;
+            using std::ranges::destroy;
+            using std::ranges::destroy_n;
+            using std::ranges::uninitialized_copy;
+            using std::ranges::uninitialized_copy_n;
+            using std::ranges::uninitialized_fill;
+            using std::ranges::uninitialized_fill_n;
+            using std::ranges::uninitialized_move;
+            using std::ranges::uninitialized_move_n;
+            using std::ranges::uninitialized_default_construct;
+            using std::ranges::uninitialized_default_construct_n;
+            using std::ranges::uninitialized_value_construct;
+            using std::ranges::uninitialized_value_construct_n;
+        } // inline namespace COMPAT_STD_NS
     } // namespace ranges
 } // namespace compat
 #else
 export namespace compat {
     namespace ranges {
-        using namespace ::compat::detail::self_memory::ranges;
+        inline namespace COMPAT_SELF_NS {
+            using namespace ::compat::detail::self_memory::ranges;
+
+            using ::compat::detail::self_memory::ranges::uninitialized_copy_result;
+            using ::compat::detail::self_memory::ranges::uninitialized_copy_n_result;
+            using ::compat::detail::self_memory::ranges::uninitialized_move_result;
+            using ::compat::detail::self_memory::ranges::uninitialized_move_n_result;
+
+            using ::compat::detail::self_memory::ranges::construct_at;
+            using ::compat::detail::self_memory::ranges::destroy_at;
+            using ::compat::detail::self_memory::ranges::destroy;
+            using ::compat::detail::self_memory::ranges::destroy_n;
+            using ::compat::detail::self_memory::ranges::uninitialized_copy;
+            using ::compat::detail::self_memory::ranges::uninitialized_copy_n;
+            using ::compat::detail::self_memory::ranges::uninitialized_fill;
+            using ::compat::detail::self_memory::ranges::uninitialized_fill_n;
+            using ::compat::detail::self_memory::ranges::uninitialized_move;
+            using ::compat::detail::self_memory::ranges::uninitialized_move_n;
+            using ::compat::detail::self_memory::ranges::uninitialized_default_construct;
+            using ::compat::detail::self_memory::ranges::uninitialized_default_construct_n;
+            using ::compat::detail::self_memory::ranges::uninitialized_value_construct;
+            using ::compat::detail::self_memory::ranges::uninitialized_value_construct_n;
+        } // inline namespace COMPAT_SELF_NS
     } // namespace ranges
 } // namespace compat
 #endif
@@ -12862,16 +12962,19 @@ export namespace compat {
 // Module Section: include/compat/PropagateConst.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_PROPAGATE_CONST && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_PROPAGATE_CONST
 
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::experimental::propagate_const;
     using std::experimental::get_underlying;
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
 #else
 
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
 
     template <typename T>
     class propagate_const;
@@ -12884,61 +12987,65 @@ export namespace compat {
     COMPAT_NODISCARD COMPAT_CONSTEXPR_14 T&
     get_underlying(propagate_const<T>& pt) noexcept;
 
-    namespace detail {
-        namespace propagate_const_detail {
+} // inline namespace COMPAT_SELF_NS
 
-            template <typename T>
-            struct get_element_type {
-            private:
-                template <typename U>
-                static auto test(int) -> typename std::remove_reference<decltype(*std::declval<U&>())>::type;
+namespace detail {
+    namespace propagate_const_detail {
 
-                template <typename>
-                static void test(...);
-
-            public:
-                using type = decltype(test<T>(0));
-            };
-
-            template <typename T>
-            struct get_element_type<T*> {
-                using type = T;
-            };
-
+        template <typename T>
+        struct get_element_type {
+        private:
             template <typename U>
-            struct is_propagate_const_helper : std::false_type {};
+            static auto test(int) -> typename std::remove_reference<decltype(*std::declval<U&>())>::type;
 
-            template <typename U>
-            struct is_propagate_const_helper<propagate_const<U>> : std::true_type {};
+            template <typename>
+            static void test(...);
 
-            // 條件式隱含轉換至裸指標基底類別 (對齊 ISO Library Fundamentals TS)
-            template <typename T, typename Elem, bool = std::is_convertible<const T, const Elem*>::value>
-            struct conv_c {};
+        public:
+            using type = decltype(test<T>(0));
+        };
 
-            template <typename T, typename Elem>
-            struct conv_c<T, Elem, true> {
-                COMPAT_CONSTEXPR_14 operator const Elem*() const;
-            };
+        template <typename T>
+        struct get_element_type<T*> {
+            using type = T;
+        };
 
-            template <typename T, typename Elem, bool = std::is_convertible<T, Elem*>::value>
-            struct conv_nc {};
+        template <typename U>
+        struct is_propagate_const_helper : std::false_type {};
 
-            template <typename T, typename Elem>
-            struct conv_nc<T, Elem, true> {
-                COMPAT_CONSTEXPR_14 operator Elem*();
-            };
+        template <typename U>
+        struct is_propagate_const_helper<propagate_const<U>> : std::true_type {};
 
-            template <typename T, typename Elem>
-            struct conv_base : conv_c<T, Elem>, conv_nc<T, Elem> {};
+        // 條件式隱含轉換至裸指標基底類別 (對齊 ISO Library Fundamentals TS)
+        template <typename T, typename Elem, bool = std::is_convertible<const T, const Elem*>::value>
+        struct conv_c {};
 
-            template <typename T, typename Elem>
-            struct conv_base<T*, Elem> {
-                COMPAT_CONSTEXPR_14 operator const T*() const noexcept;
-                COMPAT_CONSTEXPR_14 operator T*() noexcept;
-            };
+        template <typename T, typename Elem>
+        struct conv_c<T, Elem, true> {
+            COMPAT_CONSTEXPR_14 operator const Elem*() const;
+        };
 
-        } // namespace propagate_const_detail
-    } // namespace detail
+        template <typename T, typename Elem, bool = std::is_convertible<T, Elem*>::value>
+        struct conv_nc {};
+
+        template <typename T, typename Elem>
+        struct conv_nc<T, Elem, true> {
+            COMPAT_CONSTEXPR_14 operator Elem*();
+        };
+
+        template <typename T, typename Elem>
+        struct conv_base : conv_c<T, Elem>, conv_nc<T, Elem> {};
+
+        template <typename T, typename Elem>
+        struct conv_base<T*, Elem> {
+            COMPAT_CONSTEXPR_14 operator const T*() const noexcept;
+            COMPAT_CONSTEXPR_14 operator T*() noexcept;
+        };
+
+    } // namespace propagate_const_detail
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
 
     /// <summary>
     /// ISO C++ Library Fundamentals TS 常數傳播指標包裝器 (對齊 std::experimental::propagate_const)。
@@ -12963,11 +13070,11 @@ export namespace compat {
 
         template <typename U>
         friend COMPAT_CONSTEXPR_14 const U&
-        compat::get_underlying(const propagate_const<U>& pt) noexcept;
+        get_underlying(const propagate_const<U>& pt) noexcept;
 
         template <typename U>
         friend COMPAT_CONSTEXPR_14 U&
-        compat::get_underlying(propagate_const<U>& pt) noexcept;
+        get_underlying(propagate_const<U>& pt) noexcept;
 
         template <typename U, typename Elem, bool>
         friend struct detail::propagate_const_detail::conv_c;
@@ -13173,39 +13280,43 @@ export namespace compat {
         T m_t;
     };
 
-    // ------------------------------------------------------------------------
-    // 條件式隱含轉換至裸指標運算子實作
-    // ------------------------------------------------------------------------
+} // inline namespace COMPAT_SELF_NS
 
-    namespace detail {
-        namespace propagate_const_detail {
+// ------------------------------------------------------------------------
+// 條件式隱含轉換至裸指標運算子實作
+// ------------------------------------------------------------------------
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_base<T*, Elem>::operator const T*() const noexcept {
-                return static_cast<const propagate_const<T*>*>(this)->get();
-            }
+namespace detail {
+    namespace propagate_const_detail {
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_base<T*, Elem>::operator T*() noexcept {
-                return static_cast<propagate_const<T*>*>(this)->get();
-            }
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_base<T*, Elem>::operator const T*() const noexcept {
+            return static_cast<const propagate_const<T*>*>(this)->get();
+        }
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_c<T, Elem, true>::operator const Elem*() const {
-                return static_cast<const propagate_const<T>*>(this)->get();
-            }
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_base<T*, Elem>::operator T*() noexcept {
+            return static_cast<propagate_const<T*>*>(this)->get();
+        }
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_nc<T, Elem, true>::operator Elem*() {
-                return static_cast<propagate_const<T>*>(this)->get();
-            }
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_c<T, Elem, true>::operator const Elem*() const {
+            return static_cast<const propagate_const<T>*>(this)->get();
+        }
 
-        } // namespace propagate_const_detail
-    } // namespace detail
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_nc<T, Elem, true>::operator Elem*() {
+            return static_cast<propagate_const<T>*>(this)->get();
+        }
+
+    } // namespace propagate_const_detail
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
 
     // ------------------------------------------------------------------------
     // 非成員函式 (Non-member Functions)
@@ -13386,6 +13497,7 @@ export namespace compat {
 #  endif
 #endif
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 // ----------------------------------------------------------------------------
@@ -13485,169 +13597,263 @@ namespace std {
 // Module Section: include/compat/Ranges.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_RANGES
+#if COMPAT_USE_STD_RANGES
 export namespace compat {
     namespace ranges {
-        using std::ranges::begin;
-        using std::ranges::end;
-        using std::ranges::cbegin;
-        using std::ranges::cend;
-        using std::ranges::rbegin;
-        using std::ranges::rend;
-        using std::ranges::crbegin;
-        using std::ranges::crend;
-        using std::ranges::size;
-        using std::ranges::ssize;
-        using std::ranges::empty;
-        using std::ranges::data;
-        using std::ranges::cdata;
-        using detail::self_ranges::ranges::default_sentinel_t;
-        using detail::self_ranges::ranges::default_sentinel;
-        using std::ranges::dangling;
-        using std::ranges::subrange_kind;
-        using std::ranges::view_base;
-        using std::ranges::view_interface;
-        using std::ranges::subrange;
-        using std::ranges::owning_view;
-        using detail::self_ranges::ranges::range_adaptor_closure;
-        using std::iter_difference_t;
-        using std::iter_value_t;
-        using std::iter_reference_t;
+        inline namespace COMPAT_STD_NS {
+            using std::ranges::begin;
+            using std::ranges::end;
+            using std::ranges::cbegin;
+            using std::ranges::cend;
+            using std::ranges::rbegin;
+            using std::ranges::rend;
+            using std::ranges::crbegin;
+            using std::ranges::crend;
+            using std::ranges::size;
+            using std::ranges::ssize;
+            using std::ranges::empty;
+            using std::ranges::data;
+            using std::ranges::cdata;
+            using detail::self_ranges::ranges::default_sentinel_t;
+            using detail::self_ranges::ranges::default_sentinel;
+            using std::ranges::dangling;
+            using std::ranges::subrange_kind;
+            using std::ranges::view_base;
+            using std::ranges::view_interface;
+            using std::ranges::subrange;
+            using std::ranges::owning_view;
+            using detail::self_ranges::ranges::range_adaptor_closure;
+            using std::iter_difference_t;
+            using std::iter_value_t;
+            using std::iter_reference_t;
 
-        using std::ranges::iterator_t;
-        using std::ranges::sentinel_t;
-        using std::ranges::range_difference_t;
-        using std::ranges::range_value_t;
-        using std::ranges::range_reference_t;
-        using std::ranges::range_rvalue_reference_t;
-        using std::ranges::range_size_t;
+            using std::ranges::iterator_t;
+            using std::ranges::sentinel_t;
+            using std::ranges::range_difference_t;
+            using std::ranges::range_value_t;
+            using std::ranges::range_reference_t;
+            using std::ranges::range_rvalue_reference_t;
+            using std::ranges::range_size_t;
 
-        template <typename R> using range = detail::self_ranges::ranges::range<R>;
-        template <typename R> using sized_range = detail::self_ranges::ranges::sized_range<R>;
-        template <typename R> using common_range = detail::self_ranges::ranges::common_range<R>;
-        template <typename R> using input_range = detail::self_ranges::ranges::input_range<R>;
-        template <typename R> using forward_range = detail::self_ranges::ranges::forward_range<R>;
-        template <typename R> using bidirectional_range = detail::self_ranges::ranges::bidirectional_range<R>;
-        template <typename R> using random_access_range = detail::self_ranges::ranges::random_access_range<R>;
-        template <typename R> using constant_range = detail::self_ranges::ranges::constant_range<R>;
-        template <typename R> using borrowed_range = detail::self_ranges::ranges::borrowed_range<R>;
-        template <typename R> using view = detail::self_ranges::ranges::view<R>;
-        template <typename R> using viewable_range = detail::self_ranges::ranges::viewable_range<R>;
+            template <typename R> using range = detail::self_ranges::ranges::range<R>;
+            template <typename R> using sized_range = detail::self_ranges::ranges::sized_range<R>;
+            template <typename R> using common_range = detail::self_ranges::ranges::common_range<R>;
+            template <typename R> using input_range = detail::self_ranges::ranges::input_range<R>;
+            template <typename R> using forward_range = detail::self_ranges::ranges::forward_range<R>;
+            template <typename R> using bidirectional_range = detail::self_ranges::ranges::bidirectional_range<R>;
+            template <typename R> using random_access_range = detail::self_ranges::ranges::random_access_range<R>;
+            template <typename R> using constant_range = detail::self_ranges::ranges::constant_range<R>;
+            template <typename R> using borrowed_range = detail::self_ranges::ranges::borrowed_range<R>;
+            template <typename R> using view = detail::self_ranges::ranges::view<R>;
+            template <typename R> using viewable_range = detail::self_ranges::ranges::viewable_range<R>;
 
-        using std::ranges::dangling;
-        using std::ranges::borrowed_iterator_t;
-        using std::ranges::borrowed_subrange_t;
-        using std::ranges::enable_borrowed_range;
+            using std::ranges::dangling;
+            using std::ranges::borrowed_iterator_t;
+            using std::ranges::borrowed_subrange_t;
+            using std::ranges::enable_borrowed_range;
 
-        using std::ranges::empty_view;
-        using std::ranges::single_view;
-        using std::ranges::iota_view;
-        using std::ranges::filter_view;
-        using std::ranges::transform_view;
-        using std::ranges::take_view;
-        using std::ranges::take_while_view;
-        using std::ranges::drop_view;
-        using std::ranges::drop_while_view;
-        using std::ranges::reverse_view;
+            using std::ranges::empty_view;
+            using std::ranges::single_view;
+            using std::ranges::iota_view;
+            using std::ranges::filter_view;
+            using std::ranges::transform_view;
+            using std::ranges::take_view;
+            using std::ranges::take_while_view;
+            using std::ranges::drop_view;
+            using std::ranges::drop_while_view;
+            using std::ranges::reverse_view;
 
-        using detail::self_ranges::ranges::sentinel_for;
-        using detail::self_ranges::ranges::sized_sentinel_for;
+            using detail::self_ranges::ranges::sentinel_for;
+            using detail::self_ranges::ranges::sized_sentinel_for;
 
-#  if COMPAT_HAS_STD_VIEWS_CONCAT
-        using std::ranges::concat_view;
+#  if COMPAT_USE_STD_VIEWS_CONCAT
+            using std::ranges::concat_view;
 #  else
-        using detail::self_ranges::ranges::concat_view;
+            using detail::self_ranges::ranges::concat_view;
 #  endif
-#  if COMPAT_HAS_STD_VIEWS_CACHE_LATEST
-        using std::ranges::cache_latest_view;
+#  if COMPAT_USE_STD_VIEWS_CACHE_LATEST
+            using std::ranges::cache_latest_view;
 #  else
-        using detail::self_ranges::ranges::cache_latest_view;
+            using detail::self_ranges::ranges::cache_latest_view;
 #  endif
-#  if COMPAT_HAS_STD_VIEWS_AS_CONST
-        using std::ranges::as_const_view;
+#  if COMPAT_USE_STD_VIEWS_AS_CONST
+            using std::ranges::as_const_view;
 #  else
-        using detail::self_ranges::ranges::as_const_view;
+            using detail::self_ranges::ranges::as_const_view;
 #  endif
-#  if COMPAT_HAS_STD_RANGES_TO
-        using std::ranges::to;
+#  if COMPAT_USE_STD_RANGES_TO
+            using std::ranges::to;
 #  else
-        using detail::self_ranges::ranges::to;
+            using detail::self_ranges::ranges::to;
 #  endif
+        } // inline namespace COMPAT_STD_NS
     } // namespace ranges
 
     namespace views {
-        using std::views::all;
-        using std::views::all_t;
-        using std::views::empty;
-        using std::views::single;
-        using std::views::iota;
-        using std::views::filter;
-        using std::views::transform;
-        using std::views::take;
-        using std::views::take_while;
-        using std::views::drop;
-        using std::views::drop_while;
-        using std::views::reverse;
+        inline namespace COMPAT_STD_NS {
+            using std::views::all;
+            using std::views::all_t;
+            using std::views::empty;
+            using std::views::single;
+            using std::views::iota;
+            using std::views::filter;
+            using std::views::transform;
+            using std::views::take;
+            using std::views::take_while;
+            using std::views::drop;
+            using std::views::drop_while;
+            using std::views::reverse;
 
-#  if COMPAT_HAS_STD_VIEWS_CONCAT
-        using std::views::concat;
+#  if COMPAT_USE_STD_VIEWS_CONCAT
+            using std::views::concat;
 #  else
-        using detail::self_ranges::views::concat;
+            using detail::self_ranges::views::concat;
 #  endif
-#  if COMPAT_HAS_STD_VIEWS_CACHE_LATEST
-        using std::views::cache_latest;
+#  if COMPAT_USE_STD_VIEWS_CACHE_LATEST
+            using std::views::cache_latest;
 #  else
-        using detail::self_ranges::views::cache_latest;
+            using detail::self_ranges::views::cache_latest;
 #  endif
-#  if COMPAT_HAS_STD_VIEWS_AS_CONST
-        using std::views::as_const;
+#  if COMPAT_USE_STD_VIEWS_AS_CONST
+            using std::views::as_const;
 #  else
-        using detail::self_ranges::views::as_const;
+            using detail::self_ranges::views::as_const;
 #  endif
+        } // inline namespace COMPAT_STD_NS
     } // namespace views
 
     namespace ranges {
         namespace views = compat::views;
     }
 
-#  if COMPAT_HAS_STD_RANGES_TO
-    using std::from_range_t;
-    using std::from_range;
+    inline namespace COMPAT_STD_NS {
+#  if COMPAT_USE_STD_RANGES_TO
+        using std::from_range_t;
+        using std::from_range;
 #  else
-    using ::compat::detail::self_ranges::ranges::from_range_t;
-    using ::compat::detail::self_ranges::ranges::from_range;
+        using ::compat::detail::self_ranges::ranges::from_range_t;
+        using ::compat::detail::self_ranges::ranges::from_range;
 #  endif
+
+#  if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__cpp_lib_common_reference)
+        using std::common_reference;
+        using std::common_reference_t;
+#  else
+        using detail::self_ranges::common_reference;
+        using detail::self_ranges::common_reference_t;
+#  endif
+    } // inline namespace COMPAT_STD_NS
 
     namespace ranges {
         using ::compat::from_range_t;
         using ::compat::from_range;
     }
-
-#  if (COMPAT_CPLUSPLUS >= COMPAT_CXX_20) && defined(__cpp_lib_common_reference)
-    using std::common_reference;
-    using std::common_reference_t;
-#  else
-    using detail::self_ranges::common_reference;
-    using detail::self_ranges::common_reference_t;
-#  endif
 } // namespace compat
 #else
 export namespace compat {
-    using ::compat::detail::self_ranges::ranges::from_range_t;
-    using ::compat::detail::self_ranges::ranges::from_range;
+    inline namespace COMPAT_SELF_NS {
+        using ::compat::detail::self_ranges::ranges::from_range_t;
+        using ::compat::detail::self_ranges::ranges::from_range;
+        using detail::self_ranges::common_reference;
+        using detail::self_ranges::common_reference_t;
+    }
+
+    namespace views {
+        inline namespace COMPAT_SELF_NS {
+            using namespace ::compat::detail::self_ranges::views;
+
+            using ::compat::detail::self_ranges::views::all;
+            using ::compat::detail::self_ranges::views::all_t;
+            using ::compat::detail::self_ranges::views::single;
+            using ::compat::detail::self_ranges::views::iota;
+            using ::compat::detail::self_ranges::views::filter;
+            using ::compat::detail::self_ranges::views::transform;
+            using ::compat::detail::self_ranges::views::take;
+            using ::compat::detail::self_ranges::views::take_while;
+            using ::compat::detail::self_ranges::views::drop;
+            using ::compat::detail::self_ranges::views::drop_while;
+            using ::compat::detail::self_ranges::views::reverse;
+            using ::compat::detail::self_ranges::views::concat;
+            using ::compat::detail::self_ranges::views::cache_latest;
+            using ::compat::detail::self_ranges::views::as_const;
+        }
+    }
 
     namespace ranges {
-        using namespace ::compat::detail::self_ranges::ranges;
-    }
-    namespace views {
-        using namespace ::compat::detail::self_ranges::views;
-    }
-    namespace ranges {
+        inline namespace COMPAT_SELF_NS {
+            using namespace ::compat::detail::self_ranges::ranges;
+
+            using ::compat::detail::self_ranges::ranges::default_sentinel_t;
+            using ::compat::detail::self_ranges::ranges::default_sentinel;
+            using ::compat::detail::self_ranges::ranges::dangling;
+            using ::compat::detail::self_ranges::ranges::subrange_kind;
+            using ::compat::detail::self_ranges::ranges::view_base;
+            using ::compat::detail::self_ranges::ranges::view_interface;
+            using ::compat::detail::self_ranges::ranges::subrange;
+            using ::compat::detail::self_ranges::ranges::owning_view;
+            using ::compat::detail::self_ranges::ranges::range_adaptor_closure;
+            using ::compat::detail::self_ranges::ranges::iter_difference_t;
+            using ::compat::detail::self_ranges::ranges::iter_value_t;
+            using ::compat::detail::self_ranges::ranges::iter_reference_t;
+            using ::compat::detail::self_ranges::ranges::iterator_t;
+            using ::compat::detail::self_ranges::ranges::sentinel_t;
+            using ::compat::detail::self_ranges::ranges::range_difference_t;
+            using ::compat::detail::self_ranges::ranges::range_value_t;
+            using ::compat::detail::self_ranges::ranges::range_reference_t;
+            using ::compat::detail::self_ranges::ranges::range_rvalue_reference_t;
+            using ::compat::detail::self_ranges::ranges::range_size_t;
+
+            template <typename R> using range = ::compat::detail::self_ranges::ranges::range<R>;
+            template <typename R> using sized_range = ::compat::detail::self_ranges::ranges::sized_range<R>;
+            template <typename R> using common_range = ::compat::detail::self_ranges::ranges::common_range<R>;
+            template <typename R> using input_range = ::compat::detail::self_ranges::ranges::input_range<R>;
+            template <typename R> using forward_range = ::compat::detail::self_ranges::ranges::forward_range<R>;
+            template <typename R> using bidirectional_range = ::compat::detail::self_ranges::ranges::bidirectional_range<R>;
+            template <typename R> using random_access_range = ::compat::detail::self_ranges::ranges::random_access_range<R>;
+            template <typename R> using constant_range = ::compat::detail::self_ranges::ranges::constant_range<R>;
+            template <typename R> using borrowed_range = ::compat::detail::self_ranges::ranges::borrowed_range<R>;
+            template <typename R> using view = ::compat::detail::self_ranges::ranges::view<R>;
+            template <typename R> using viewable_range = ::compat::detail::self_ranges::ranges::viewable_range<R>;
+
+            using ::compat::detail::self_ranges::ranges::borrowed_iterator_t;
+            using ::compat::detail::self_ranges::ranges::borrowed_subrange_t;
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
+            using ::compat::detail::self_ranges::ranges::enable_borrowed_range;
+#endif
+
+            using ::compat::detail::self_ranges::ranges::empty_view;
+            using ::compat::detail::self_ranges::ranges::single_view;
+            using ::compat::detail::self_ranges::ranges::iota_view;
+            using ::compat::detail::self_ranges::ranges::filter_view;
+            using ::compat::detail::self_ranges::ranges::transform_view;
+            using ::compat::detail::self_ranges::ranges::take_view;
+            using ::compat::detail::self_ranges::ranges::take_while_view;
+            using ::compat::detail::self_ranges::ranges::drop_view;
+            using ::compat::detail::self_ranges::ranges::drop_while_view;
+            using ::compat::detail::self_ranges::ranges::reverse_view;
+            using ::compat::detail::self_ranges::ranges::concat_view;
+            using ::compat::detail::self_ranges::ranges::cache_latest_view;
+            using ::compat::detail::self_ranges::ranges::as_const_view;
+            using ::compat::detail::self_ranges::ranges::to;
+            using ::compat::detail::self_ranges::ranges::sentinel_for;
+            using ::compat::detail::self_ranges::ranges::sized_sentinel_for;
+
+            using ::compat::detail::self_ranges::ranges::begin;
+            using ::compat::detail::self_ranges::ranges::end;
+            using ::compat::detail::self_ranges::ranges::cbegin;
+            using ::compat::detail::self_ranges::ranges::cend;
+            using ::compat::detail::self_ranges::ranges::rbegin;
+            using ::compat::detail::self_ranges::ranges::rend;
+            using ::compat::detail::self_ranges::ranges::crbegin;
+            using ::compat::detail::self_ranges::ranges::crend;
+            using ::compat::detail::self_ranges::ranges::size;
+            using ::compat::detail::self_ranges::ranges::ssize;
+            using ::compat::detail::self_ranges::ranges::empty;
+            using ::compat::detail::self_ranges::ranges::data;
+            using ::compat::detail::self_ranges::ranges::cdata;
+        }
         namespace views = compat::views;
     }
-
-    using detail::self_ranges::common_reference;
-    using detail::self_ranges::common_reference_t;
 } // namespace compat
 #endif
 
@@ -13655,18 +13861,19 @@ export namespace compat {
 // Module Section: include/compat/Algorithm.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_RANGES
+#if COMPAT_USE_STD_RANGES
 
 export namespace compat {
     namespace ranges {
-        // Result Types
-        using std::ranges::in_fun_result;
-        using std::ranges::in_in_result;
-        using std::ranges::in_out_result;
-        using std::ranges::in_in_out_result;
-        using std::ranges::in_out_out_result;
-        using std::ranges::min_max_result;
-        using std::ranges::in_found_result;
+        inline namespace COMPAT_STD_NS {
+            // Result Types
+            using std::ranges::in_fun_result;
+            using std::ranges::in_in_result;
+            using std::ranges::in_out_result;
+            using std::ranges::in_in_out_result;
+            using std::ranges::in_out_out_result;
+            using std::ranges::min_max_result;
+            using std::ranges::in_found_result;
 
         using std::ranges::for_each_result;
         using std::ranges::copy_result;
@@ -13872,22 +14079,28 @@ export namespace compat {
         using std::ranges::minmax;
         using std::ranges::clamp;
 
+        } // inline namespace COMPAT_STD_NS
     } // namespace ranges
 } // namespace compat
 #else
 export namespace compat {
     namespace ranges {
-        using namespace ::compat::detail::self_algo::ranges;
-    }
+        inline namespace COMPAT_SELF_NS {
+            using namespace ::compat::detail::self_algo::ranges;
+        } // inline namespace COMPAT_SELF_NS
+    } // namespace ranges
 } // namespace compat
 #endif
 
-#if COMPAT_HAS_STD_CLAMP && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_CLAMP
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::clamp;
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 #else
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
 
     /// <summary>
     /// 將數值限定於 [lo, hi] 區間之夾取函式（向下相容 C++14，對齊 C++17 std::clamp）。
@@ -13919,6 +14132,7 @@ export namespace compat {
         return comp(val, lo) ? lo : comp(hi, val) ? hi : val;
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif
 
@@ -13932,9 +14146,10 @@ export namespace compat {
 // ============================================================================
 
 
-#if COMPAT_HAS_STD_SHARED_MUTEX && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_SHARED_MUTEX
 
 export namespace compat {
+inline namespace COMPAT_STD_NS {
 
     /// <summary>
     /// 提供支援多讀取者與單一寫入者之讀寫互斥鎖（對齊 C++17 std::shared_mutex）。
@@ -13948,11 +14163,13 @@ export namespace compat {
     template <typename Mutex>
     using shared_lock = std::shared_lock<Mutex>;
 
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
-#elif COMPAT_HAS_STD_SHARED_TIMED_MUTEX && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#elif COMPAT_USE_STD_SHARED_TIMED_MUTEX
 
 export namespace compat {
+inline namespace COMPAT_STD_NS {
 
     /// <summary>
     /// 提供支援多讀取者與單一寫入者之讀寫互斥鎖（於 C++14 下對齊 std::shared_timed_mutex）。
@@ -13966,12 +14183,14 @@ export namespace compat {
     template <typename Mutex>
     using shared_lock = std::shared_lock<Mutex>;
 
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
 #else
 
 
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
 
     /// <summary>
     /// C++11 向下相容之無餓死雙閘門讀寫互斥鎖（對齊 C++17 std::shared_mutex 概念）。
@@ -14256,6 +14475,7 @@ export namespace compat {
         x.swap(y);
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 #endif
@@ -14264,22 +14484,50 @@ export namespace compat {
 // Module Section: include/compat/Span.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_SPAN
-#endif
-
-#if COMPAT_HAS_STD_SPAN && defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#if COMPAT_USE_STD_SPAN
+#  if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  endif
 
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::byte;
     using std::span;
     using std::dynamic_extent;
     using std::as_bytes;
     using std::as_writable_bytes;
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
 #else
 
 export namespace compat {
+namespace detail {
+    namespace span_detail {
+
+        template <typename T>
+        using remove_cv_t = typename std::remove_cv<T>::type;
+
+        template <typename C, typename T>
+        struct is_contiguous_container {
+        private:
+            template <typename U>
+            static auto test(int) -> decltype(
+                std::declval<U>().data(),
+                std::declval<U>().size(),
+                std::true_type{}
+            );
+
+            template <typename>
+            static std::false_type test(...);
+
+        public:
+            static constexpr bool value = decltype(test<C>(0))::value;
+        };
+
+    } // namespace span_detail
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
 
 #if defined(__cpp_lib_byte) || (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
     using byte = std::byte;
@@ -14291,32 +14539,6 @@ export namespace compat {
     /// ISO C++20 動態範圍標記常數 (對齊 std::dynamic_extent)。
     /// </summary>
     COMPAT_INLINE_VAR constexpr std::size_t dynamic_extent = static_cast<std::size_t>(-1);
-
-    namespace detail {
-        namespace span_detail {
-
-            template <typename T>
-            using remove_cv_t = typename std::remove_cv<T>::type;
-
-            template <typename C, typename T>
-            struct is_contiguous_container {
-            private:
-                template <typename U>
-                static auto test(int) -> decltype(
-                    std::declval<U>().data(),
-                    std::declval<U>().size(),
-                    std::true_type{}
-                );
-
-                template <typename>
-                static std::false_type test(...);
-
-            public:
-                static constexpr bool value = decltype(test<C>(0))::value;
-            };
-
-        } // namespace span_detail
-    } // namespace detail
 
     /// <summary>
     /// ISO C++20 連續記憶體切片視圖 (對齊 std::span)。
@@ -14643,6 +14865,7 @@ export namespace compat {
         );
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 #endif
@@ -14651,17 +14874,21 @@ export namespace compat {
 // Module Section: include/compat/StringView.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_STRING_VIEW
+#if COMPAT_USE_STD_STRING_VIEW
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using string_view = std::string_view;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 #  if defined(COMPAT_FORCE_STD_IMPLEMENTATION)
 #    error "Standard C++ library does not support requested modern features"
 #  endif
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
     using string_view = detail::string_view;
-}
+} // inline namespace COMPAT_SELF_NS
+} // namespace compat
 #endif
 
 // ============================================================================
@@ -17943,13 +18170,16 @@ inline std::string FormatToString(compat::string_view fmt, const Args&... args) 
 // Module Section: include/compat/Format.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_FORMAT
+#if COMPAT_USE_STD_FORMAT
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::format;
     using std::formatter;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
 
 /// <summary>
 /// Formats arguments into a std::string according to the format string.
@@ -17963,6 +18193,7 @@ inline std::string format(compat::string_view fmt, const Args&... args) {
     return detail::FormatToString(fmt, args...);
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif
 
@@ -17977,7 +18208,7 @@ export namespace compat {
 /// <returns>Formatted std::string representation.</returns>
 template <typename T>
 COMPAT_NODISCARD inline std::string to_string(const T& value) {
-#if COMPAT_HAS_STD_FORMAT
+#if COMPAT_USE_STD_FORMAT
     return std::format("{}", value);
 #else
     return detail::FormatToString("{}", value);
@@ -17991,6 +18222,7 @@ COMPAT_NODISCARD inline std::string to_string(const T& value) {
 // ============================================================================
 
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
 
 using from_chars_result = detail::from_chars_result;
 
@@ -18050,19 +18282,23 @@ COMPAT_NODISCARD inline compat::expected<T, compat::string_view> parse(compat::s
     return detail::Parser<T>::parse(str);
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 // ============================================================================
 // Module Section: include/compat/Print.hpp
 // ============================================================================
 
-#if COMPAT_HAS_STD_PRINT
+#if COMPAT_USE_STD_PRINT
 export namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::print;
     using std::println;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 export namespace compat {
+inline namespace COMPAT_SELF_NS {
 
 /// <summary>
 /// Writes formatted text to the specified C file stream using UTF-8 console output when available.
@@ -18185,6 +18421,7 @@ inline void println() {
     println(stdout);
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif
 
@@ -18201,16 +18438,22 @@ inline void println() {
 // while retaining public API macros (e.g. COMPAT_NODISCARD).
 // ============================================================================
 #undef COMPAT_CPLUSPLUS
+#undef COMPAT_CXX_VERSION
 #undef COMPAT_CXX_11
 #undef COMPAT_CXX_14
 #undef COMPAT_CXX_17
 #undef COMPAT_CXX_20
 #undef COMPAT_CXX_23
 #undef COMPAT_CXX_26
+#undef COMPAT_SELF_NS
+#undef COMPAT_STD_NS
+#undef COMPAT_INLINE_VARIABLE
+#undef COMPAT_CXX14_CONSTEXPR
 #undef COMPAT_HAS_EXCEPTIONS
 #undef COMPAT_THROW_OR_ABORT
 #undef COMPAT_CONSTEXPR_14
 #undef COMPAT_CONSTEXPR_17
+#undef COMPAT_CONSTEXPR_20
 #undef COMPAT_ABI_TAG
 #undef COMPAT_HAS_STD_EXPECTED
 #undef COMPAT_HAS_STD_PRINT
@@ -18236,6 +18479,31 @@ inline void println() {
 #undef COMPAT_HAS_STD_PROPAGATE_CONST
 #undef COMPAT_HAS_STD_SHARED_MUTEX
 #undef COMPAT_HAS_STD_SHARED_TIMED_MUTEX
+#undef COMPAT_USE_STD_OPTIONAL
+#undef COMPAT_USE_STD_STRING_VIEW
+#undef COMPAT_USE_STD_VARIANT
+#undef COMPAT_USE_STD_EXPECTED
+#undef COMPAT_USE_STD_FORMAT
+#undef COMPAT_USE_STD_PRINT
+#undef COMPAT_USE_STD_SPAN
+#undef COMPAT_USE_STD_SHARED_MUTEX
+#undef COMPAT_USE_STD_SHARED_TIMED_MUTEX
+#undef COMPAT_USE_STD_FILESYSTEM
+#undef COMPAT_USE_STD_RANGES
+#undef COMPAT_USE_STD_VIEWS_CONCAT
+#undef COMPAT_USE_STD_VIEWS_CACHE_LATEST
+#undef COMPAT_USE_STD_VIEWS_AS_CONST
+#undef COMPAT_USE_STD_CONSTANT_RANGE
+#undef COMPAT_USE_STD_RANGES_CONTAINS
+#undef COMPAT_USE_STD_RANGES_STARTS_WITH
+#undef COMPAT_USE_STD_RANGES_FOLD
+#undef COMPAT_USE_STD_RANGES_TO
+#undef COMPAT_USE_STD_RANGES_FIND_LAST
+#undef COMPAT_USE_STD_RANGES_IOTA
+#undef COMPAT_USE_STD_RANGES_SHIFT
+#undef COMPAT_USE_STD_RANGES_GENERATE_RANDOM
+#undef COMPAT_USE_STD_CLAMP
+#undef COMPAT_USE_STD_PROPAGATE_CONST
 #undef COMPAT_BAD_EXPECTED_ACCESS_DEFINED
 #undef COMPAT_HAS_STD_OPTIONAL
 

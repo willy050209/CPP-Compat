@@ -6,15 +6,18 @@
 #include <iostream>
 #include <cstdio>
 
-#if COMPAT_HAS_STD_PRINT
+#if COMPAT_USE_STD_PRINT
 #  include <print>
 #  include <ostream>
 namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::print;
     using std::println;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 namespace compat {
+inline namespace COMPAT_SELF_NS {
 
 /// <summary>
 /// Writes formatted text to the specified C file stream using UTF-8 console output when available.
@@ -137,5 +140,6 @@ inline void println() {
     println(stdout);
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif

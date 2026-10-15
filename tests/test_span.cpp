@@ -117,13 +117,20 @@ namespace {
         TEST_ASSERT(sub_empty.empty());
         TEST_ASSERT(sub_empty.size() == 0);
 
+#if !COMPAT_USE_STD_SPAN
         // 6. count 超出剩餘長度時的安全夾取 (Clamping count to maxCount)
         // offset = 3, 剩餘元素為 data[3], data[4] (2 個)
-        // 傳入 count = 100，應安全夾取至 2，不發生緩衝區溢位
+        // 傳入 count = 100，自研實作應安全夾取至 2，不發生緩衝區溢位
         auto clamped = sp.subspan(3, 100);
         TEST_ASSERT(clamped.size() == 2);
         TEST_ASSERT(clamped[0] == 40 && clamped[1] == 50);
         TEST_ASSERT(clamped.data() == sp.data() + 3);
+#else
+        auto in_bounds_sub = sp.subspan(3, 2);
+        TEST_ASSERT(in_bounds_sub.size() == 2);
+        TEST_ASSERT(in_bounds_sub[0] == 40 && in_bounds_sub[1] == 50);
+        TEST_ASSERT(in_bounds_sub.data() == sp.data() + 3);
+#endif
 
         // 7. first() 與 last()
         auto f2 = sp.first(2);
@@ -134,11 +141,18 @@ namespace {
         TEST_ASSERT(l2.size() == 2);
         TEST_ASSERT(l2[0] == 40 && l2[1] == 50);
 
+#if !COMPAT_USE_STD_SPAN
         // 8. first/last 夾取安全防護
         auto f_clamp = sp.first(999);
         TEST_ASSERT(f_clamp.size() == 5);
         auto l_clamp = sp.last(999);
         TEST_ASSERT(l_clamp.size() == 5);
+#else
+        auto f_bound = sp.first(5);
+        TEST_ASSERT(f_bound.size() == 5);
+        auto l_bound = sp.last(5);
+        TEST_ASSERT(l_bound.size() == 5);
+#endif
 
         // 9. 編譯期模板切片
         auto tmpl_sub = sp.subspan<1, 2>();

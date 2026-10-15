@@ -6,17 +6,20 @@
 #include <utility>
 #include <functional>
 
-#if COMPAT_HAS_STD_PROPAGATE_CONST && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_PROPAGATE_CONST
 #  include <experimental/propagate_const>
 
 namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::experimental::propagate_const;
     using std::experimental::get_underlying;
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
 #else
 
 namespace compat {
+inline namespace COMPAT_SELF_NS {
 
     template <typename T>
     class propagate_const;
@@ -29,61 +32,65 @@ namespace compat {
     COMPAT_NODISCARD COMPAT_CONSTEXPR_14 T&
     get_underlying(propagate_const<T>& pt) noexcept;
 
-    namespace detail {
-        namespace propagate_const_detail {
+} // inline namespace COMPAT_SELF_NS
 
-            template <typename T>
-            struct get_element_type {
-            private:
-                template <typename U>
-                static auto test(int) -> typename std::remove_reference<decltype(*std::declval<U&>())>::type;
+namespace detail {
+    namespace propagate_const_detail {
 
-                template <typename>
-                static void test(...);
-
-            public:
-                using type = decltype(test<T>(0));
-            };
-
-            template <typename T>
-            struct get_element_type<T*> {
-                using type = T;
-            };
-
+        template <typename T>
+        struct get_element_type {
+        private:
             template <typename U>
-            struct is_propagate_const_helper : std::false_type {};
+            static auto test(int) -> typename std::remove_reference<decltype(*std::declval<U&>())>::type;
 
-            template <typename U>
-            struct is_propagate_const_helper<propagate_const<U>> : std::true_type {};
+            template <typename>
+            static void test(...);
 
-            // 條件式隱含轉換至裸指標基底類別 (對齊 ISO Library Fundamentals TS)
-            template <typename T, typename Elem, bool = std::is_convertible<const T, const Elem*>::value>
-            struct conv_c {};
+        public:
+            using type = decltype(test<T>(0));
+        };
 
-            template <typename T, typename Elem>
-            struct conv_c<T, Elem, true> {
-                COMPAT_CONSTEXPR_14 operator const Elem*() const;
-            };
+        template <typename T>
+        struct get_element_type<T*> {
+            using type = T;
+        };
 
-            template <typename T, typename Elem, bool = std::is_convertible<T, Elem*>::value>
-            struct conv_nc {};
+        template <typename U>
+        struct is_propagate_const_helper : std::false_type {};
 
-            template <typename T, typename Elem>
-            struct conv_nc<T, Elem, true> {
-                COMPAT_CONSTEXPR_14 operator Elem*();
-            };
+        template <typename U>
+        struct is_propagate_const_helper<propagate_const<U>> : std::true_type {};
 
-            template <typename T, typename Elem>
-            struct conv_base : conv_c<T, Elem>, conv_nc<T, Elem> {};
+        // 條件式隱含轉換至裸指標基底類別 (對齊 ISO Library Fundamentals TS)
+        template <typename T, typename Elem, bool = std::is_convertible<const T, const Elem*>::value>
+        struct conv_c {};
 
-            template <typename T, typename Elem>
-            struct conv_base<T*, Elem> {
-                COMPAT_CONSTEXPR_14 operator const T*() const noexcept;
-                COMPAT_CONSTEXPR_14 operator T*() noexcept;
-            };
+        template <typename T, typename Elem>
+        struct conv_c<T, Elem, true> {
+            COMPAT_CONSTEXPR_14 operator const Elem*() const;
+        };
 
-        } // namespace propagate_const_detail
-    } // namespace detail
+        template <typename T, typename Elem, bool = std::is_convertible<T, Elem*>::value>
+        struct conv_nc {};
+
+        template <typename T, typename Elem>
+        struct conv_nc<T, Elem, true> {
+            COMPAT_CONSTEXPR_14 operator Elem*();
+        };
+
+        template <typename T, typename Elem>
+        struct conv_base : conv_c<T, Elem>, conv_nc<T, Elem> {};
+
+        template <typename T, typename Elem>
+        struct conv_base<T*, Elem> {
+            COMPAT_CONSTEXPR_14 operator const T*() const noexcept;
+            COMPAT_CONSTEXPR_14 operator T*() noexcept;
+        };
+
+    } // namespace propagate_const_detail
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
 
     /// <summary>
     /// ISO C++ Library Fundamentals TS 常數傳播指標包裝器 (對齊 std::experimental::propagate_const)。
@@ -108,11 +115,11 @@ namespace compat {
 
         template <typename U>
         friend COMPAT_CONSTEXPR_14 const U&
-        compat::get_underlying(const propagate_const<U>& pt) noexcept;
+        get_underlying(const propagate_const<U>& pt) noexcept;
 
         template <typename U>
         friend COMPAT_CONSTEXPR_14 U&
-        compat::get_underlying(propagate_const<U>& pt) noexcept;
+        get_underlying(propagate_const<U>& pt) noexcept;
 
         template <typename U, typename Elem, bool>
         friend struct detail::propagate_const_detail::conv_c;
@@ -318,39 +325,43 @@ namespace compat {
         T m_t;
     };
 
-    // ------------------------------------------------------------------------
-    // 條件式隱含轉換至裸指標運算子實作
-    // ------------------------------------------------------------------------
+} // inline namespace COMPAT_SELF_NS
 
-    namespace detail {
-        namespace propagate_const_detail {
+// ------------------------------------------------------------------------
+// 條件式隱含轉換至裸指標運算子實作
+// ------------------------------------------------------------------------
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_base<T*, Elem>::operator const T*() const noexcept {
-                return static_cast<const propagate_const<T*>*>(this)->get();
-            }
+namespace detail {
+    namespace propagate_const_detail {
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_base<T*, Elem>::operator T*() noexcept {
-                return static_cast<propagate_const<T*>*>(this)->get();
-            }
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_base<T*, Elem>::operator const T*() const noexcept {
+            return static_cast<const propagate_const<T*>*>(this)->get();
+        }
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_c<T, Elem, true>::operator const Elem*() const {
-                return static_cast<const propagate_const<T>*>(this)->get();
-            }
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_base<T*, Elem>::operator T*() noexcept {
+            return static_cast<propagate_const<T*>*>(this)->get();
+        }
 
-            template <typename T, typename Elem>
-            COMPAT_CONSTEXPR_14
-            conv_nc<T, Elem, true>::operator Elem*() {
-                return static_cast<propagate_const<T>*>(this)->get();
-            }
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_c<T, Elem, true>::operator const Elem*() const {
+            return static_cast<const propagate_const<T>*>(this)->get();
+        }
 
-        } // namespace propagate_const_detail
-    } // namespace detail
+        template <typename T, typename Elem>
+        COMPAT_CONSTEXPR_14
+        conv_nc<T, Elem, true>::operator Elem*() {
+            return static_cast<propagate_const<T>*>(this)->get();
+        }
+
+    } // namespace propagate_const_detail
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
 
     // ------------------------------------------------------------------------
     // 非成員函式 (Non-member Functions)
@@ -532,6 +543,7 @@ namespace compat {
 #  endif
 #endif
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 // ----------------------------------------------------------------------------

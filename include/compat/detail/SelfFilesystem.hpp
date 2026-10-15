@@ -34,6 +34,7 @@
 
 namespace compat {
 namespace filesystem {
+inline namespace COMPAT_SELF_NS {
 
 // ============================================================================
 // 1. 列舉與位元遮罩 (Enumerations & Bitmasks)
@@ -1737,5 +1738,6 @@ inline uintmax_t remove_all(const path& p, std::error_code& ec) {
     return count;
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace filesystem
 } // namespace compat

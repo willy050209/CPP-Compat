@@ -7,20 +7,21 @@
 
 #include <algorithm>
 
-#if COMPAT_HAS_STD_RANGES
+#if COMPAT_USE_STD_RANGES
 #  include <functional>
 #  include <numeric>
 
 namespace compat {
     namespace ranges {
-        // Result Types
-        using std::ranges::in_fun_result;
-        using std::ranges::in_in_result;
-        using std::ranges::in_out_result;
-        using std::ranges::in_in_out_result;
-        using std::ranges::in_out_out_result;
-        using std::ranges::min_max_result;
-        using std::ranges::in_found_result;
+        inline namespace COMPAT_STD_NS {
+            // Result Types
+            using std::ranges::in_fun_result;
+            using std::ranges::in_in_result;
+            using std::ranges::in_out_result;
+            using std::ranges::in_in_out_result;
+            using std::ranges::in_out_out_result;
+            using std::ranges::min_max_result;
+            using std::ranges::in_found_result;
 
         using std::ranges::for_each_result;
         using std::ranges::copy_result;
@@ -226,22 +227,28 @@ namespace compat {
         using std::ranges::minmax;
         using std::ranges::clamp;
 
+        } // inline namespace COMPAT_STD_NS
     } // namespace ranges
 } // namespace compat
 #else
 namespace compat {
     namespace ranges {
-        using namespace ::compat::detail::self_algo::ranges;
-    }
+        inline namespace COMPAT_SELF_NS {
+            using namespace ::compat::detail::self_algo::ranges;
+        } // inline namespace COMPAT_SELF_NS
+    } // namespace ranges
 } // namespace compat
 #endif
 
-#if COMPAT_HAS_STD_CLAMP && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_CLAMP
 namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::clamp;
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 #else
 namespace compat {
+inline namespace COMPAT_SELF_NS {
 
     /// <summary>
     /// 將數值限定於 [lo, hi] 區間之夾取函式（向下相容 C++14，對齊 C++17 std::clamp）。
@@ -273,5 +280,6 @@ namespace compat {
         return comp(val, lo) ? lo : comp(hi, val) ? hi : val;
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif

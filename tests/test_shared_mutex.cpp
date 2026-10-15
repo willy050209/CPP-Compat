@@ -1,4 +1,4 @@
-#include "test_helpers.hpp"
+﻿#include "test_helpers.hpp"
 #include "compat/SharedMutex.hpp"
 
 #include <thread>

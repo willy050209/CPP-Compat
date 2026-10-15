@@ -109,7 +109,7 @@ namespace self_ranges {
         /// </summary>
         struct default_sentinel_t {};
 
-        COMPAT_INLINE_VAR constexpr default_sentinel_t default_sentinel{};
+        COMPAT_INLINE_VARIABLE(default_sentinel_t, default_sentinel);
 
         /// <summary>
         /// 懸空迭代器佔位型別 (對齊 C++20 std::ranges::dangling)。
@@ -620,7 +620,7 @@ namespace self_ranges {
         /// <summary>
         /// ISO C++23 範圍建構式標記常數實體 (對齊 std::from_range)。
         /// </summary>
-        COMPAT_INLINE_VAR constexpr from_range_t from_range{};
+        COMPAT_INLINE_VARIABLE(from_range_t, from_range);
 
         namespace detail {
             template <typename S, typename I>

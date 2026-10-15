@@ -7,23 +7,52 @@
 #include <iterator>
 #include <array>
 
-#if COMPAT_HAS_STD_SPAN
+#if COMPAT_USE_STD_SPAN
 #  include <span>
-#endif
-
-#if COMPAT_HAS_STD_SPAN && defined(COMPAT_FORCE_STD_IMPLEMENTATION)
+#  if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#    include <cstddef>
+#  endif
 
 namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::byte;
     using std::span;
     using std::dynamic_extent;
     using std::as_bytes;
     using std::as_writable_bytes;
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
 #else
 
 namespace compat {
+namespace detail {
+    namespace span_detail {
+
+        template <typename T>
+        using remove_cv_t = typename std::remove_cv<T>::type;
+
+        template <typename C, typename T>
+        struct is_contiguous_container {
+        private:
+            template <typename U>
+            static auto test(int) -> decltype(
+                std::declval<U>().data(),
+                std::declval<U>().size(),
+                std::true_type{}
+            );
+
+            template <typename>
+            static std::false_type test(...);
+
+        public:
+            static constexpr bool value = decltype(test<C>(0))::value;
+        };
+
+    } // namespace span_detail
+} // namespace detail
+
+inline namespace COMPAT_SELF_NS {
 
 #if defined(__cpp_lib_byte) || (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
     using byte = std::byte;
@@ -35,32 +64,6 @@ namespace compat {
     /// ISO C++20 動態範圍標記常數 (對齊 std::dynamic_extent)。
     /// </summary>
     COMPAT_INLINE_VAR constexpr std::size_t dynamic_extent = static_cast<std::size_t>(-1);
-
-    namespace detail {
-        namespace span_detail {
-
-            template <typename T>
-            using remove_cv_t = typename std::remove_cv<T>::type;
-
-            template <typename C, typename T>
-            struct is_contiguous_container {
-            private:
-                template <typename U>
-                static auto test(int) -> decltype(
-                    std::declval<U>().data(),
-                    std::declval<U>().size(),
-                    std::true_type{}
-                );
-
-                template <typename>
-                static std::false_type test(...);
-
-            public:
-                static constexpr bool value = decltype(test<C>(0))::value;
-            };
-
-        } // namespace span_detail
-    } // namespace detail
 
     /// <summary>
     /// ISO C++20 連續記憶體切片視圖 (對齊 std::span)。
@@ -387,6 +390,7 @@ namespace compat {
         );
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 #endif

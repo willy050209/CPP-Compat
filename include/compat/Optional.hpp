@@ -2,44 +2,25 @@
 
 #include "Config.hpp"
 
-#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && defined(__has_include)
-#  if __has_include(<optional>)
-#    include <optional>
-#    define COMPAT_HAS_STD_OPTIONAL 1
-#  else
-#    define COMPAT_HAS_STD_OPTIONAL 0
-#  endif
-#else
-#  define COMPAT_HAS_STD_OPTIONAL 0
-#endif
-
 #include <utility>
 #include <type_traits>
 #include <exception>
 #include <new>
 
-#if COMPAT_HAS_STD_OPTIONAL && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_OPTIONAL
+#  include <optional>
 namespace compat {
+inline namespace COMPAT_STD_NS {
     using std::optional;
     using std::nullopt;
     using std::nullopt_t;
     using std::make_optional;
     using std::bad_optional_access;
-}
+} // inline namespace COMPAT_STD_NS
+} // namespace compat
 #else
 namespace compat {
-
-    struct nullopt_t {
-        explicit constexpr nullopt_t(int) {}
-    };
-    constexpr nullopt_t nullopt{0};
-
-    class bad_optional_access : public std::exception {
-    public:
-        const char* what() const noexcept override { return "bad optional access"; }
-    };
-
-    namespace detail {
+namespace detail {
 
         template <typename T, bool IsTriviallyDestructible = std::is_trivially_destructible<T>::value>
         struct optional_storage_base {
@@ -200,6 +181,18 @@ namespace compat {
         };
 
     } // namespace detail
+
+inline namespace COMPAT_SELF_NS {
+
+    struct nullopt_t {
+        explicit constexpr nullopt_t(int = 0) {}
+    };
+    COMPAT_INLINE_VARIABLE(nullopt_t, nullopt);
+
+    class bad_optional_access : public std::exception {
+    public:
+        const char* what() const noexcept override { return "bad optional access"; }
+    };
 
     template <typename T>
     class optional : public detail::optional_move_assign_base<T> {
@@ -403,5 +396,6 @@ namespace compat {
         return !(val < opt);
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 #endif

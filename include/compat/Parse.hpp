@@ -8,6 +8,7 @@
 #include <type_traits>
 
 namespace compat {
+inline namespace COMPAT_SELF_NS {
 
 using from_chars_result = detail::from_chars_result;
 
@@ -67,4 +68,5 @@ COMPAT_NODISCARD inline compat::expected<T, compat::string_view> parse(compat::s
     return detail::Parser<T>::parse(str);
 }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat

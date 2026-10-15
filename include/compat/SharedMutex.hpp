@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // ============================================================================
 // CPP-Compat: Zero-Dependency Modern C++ Backward Compatibility Shim Layer
@@ -10,10 +10,11 @@
 #include <cstddef>
 #include <utility>
 
-#if COMPAT_HAS_STD_SHARED_MUTEX && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#if COMPAT_USE_STD_SHARED_MUTEX
 #  include <shared_mutex>
 
 namespace compat {
+inline namespace COMPAT_STD_NS {
 
     /// <summary>
     /// 提供支援多讀取者與單一寫入者之讀寫互斥鎖（對齊 C++17 std::shared_mutex）。
@@ -27,12 +28,14 @@ namespace compat {
     template <typename Mutex>
     using shared_lock = std::shared_lock<Mutex>;
 
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
-#elif COMPAT_HAS_STD_SHARED_TIMED_MUTEX && !defined(COMPAT_FORCE_SELF_IMPLEMENTATION)
+#elif COMPAT_USE_STD_SHARED_TIMED_MUTEX
 #  include <shared_mutex>
 
 namespace compat {
+inline namespace COMPAT_STD_NS {
 
     /// <summary>
     /// 提供支援多讀取者與單一寫入者之讀寫互斥鎖（於 C++14 下對齊 std::shared_timed_mutex）。
@@ -46,6 +49,7 @@ namespace compat {
     template <typename Mutex>
     using shared_lock = std::shared_lock<Mutex>;
 
+} // inline namespace COMPAT_STD_NS
 } // namespace compat
 
 #else
@@ -55,6 +59,7 @@ namespace compat {
 #  include <system_error>
 
 namespace compat {
+inline namespace COMPAT_SELF_NS {
 
     /// <summary>
     /// C++11 向下相容之無餓死雙閘門讀寫互斥鎖（對齊 C++17 std::shared_mutex 概念）。
@@ -339,6 +344,7 @@ namespace compat {
         x.swap(y);
     }
 
+} // inline namespace COMPAT_SELF_NS
 } // namespace compat
 
 #endif

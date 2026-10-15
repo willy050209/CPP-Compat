@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../Config.hpp"
 
@@ -187,7 +187,7 @@ struct unexpect_t {
 /// <summary>
 /// In-place tag constant to trigger unexpected error value construction.
 /// </summary>
-constexpr unexpect_t unexpect{};
+COMPAT_INLINE_VARIABLE(unexpect_t, unexpect);
 
 /// <summary>
 /// Container holding an error value for expected types.
