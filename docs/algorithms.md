@@ -1,6 +1,6 @@
-# 受約束範圍演算法 (compat::ranges algorithms)
+﻿# 受約束範圍演算法 (compat::ranges algorithms)
 
-定義於標頭檔 [`<compat/Algorithm.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Algorithm.hpp)（或 [`<compat/Ranges.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Ranges.hpp)）。  
+定義於標頭檔 [`<compat/Algorithm.hpp>`](../include/compat/Algorithm.hpp)（或 [`<compat/Ranges.hpp>`](../include/compat/Ranges.hpp)）。  
 所屬命名空間：`compat`, `compat::ranges`。
 
 `compat::ranges` 演算法家族完全對齊 **ISO C++20 `std::ranges` 演算法**標準規格。  

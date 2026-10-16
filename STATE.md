@@ -1,4 +1,4 @@
-# 專案進度狀態看板 (STATE.md)
+﻿# 專案進度狀態看板 (STATE.md)
 
 ## 當前進度狀態
 - [x] Phase 1: 需求釐清、技術調研與實作計畫核准 (Approved)
@@ -61,6 +61,11 @@
   - [x] CI 工作流程與跨編譯器驗證矩陣跨平台升級：支援 MSVC、GCC、Clang 跨 TU ABI 隔離與煙霧驗證
   - [x] 單元測試全面通過純 C++11 嚴格語法審核（0 generic lambda、0 數字分隔符、0 單參數 static_assert，-std=c++11 -pedantic 零警告）
   - [x] 完善官方文件（`docs/config.md`、`README.md`、`ARCHITECTURE.md`、`STATE.md`）
+- [x] Benchmark C++11 Alignment & Docs Synchronization Phase:
+  - [x] 重構 `benchmark/` 模組：消除 C++17 巢狀命名空間，修復 `bench_string_view.cpp` 符號對齊與 `COMPAT_ENABLE_SELF_STRING_VIEW`，消除 `bench_parse.cpp` 結構化綁定與 `<charconv>` 缺少問題，解除 `compat_benchmark` 強制綁定 C++23 限制，使其在 C++11 下能乾淨編譯與執行
+  - [x] 升級 `scripts/test_print_matrix.py`：消除過時硬編碼路徑，納入 14 個測試套件與雙軌（default / fallback）模式矩陣驗證
+  - [x] 全面同步官方文件：更新 `docs/README.md` 雙軌架構與 5 種部署模式，將全套 15 份組件文件頂部絕對路徑改為可攜式相對路徑
+  - [x] 達成全套 30 組跨編譯器矩陣 100% 全綠通過，全儲存庫所有 `.hpp`、`.cpp`、`.ixx`、`.md` 通過 UTF-8 BOM 完整性檢驗
 
 
 

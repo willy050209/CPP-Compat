@@ -1,7 +1,7 @@
-# 讀寫互斥鎖與共享鎖 (compat::shared_mutex & compat::shared_lock)
+﻿# 讀寫互斥鎖與共享鎖 (compat::shared_mutex & compat::shared_lock)
 
-定義於標頭檔 [`<compat/SharedMutex.hpp>`](file:///D:/P/CPP/CPP-Compat/include/compat/SharedMutex.hpp)。  
-亦可透過總括標頭檔 [`<compat/Compat.hpp>`](file:///D:/P/CPP/CPP-Compat/include/compat/Compat.hpp) 引入。  
+定義於標頭檔 [`<compat/SharedMutex.hpp>`](../include/compat/SharedMutex.hpp)。  
+亦可透過總括標頭檔 [`<compat/Compat.hpp>`](../include/compat/Compat.hpp) 引入。  
 所屬命名空間：`compat`。
 
 `compat::shared_mutex` 與 `compat::shared_lock` 為現代 C++ 多執行緒讀寫並發控制提供跨標準之統一抽象，分別對齊 **C++17 `std::shared_mutex`** 與 **C++14 `std::shared_lock`** 規範。  

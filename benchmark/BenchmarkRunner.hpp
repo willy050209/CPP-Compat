@@ -14,7 +14,8 @@
 #include <sstream>
 #include <unordered_map>
 
-namespace compat::bench {
+namespace compat {
+namespace bench {
 
 /// <summary>
 /// Prevents the compiler from dead-code eliminating computations on a non-const value.
@@ -347,4 +348,5 @@ private:
     std::vector<BenchmarkCase> m_cases;
 };
 
-} // namespace compat::bench
+} // namespace bench
+} // namespace compat

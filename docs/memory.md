@@ -1,6 +1,6 @@
 ﻿# 未初始化記憶體演算法 (compat::ranges memory)
 
-定義於標頭檔 [`<compat/Memory.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Memory.hpp)。  
+定義於標頭檔 [`<compat/Memory.hpp>`](../include/compat/Memory.hpp)。  
 所屬命名空間：`compat::ranges`。
 
 `compat::ranges` 記憶體演算法家族完全對齊 **ISO C++20 `std::ranges` Specialized Memory Algorithms** 標準規格。  

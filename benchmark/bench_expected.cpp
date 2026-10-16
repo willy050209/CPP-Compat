@@ -1,11 +1,14 @@
 ﻿#define COMPAT_ENABLE_UNION_EXPECTED 1
-#define COMPAT_ENABLE_VARIANT_EXPECTED 1
 #define COMPAT_BENCHMARK_ISOLATE_EXPECTED 1
 
 #include "BenchmarkRunner.hpp"
 #include <compat/Config.hpp>
 #include <compat/detail/SelfUnionExpected.hpp>
-#include <compat/detail/SelfExpected.hpp>
+
+#if COMPAT_HAS_STD_VARIANT
+#  define COMPAT_ENABLE_VARIANT_EXPECTED 1
+#  include <compat/detail/SelfExpected.hpp>
+#endif
 
 #if COMPAT_HAS_STD_EXPECTED
 #  include <expected>
@@ -33,6 +36,7 @@ void RegisterExpectedBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_VARIANT
     runner.Register("Expected", "Create & Access Success", "自研 Fallback (Variant)", false, kDefaultIters,
         [](uint64_t iters) {
             for (uint64_t i = 0; i < iters; ++i) {
@@ -41,6 +45,7 @@ void RegisterExpectedBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(val);
             }
         });
+#endif
 
 #if COMPAT_HAS_STD_EXPECTED
     runner.Register("Expected", "Create & Access Success", "原生 std::expected", true, kDefaultIters,
@@ -66,6 +71,7 @@ void RegisterExpectedBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_VARIANT
     runner.Register("Expected", "Create & Access Error", "自研 Fallback (Variant)", false, kDefaultIters,
         [](uint64_t iters) {
             for (uint64_t i = 0; i < iters; ++i) {
@@ -75,6 +81,7 @@ void RegisterExpectedBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(err);
             }
         });
+#endif
 
 #if COMPAT_HAS_STD_EXPECTED
     runner.Register("Expected", "Create & Access Error", "原生 std::expected", true, kDefaultIters,
@@ -110,6 +117,7 @@ void RegisterExpectedBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_VARIANT
     runner.Register("Expected", "Boolean Check & Branch", "自研 Fallback (Variant)", false, kDefaultIters,
         [](uint64_t iters) {
             int32_t sum = 0;
@@ -127,6 +135,7 @@ void RegisterExpectedBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(sum);
             }
         });
+#endif
 
 #if COMPAT_HAS_STD_EXPECTED
     runner.Register("Expected", "Boolean Check & Branch", "原生 std::expected", true, kDefaultIters,

@@ -1,6 +1,6 @@
-# 特性檢測與配置 (Config API Reference)
+﻿# 特性檢測與配置 (Config API Reference)
 
-定義於標頭檔 [`<compat/Config.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Config.hpp)。  
+定義於標頭檔 [`<compat/Config.hpp>`](../include/compat/Config.hpp)。  
 所屬命名空間：`compat`, `compat::detail`。
 
 `Config.hpp` 是整個 `CPP-Compat` 函式庫的核心基礎架構標頭，負責編譯器標準探測、標準庫特徵檢測巨集（Feature Test Macros）、雙軌執行模式切換開關、例外安全封裝以及未定義行為（UB）防護終止函式。

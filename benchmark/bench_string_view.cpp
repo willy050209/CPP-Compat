@@ -1,9 +1,21 @@
-﻿#include "BenchmarkRunner.hpp"
+﻿#define COMPAT_ENABLE_SELF_STRING_VIEW 1
+
+#include "BenchmarkRunner.hpp"
+#include <compat/Config.hpp>
 #include <compat/detail/SelfStringView.hpp>
 
-#include <string_view>
+#if COMPAT_HAS_STD_STRING_VIEW
+#  include <string_view>
+#endif
+
 #include <string>
 #include <cstdint>
+
+namespace compat {
+namespace detail {
+    using string_view = ::compat::self_v1::string_view;
+} // namespace detail
+} // namespace compat
 
 namespace {
     static constexpr const char* kRawText = "The quick brown fox jumps over the lazy dog and runs away quickly";
@@ -36,6 +48,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_STRING_VIEW
     runner.Register("StringView", "Substr Slice", "原生 std::string_view", true, kDefaultIters,
         [](uint64_t iters) {
             std::string_view sv(kRawText);
@@ -44,6 +57,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(sub);
             }
         });
+#endif
 
     runner.Register("StringView", "Substr Slice", "傳統 std::string (Heap)", false, kHeapIters,
         [s_text](uint64_t iters) {
@@ -65,6 +79,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_STRING_VIEW
     runner.Register("StringView", "Find Character", "原生 std::string_view", true, kDefaultIters,
         [](uint64_t iters) {
             std::string_view sv(kRawText);
@@ -73,6 +88,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(pos);
             }
         });
+#endif
 
     // =========================================================================
     // 3. Find Substring Operation
@@ -86,6 +102,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_STRING_VIEW
     runner.Register("StringView", "Find Substring", "原生 std::string_view", true, kDefaultIters,
         [](uint64_t iters) {
             std::string_view sv(kRawText);
@@ -94,6 +111,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(pos);
             }
         });
+#endif
 
     // =========================================================================
     // 4. Operator== Comparison (Identical Strings)
@@ -108,6 +126,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_STRING_VIEW
     runner.Register("StringView", "Operator== (Equal)", "原生 std::string_view", true, kDefaultIters,
         [](uint64_t iters) {
             std::string_view sv1(kComp1);
@@ -117,6 +136,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(eq);
             }
         });
+#endif
 
     // =========================================================================
     // 5. Operator== Comparison (Mismatch at End)
@@ -131,6 +151,7 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if COMPAT_HAS_STD_STRING_VIEW
     runner.Register("StringView", "Operator== (Mismatch End)", "原生 std::string_view", true, kDefaultIters,
         [](uint64_t iters) {
             std::string_view sv1(kMis1);
@@ -140,4 +161,5 @@ void RegisterStringViewBenchmarks(compat::bench::BenchmarkRunner& runner) {
                 compat::bench::DoNotOptimize(eq);
             }
         });
+#endif
 }

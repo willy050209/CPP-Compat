@@ -1,6 +1,6 @@
-# 連續緩衝區切片視圖 (compat::span)
+﻿# 連續緩衝區切片視圖 (compat::span)
 
-定義於標頭檔 [`<compat/Span.hpp>`](file:///D:/P/CPP/CPP-Compat/include/compat/Span.hpp)。  
+定義於標頭檔 [`<compat/Span.hpp>`](../include/compat/Span.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::span<T, Extent>` 是一個非擁有型（Non-owning）的連續記憶體緩衝區視圖（Contiguous Sequence View），對齊 ISO C++20 `std::span` 標準規範。  

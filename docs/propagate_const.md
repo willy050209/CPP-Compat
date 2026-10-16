@@ -1,7 +1,7 @@
-# 常數傳播指標 (compat::propagate_const)
+﻿# 常數傳播指標 (compat::propagate_const)
 
-定義於標頭檔 [`<compat/PropagateConst.hpp>`](file:///D:/P/CPP/CPP-Compat/include/compat/PropagateConst.hpp)。  
-亦可透過總括標頭檔 [`<compat/Compat.hpp>`](file:///D:/P/CPP/CPP-Compat/include/compat/Compat.hpp) 引入。  
+定義於標頭檔 [`<compat/PropagateConst.hpp>`](../include/compat/PropagateConst.hpp)。  
+亦可透過總括標頭檔 [`<compat/Compat.hpp>`](../include/compat/Compat.hpp) 引入。  
 所屬命名空間：`compat`。
 
 `compat::propagate_const<T>` 是一個常數傳播指標包裝器（Const-Propagating Pointer Wrapper），嚴格對齊 ISO/IEC TS 19568:2017 (C++ Library Fundamentals TS v2 / v3) 中的 `std::experimental::propagate_const` 規範。  

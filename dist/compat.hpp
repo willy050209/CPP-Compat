@@ -6689,7 +6689,7 @@ namespace self_ranges {
 // Module Section: include/compat/detail/SelfStringView.hpp
 // ============================================================================
 
-#if !COMPAT_USE_STD_STRING_VIEW
+#if !COMPAT_USE_STD_STRING_VIEW || defined(COMPAT_ENABLE_SELF_STRING_VIEW)
 
 #include <cstddef>
 #include <cstdint>

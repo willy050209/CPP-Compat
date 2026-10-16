@@ -1,6 +1,6 @@
 ﻿# 字串檢視 (compat::string_view)
 
-定義於標頭檔 [`<compat/StringView.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/StringView.hpp)。  
+定義於標頭檔 [`<compat/StringView.hpp>`](../include/compat/StringView.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::string_view` 是一個非擁有型（Non-owning）的唯讀字串引用物件，完全對齊 ISO C++17 `std::string_view` 標準規格。  

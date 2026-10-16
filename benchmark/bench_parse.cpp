@@ -1,7 +1,17 @@
 ﻿#include "BenchmarkRunner.hpp"
+#include <compat/Config.hpp>
 #include <compat/Parse.hpp>
 
-#include <charconv>
+#if (COMPAT_CPLUSPLUS >= COMPAT_CXX_17) && defined(__has_include)
+#  if __has_include(<charconv>)
+#    include <charconv>
+#    define BENCH_HAS_CHARCONV 1
+#  endif
+#elif (COMPAT_CPLUSPLUS >= COMPAT_CXX_17)
+#  include <charconv>
+#  define BENCH_HAS_CHARCONV 1
+#endif
+
 #include <string>
 #include <cstdint>
 #include <cstdlib>
@@ -39,16 +49,18 @@ void RegisterParseBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if defined(BENCH_HAS_CHARCONV)
     runner.Register("Parse", "Parse int32_t", "原生 std::from_chars", true, kIntIters,
         [](uint64_t iters) {
             compat::string_view sv(kInt32Raw);
             for (uint64_t i = 0; i < iters; ++i) {
                 int32_t val = 0;
-                auto [p, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+                auto res = std::from_chars(sv.data(), sv.data() + sv.size(), val);
                 compat::bench::DoNotOptimize(val);
-                compat::bench::DoNotOptimize(ec);
+                compat::bench::DoNotOptimize(res.ec);
             }
         });
+#endif
 
     runner.Register("Parse", "Parse int32_t", "傳統 std::stoi", false, kIntIters,
         [s_int32](uint64_t iters) {
@@ -73,16 +85,18 @@ void RegisterParseBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if defined(BENCH_HAS_CHARCONV)
     runner.Register("Parse", "Parse int64_t", "原生 std::from_chars", true, kIntIters,
         [](uint64_t iters) {
             compat::string_view sv(kInt64Raw);
             for (uint64_t i = 0; i < iters; ++i) {
                 int64_t val = 0;
-                auto [p, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+                auto res = std::from_chars(sv.data(), sv.data() + sv.size(), val);
                 compat::bench::DoNotOptimize(val);
-                compat::bench::DoNotOptimize(ec);
+                compat::bench::DoNotOptimize(res.ec);
             }
         });
+#endif
 
     runner.Register("Parse", "Parse int64_t", "傳統 std::stoll", false, kIntIters,
         [s_int64](uint64_t iters) {
@@ -107,15 +121,16 @@ void RegisterParseBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if defined(BENCH_HAS_CHARCONV)
     runner.Register("Parse", "Parse double", "原生 std::from_chars", true, kFloatIters,
         [](uint64_t iters) {
             compat::string_view sv(kDoubleRaw);
             for (uint64_t i = 0; i < iters; ++i) {
 #if defined(__cpp_lib_to_chars) && (__cpp_lib_to_chars >= 201611L)
                 double val = 0.0;
-                auto [p, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+                auto res = std::from_chars(sv.data(), sv.data() + sv.size(), val);
                 compat::bench::DoNotOptimize(val);
-                compat::bench::DoNotOptimize(ec);
+                compat::bench::DoNotOptimize(res.ec);
 #else
                 char* end = nullptr;
                 double val = std::strtod(sv.data(), &end);
@@ -123,6 +138,7 @@ void RegisterParseBenchmarks(compat::bench::BenchmarkRunner& runner) {
 #endif
             }
         });
+#endif
 
     runner.Register("Parse", "Parse double", "傳統 std::stod", false, kFloatIters,
         [s_double](uint64_t iters) {
@@ -147,16 +163,18 @@ void RegisterParseBenchmarks(compat::bench::BenchmarkRunner& runner) {
             }
         });
 
+#if defined(BENCH_HAS_CHARCONV)
     runner.Register("Parse", "Failure Input Validation", "原生 std::from_chars", true, kFailIters,
         [](uint64_t iters) {
             compat::string_view sv(kInvalidRaw);
             for (uint64_t i = 0; i < iters; ++i) {
                 int32_t val = 0;
-                auto [p, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
-                bool ok = (ec == std::errc{});
+                auto res = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+                bool ok = (res.ec == std::errc{});
                 compat::bench::DoNotOptimize(ok);
             }
         });
+#endif
 
     runner.Register("Parse", "Failure Input Validation", "傳統 std::stoi (Exception)", false, kFailIters,
         [s_invalid](uint64_t iters) {

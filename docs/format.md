@@ -1,6 +1,6 @@
-# 格式化輸出 (compat::format)
+﻿# 格式化輸出 (compat::format)
 
-定義於標頭檔 [`<compat/Format.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Format.hpp)。  
+定義於標頭檔 [`<compat/Format.hpp>`](../include/compat/Format.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::format` 提供型別安全、高效且符合現代 C++ 標準的字串格式化能力，完全對齊 **ISO C++20 `std::format`** 語意。  

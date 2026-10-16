@@ -1,6 +1,6 @@
-# 強型別解析 (compat::parse / from_chars)
+﻿# 強型別解析 (compat::parse / from_chars)
 
-定義於標頭檔 [`<compat/Parse.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Parse.hpp)。  
+定義於標頭檔 [`<compat/Parse.hpp>`](../include/compat/Parse.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::parse<T>` 與 `compat::from_chars` 提供強型別、零記憶體配置（Zero-heap）、零 Locale 相依性、執行緒安全且無例外的文字轉數值解析引擎，完全遵循 **ISO C++17 `std::from_chars`** 規格。

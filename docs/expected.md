@@ -1,6 +1,6 @@
-# 期望值與錯誤處理 (compat::expected)
+﻿# 期望值與錯誤處理 (compat::expected)
 
-定義於標頭檔 [`<compat/Expected.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Expected.hpp)。  
+定義於標頭檔 [`<compat/Expected.hpp>`](../include/compat/Expected.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::expected<T, E>` 是一個詞彙型別（Vocabulary Type），封裝了運算成功產生的預期數值（型別 `T`）或失敗時攜帶的非預期錯誤值（型別 `E`）。它完全遵循 **ISO C++23 `std::expected`** 標準合約，支援 Monadic Operations，旨在取代 C 風格錯誤碼與 C++ 例外處理，落實純函數、型別安全且零額外記憶體配置的錯誤傳遞架構。

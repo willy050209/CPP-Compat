@@ -82,14 +82,10 @@ if(COMPAT_BUILD_BENCHMARKS)
         add_executable(compat_benchmark ${BENCHMARK_SOURCES})
         target_include_directories(compat_benchmark PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/benchmark")
         target_link_libraries(compat_benchmark PRIVATE compat)
-        set_target_properties(compat_benchmark PROPERTIES
-            CXX_STANDARD 23
-            CXX_STANDARD_REQUIRED ON
-        )
         if(MSVC)
-            target_compile_options(compat_benchmark PRIVATE /std:c++latest /O2)
+            target_compile_options(compat_benchmark PRIVATE /O2)
         else()
-            target_compile_options(compat_benchmark PRIVATE -std=c++23 -O3)
+            target_compile_options(compat_benchmark PRIVATE -O3)
         endif()
     endif()
 endif()

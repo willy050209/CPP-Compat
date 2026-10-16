@@ -1,6 +1,6 @@
-# 選擇性值 (compat::optional)
+﻿# 選擇性值 (compat::optional)
 
-定義於標頭檔 [`<compat/Optional.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Optional.hpp)。  
+定義於標頭檔 [`<compat/Optional.hpp>`](../include/compat/Optional.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::optional<T>` 表示一個可能存在或為空的型別安全包裝器，完全對齊 **ISO C++17 `std::optional`** 標準規格。  

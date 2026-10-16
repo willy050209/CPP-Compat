@@ -1,6 +1,6 @@
 ﻿# 終端列印 (compat::print / println)
 
-定義於標頭檔 [`<compat/Print.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Print.hpp)。  
+定義於標頭檔 [`<compat/Print.hpp>`](../include/compat/Print.hpp)。  
 所屬命名空間：`compat`。
 
 `compat::print` 與 `compat::println` 完全遵循 **ISO C++23 `std::print` 與 `std::println`** 標準規格。提供極速、型別安全且自動處理 Unicode 編碼的控制台與串流輸出能力。  

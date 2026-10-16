@@ -1,6 +1,6 @@
 ﻿# 檔案系統 (compat::filesystem)
 
-定義於標頭檔 [`<compat/Filesystem.hpp>`](file:///D:/P/CPP/CPP-Compat/include/compat/Filesystem.hpp)。  
+定義於標頭檔 [`<compat/Filesystem.hpp>`](../include/compat/Filesystem.hpp)。  
 所屬命名空間：`compat::filesystem`。
 
 `compat::filesystem` 提供現代 C++ 檔案系統函式庫的向下相容實作，完全對齊 **ISO C++17 `std::filesystem`** 標準規範。  

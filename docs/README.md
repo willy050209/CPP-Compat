@@ -1,4 +1,4 @@
-# CPP-Compat API 參考手冊 (API Reference Manual)
+﻿# CPP-Compat API 參考手冊 (API Reference Manual)
 
 歡迎查閱 **CPP-Compat** 官方 API 規格與技術參考手冊。  
 本手冊以 **Microsoft Learn (MSDN)** 與 **C++ cppreference.com** 的標準結構編寫，詳盡列出各模組、類別、函式、概念（Concepts）與自訂點物件（Customization Point Objects, CPO）的規格合約、例外保證、複雜度與範例程式碼。
@@ -31,31 +31,55 @@ CPP-Compat 採完全解耦與模組化設計。您可以包含總括標頭 `<com
 
 ## 雙軌架構原則 (Dual-Track Architecture)
 
-CPP-Compat 具備業界最高標準的雙軌執行模式：
+CPP-Compat 具備業界最高標準的雙軌執行模式與 ABI 隔離防護：
 
 ```mermaid
 flowchart TD
-    App[使用者應用程式 / 函式庫] --> Header["引入 &lt;compat/Compat.hpp&gt;"]
+    App[使用者應用程式 / 函式庫] --> Header["引入 &lt;compat/Compat.hpp&gt; 或個別模組標頭"]
     Header --> Check{編譯器標準與工具鏈支援？}
-    Check -- "C++20/23/26 原生標準庫可用" --> StdRoute["透傳至原生 std::* (Zero Overhead)"]
-    Check -- "C++11/14/17 或 -DCOMPAT_FORCE_SELF_IMPLEMENTATION" --> SelfRoute["切換至純自研 Fallback 實作"]
-    StdRoute --> ABI["ABI 隔離保證 (COMPAT_ABI_TAG)"]
-    SelfRoute --> ABI
+    Check -- "C++20/23/26 原生標準庫可用" --> StdRoute["透傳至原生 std::* (inline namespace std_v1)"]
+    Check -- "C++11/14/17 或 -DCOMPAT_FORCE_SELF_IMPL" --> SelfRoute["切換至純自研 Fallback (inline namespace self_v1)"]
+    StdRoute --> Linker["Linker 符號隔離防護 (避免跨標準混編 ABI 撕裂)"]
+    SelfRoute --> Linker
 ```
 
 1. **原生零開銷透傳 (Transparent Native Routing)**：  
-   當在現代編譯器（如 MSVC 19+、GCC 11+、Clang 14+）下編譯，且開啟相應語言標準（如 `/std:c++20`、`-std=c++23`、`-std=c++26`）時，各型別均透明別名（Type Alias）至 `std::*`，完全享有現代編譯器的內聯、向量化與內建最佳化。
+   當在現代編譯器（如 MSVC 19+、GCC 11+、Clang 14+）下編譯，且開啟相應語言標準（如 `/std:c++20`、`-std=c++23`、`-std=c++26`）時，各型別均透明別名（Type Alias）至 `std::*`，置於 `inline namespace std_v1`，完全享有現代編譯器的內聯、向量化與內建最佳化。
 
 2. **自給自足降階實作 (Self-Contained Fallback)**：  
-   當在 C++11/14/17 舊環境編譯，或使用者顯式指定 `-DCOMPAT_FORCE_SELF_IMPLEMENTATION=ON` 時，自動啟用純自研、零第三方相依的輕量實作，保證**語意 100% 對齊 ISO 標準規格**。
+   當在 C++11/14/17 舊環境編譯，或使用者顯式指定 `-DCOMPAT_FORCE_SELF_IMPL=ON`（或 `-DCOMPAT_FORCE_SELF_IMPLEMENTATION=1`）時，自動啟用純自研、零第三方相依的輕量實作，置於 `inline namespace self_v1`，保證**語意 100% 對齊 ISO 標準規格**。
 
 3. **ABI 隔離與 ODR 防護**：  
-   Fallback 命名空間內置 `COMPAT_ABI_TAG`（如 `abi_v1`）內聯命名空間，徹底杜絕跨編譯單元混用時的單一定義規則（One Definition Rule, ODR）衝突與符號混淆。
+   - **原始碼相容**：呼叫端一律撰寫 `compat::optional<T>`、`compat::string_view`，升級標準時零修改代碼。
+   - **二進位攔截**：大型專案在過渡期混編（如靜態庫採 C++11、主程式採 C++20）若未啟用鎖定旗標，Linker 會以符號不匹配（`self_v1` vs `std_v1`）精確攔截，杜絕靜默記憶體錯位。
+   - **ODR 常數保護**：以 `compat::detail::static_const<T>` 及 `COMPAT_INLINE_VAR` 確保全域標籤在 C++11 下不產生多重定義衝突。
+
+---
+
+## 整合與部署方式 (Deployment Options)
+
+CPP-Compat 不僅提供單一標頭檔，亦支援標準 CMake 模組化安裝與細粒度包含，避免巨型標頭造成的編譯時間膨脹：
+
+1. **CMake 套件安裝與消費（推薦大型專案）**：
+   ```cmake
+   find_package(compat CONFIG REQUIRED)
+   target_link_libraries(my_app PRIVATE compat::compat)
+   ```
+   自動傳遞 `Threads::Threads` 與系統特性；消費者可按需只引入個別標頭（如 `#include <compat/StringView.hpp>` 或 `#include <compat/Expected.hpp>`）。
+2. **CMake 子專案與 FetchContent**：
+   支援 `add_subdirectory(third_party/CPP-Compat)` 或 `FetchContent_MakeAvailable(compat)`。
+3. **模組化標頭目錄 (Modular Header-Only)**：
+   直接將本函式庫 `include/` 加入包含路徑：`target_include_directories(my_app PRIVATE path/to/include)`。
+4. **單一標頭檔 (`dist/compat.hpp`)**：
+   快速原型開發或無 CMake 環境直接引入單檔。
+5. **標準 C++20 Module (`dist/compat.ixx`)**：
+   現代建置系統直接使用 `import compat;`。
 
 ---
 
 ## 規範合約與保證 (Contracts & Guarantees)
 
+- **向下相容至 C++11 (Baseline C++11)**：基底編譯需求為 C++11，所有單元測試均經由 `-std=c++11 -pedantic` 嚴格審核。
 - **零外部依賴 (Zero External Dependencies)**：僅依賴 ISO C++ 標準庫最基礎頭檔（如 `<cstddef>`, `<cstdint>`, `<utility>`, `<type_traits>`），不拉取任何第三方套件。
 - **純函數設計 (Fail-Fast & Constexpr)**：公開 API 大量採用 `[[nodiscard]]`、`noexcept`、`constexpr` / `COMPAT_CONSTEXPR_14` 修飾。
 - **無例外環境相容 (`-fno-exceptions`)**：透過 `COMPAT_THROW_OR_ABORT` 巨集，在關閉例外的嵌入式或高頻交易環境中自動降階為 `std::abort()`，杜絕未捕獲異常。

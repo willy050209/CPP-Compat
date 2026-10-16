@@ -1,6 +1,6 @@
-# 視圖適配器 (compat::views)
+﻿# 視圖適配器 (compat::views)
 
-定義於標頭檔 [`<compat/View.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/View.hpp)（或 [`<compat/Ranges.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Ranges.hpp)）。  
+定義於標頭檔 [`<compat/View.hpp>`](../include/compat/View.hpp)（或 [`<compat/Ranges.hpp>`](../include/compat/Ranges.hpp)）。  
 所屬命名空間：`compat::views`。
 
 視圖（View）是輕量級、具備常數時間複製與移動複雜度（$O(1)$）且具備惰性求值（Lazy Evaluation）特性的 Range 物件。  

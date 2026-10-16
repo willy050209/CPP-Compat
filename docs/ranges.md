@@ -1,6 +1,6 @@
-# 範圍基礎與概念 (compat::ranges)
+﻿# 範圍基礎與概念 (compat::ranges)
 
-定義於標頭檔 [`<compat/Ranges.hpp>`](file:///D:/program/C++/CPP-Compat/include/compat/Ranges.hpp)。  
+定義於標頭檔 [`<compat/Ranges.hpp>`](../include/compat/Ranges.hpp)。  
 所屬命名空間：`compat::ranges`。
 
 `compat::ranges` 提供完備的現代 C++ Range 概念體系、型別特徵萃取器（Type Traits）、自訂點物件（Customization Point Objects, CPO）以及通用子範圍包裝器 `subrange`。  
