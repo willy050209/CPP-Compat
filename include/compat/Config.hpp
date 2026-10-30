@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // Feature detection and configuration header for compat library.
 
@@ -105,6 +105,25 @@ namespace detail {
 #endif
 
 // Constexpr support for C++11 and C++14+
+// AddressSanitizer suppression macro
+#if defined(__SANITIZE_ADDRESS__)
+#  if defined(_MSC_VER)
+#    define COMPAT_NO_ASAN __declspec(no_sanitize_address)
+#  elif defined(__clang__) || defined(__GNUC__)
+#    define COMPAT_NO_ASAN __attribute__((no_sanitize("address")))
+#  else
+#    define COMPAT_NO_ASAN
+#  endif
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define COMPAT_NO_ASAN __attribute__((no_sanitize("address")))
+#  else
+#    define COMPAT_NO_ASAN
+#  endif
+#else
+#  define COMPAT_NO_ASAN
+#endif
+
 #define COMPAT_CONSTEXPR constexpr
 
 #if (COMPAT_CPLUSPLUS >= COMPAT_CXX_14)
